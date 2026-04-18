@@ -1,0 +1,316 @@
+# ============================================================================
+# Eresus Sentinel — SAST Rules for LLM Application Code
+# ============================================================================
+# Static analysis rules for detecting security issues in AI/ML codebases.
+# Source: huntr.com research + OWASP LLM Top 10 + CWE ML extensions
+#
+# Fields:
+#   id:            Unique rule ID (SAST-NNN)
+#   name:          Short rule name
+#   description:   What the rule detects
+#   pattern:       Regex pattern (Python re syntax)
+#   severity:      CRITICAL | HIGH | MEDIUM | LOW | INFO
+#   cwe_ids:       CWE references
+#   fix_hint:      Remediation guidance
+#   fp_risk:       LOW | MEDIUM | HIGH — false positive likelihood
+#   references:    URLs for context
+# ============================================================================
+
+version: "1.0"
+
+rules:
+  # ─── Insecure Deserialization ────────────────────────────────────────
+  - id: SAST-001
+    name: unsafe_pickle_load
+    description: "Unsafe pickle deserialization — leads to arbitrary code execution via __reduce__"
+    pattern: '(?i)(?:pickle|cPickle|_pickle)\.(?:load|loads)\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-502]
+    fix_hint: "Replace with safetensors, JSON, or use fickling for validation"
+    fp_risk: LOW
+    references:
+      - "https://blog.huntr.com/pickle-rickd-how-loading-a-malicious-pickle-can-pwn-your-machine"
+      - "https://blog.huntr.com/dont-trust-your-model-how-a-malicious-pickle-payload-in-pytorch-can-execute-code"
+
+  - id: SAST-002
+    name: unsafe_torch_load
+    description: "torch.load() uses pickle internally — arbitrary code execution risk"
+    pattern: '(?i)torch\.load\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-502]
+    fix_hint: "Use torch.load(weights_only=True) or migrate to safetensors format"
+    fp_risk: LOW
+    references:
+      - "https://blog.huntr.com/dont-trust-your-model-how-a-malicious-pickle-payload-in-pytorch-can-execute-code"
+
+  - id: SAST-003
+    name: unsafe_joblib_load
+    description: "joblib.load() uses pickle internally — same deserialization risks"
+    pattern: '(?i)joblib\.load\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Only load joblib files from trusted sources; consider ONNX export"
+    fp_risk: LOW
+
+  - id: SAST-004
+    name: unsafe_shelve_open
+    description: "shelve.open() uses pickle — code execution during deserialization"
+    pattern: '(?i)shelve\.open\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Replace with safer storage like SQLite or JSON"
+    fp_risk: LOW
+
+  - id: SAST-005
+    name: unsafe_yaml_load
+    description: "yaml.load() without Loader can execute arbitrary Python via !!python tags"
+    pattern: '(?i)yaml\.load\s*\([^)]*(?:(?!Loader)[^)])*\)'
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Use yaml.safe_load() instead"
+    fp_risk: MEDIUM
+
+  - id: SAST-006
+    name: unsafe_numpy_load
+    description: "numpy.load() with allow_pickle=True enables pickle deserialization"
+    pattern: '(?i)(?:np|numpy)\.load\s*\([^)]*allow_pickle\s*=\s*True'
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Use allow_pickle=False (default since NumPy 1.16.3)"
+    fp_risk: LOW
+
+  - id: SAST-007
+    name: unsafe_keras_load_safe_mode_off
+    description: "Keras model load with safe_mode=False enables Lambda layer code execution"
+    pattern: '(?i)(?:keras|tf\.keras)\.(?:models\.)?load_model\s*\([^)]*safe_mode\s*=\s*False'
+    severity: CRITICAL
+    cwe_ids: [CWE-502, CWE-94]
+    fix_hint: "Never set safe_mode=False when loading untrusted models"
+    fp_risk: LOW
+    references:
+      - "https://blog.huntr.com/hunting-vulnerabilities-in-keras-model-deserialization"
+
+  - id: SAST-008
+    name: unsafe_keras_load_legacy
+    description: "Loading legacy HDF5/H5 Keras models — potential unsafe deserialization"
+    pattern: '(?i)(?:keras|tf\.keras)\.(?:models\.)?load_model\s*\([^)]*\.h(?:df)?5[''"]'
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Convert to .keras format with safe_mode=True; audit for Lambda layers"
+    fp_risk: MEDIUM
+    references:
+      - "https://blog.huntr.com/hunting-vulnerabilities-in-keras-model-deserialization"
+
+  - id: SAST-009
+    name: unsafe_tf_saved_model
+    description: "Loading TensorFlow SavedModel from untrusted source"
+    pattern: '(?i)tf\.saved_model\.load\s*\('
+    severity: MEDIUM
+    cwe_ids: [CWE-502]
+    fix_hint: "Only load SavedModels from trusted sources; verify model signatures"
+    fp_risk: HIGH
+
+  - id: SAST-010
+    name: unsafe_onnx_load
+    description: "Loading ONNX models with custom ops — potential native code execution"
+    pattern: '(?i)(?:onnx\.load|onnxruntime\.InferenceSession)\s*\('
+    severity: MEDIUM
+    cwe_ids: [CWE-502]
+    fix_hint: "Validate model graph before inference; check for custom ops"
+    fp_risk: HIGH
+    references:
+      - "https://blog.huntr.com/hunting-vulnerabilities-in-machine-learning-model-file-formats"
+
+  - id: SAST-011
+    name: unsafe_marshal_loads
+    description: "marshal.loads() can execute bytecode — used in Keras Lambda exploits"
+    pattern: '(?i)marshal\.loads?\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-502]
+    fix_hint: "Never use marshal with untrusted data"
+    fp_risk: LOW
+    references:
+      - "https://blog.huntr.com/hunting-vulnerabilities-in-keras-model-deserialization"
+
+  - id: SAST-012
+    name: unsafe_dill_load
+    description: "dill.load() extends pickle with more object types — same RCE risks"
+    pattern: '(?i)dill\.(?:load|loads)\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-502]
+    fix_hint: "Replace dill with safer serialization"
+    fp_risk: LOW
+
+  - id: SAST-013
+    name: unsafe_cloudpickle_load
+    description: "cloudpickle.load() — pickle variant used in distributed ML"
+    pattern: '(?i)cloudpickle\.(?:load|loads)\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-502]
+    fix_hint: "Only deserialize cloudpickle from trusted sources"
+    fp_risk: LOW
+
+  # ─── Code Injection / Dynamic Execution ──────────────────────────────
+  - id: SAST-020
+    name: eval_llm_output
+    description: "eval() or exec() on potentially untrusted LLM output"
+    pattern: '(?i)(?:eval|exec)\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-94, CWE-95]
+    fix_hint: "Never eval/exec LLM output; use structured parsers (JSON, regex)"
+    fp_risk: MEDIUM
+
+  - id: SAST-021
+    name: compile_exec
+    description: "compile() + exec() pattern — dynamic code execution"
+    pattern: '(?i)compile\s*\([^)]*\)\s*.*exec\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "Avoid dynamic code compilation with untrusted input"
+    fp_risk: MEDIUM
+
+  - id: SAST-022
+    name: subprocess_shell_true
+    description: "subprocess with shell=True — command injection risk"
+    pattern: '(?i)subprocess\.(?:Popen|run|call|check_output)\s*\([^)]*shell\s*=\s*True'
+    severity: HIGH
+    cwe_ids: [CWE-78]
+    fix_hint: "Use shell=False with argument list instead"
+    fp_risk: MEDIUM
+
+  - id: SAST-023
+    name: os_system_call
+    description: "os.system() call — command injection risk"
+    pattern: '(?i)os\.system\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-78]
+    fix_hint: "Use subprocess.run() with shell=False"
+    fp_risk: LOW
+
+  - id: SAST-024
+    name: importlib_import
+    description: "Dynamic module import via importlib — arbitrary code loading risk"
+    pattern: '(?i)importlib\.import_module\s*\('
+    severity: MEDIUM
+    cwe_ids: [CWE-94]
+    fix_hint: "Only import from a validated allowlist of modules"
+    fp_risk: HIGH
+    references:
+      - "https://blog.huntr.com/hunting-vulnerabilities-in-keras-model-deserialization"
+
+  # ─── Hardcoded Secrets ───────────────────────────────────────────────
+  - id: SAST-030
+    name: hardcoded_openai_key
+    description: "Hardcoded OpenAI API key in source code"
+    pattern: '(?:''|"|`)sk-[a-zA-Z0-9]{20,}(?:''|"|`)'
+    severity: CRITICAL
+    cwe_ids: [CWE-798]
+    fix_hint: "Use environment variables: os.environ['OPENAI_API_KEY']"
+    fp_risk: LOW
+
+  - id: SAST-031
+    name: hardcoded_anthropic_key
+    description: "Hardcoded Anthropic API key in source code"
+    pattern: '(?:''|"|`)sk-ant-[a-zA-Z0-9\-]{20,}(?:''|"|`)'
+    severity: CRITICAL
+    cwe_ids: [CWE-798]
+    fix_hint: "Use environment variables: os.environ['ANTHROPIC_API_KEY']"
+    fp_risk: LOW
+
+  - id: SAST-032
+    name: hardcoded_aws_key
+    description: "Hardcoded AWS credentials in source code"
+    pattern: '(?:''|"|`)AKIA[A-Z0-9]{16}(?:''|"|`)'
+    severity: CRITICAL
+    cwe_ids: [CWE-798]
+    fix_hint: "Use AWS credentials file, IAM roles, or environment variables"
+    fp_risk: LOW
+
+  - id: SAST-033
+    name: hardcoded_generic_secret
+    description: "Generic hardcoded secret assignment"
+    pattern: '(?i)(?:api_key|apikey|secret_key|password|token|auth_token)\s*=\s*[''"][^\s''"]{8,}[''"]'
+    severity: HIGH
+    cwe_ids: [CWE-798]
+    fix_hint: "Use environment variables or a secrets manager"
+    fp_risk: MEDIUM
+
+  # ─── Unsafe Network / Download ───────────────────────────────────────
+  - id: SAST-040
+    name: unsafe_model_download
+    description: "Downloading model from URL without integrity verification"
+    pattern: '(?i)(?:urllib|requests|wget|curl|httpx)\.(?:get|urlretrieve|download)\s*\([^)]*(?:model|weights|checkpoint)'
+    severity: MEDIUM
+    cwe_ids: [CWE-494]
+    fix_hint: "Verify SHA256 hash after download; use signed URLs"
+    fp_risk: HIGH
+
+  - id: SAST-041
+    name: http_model_download
+    description: "Model download over plain HTTP (no TLS)"
+    pattern: '(?:''|"|`)http://[^''"`]*(?:model|weights|checkpoint|\.(?:pt|pth|pkl|gguf|bin|safetensors))'
+    severity: HIGH
+    cwe_ids: [CWE-319]
+    fix_hint: "Always use HTTPS for model downloads"
+    fp_risk: LOW
+
+  # ─── Archive / Path Traversal ────────────────────────────────────────
+  - id: SAST-050
+    name: unsafe_extractall
+    description: "Archive extractall() without path validation — archive slip risk"
+    pattern: '(?i)\.extractall\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-22]
+    fix_hint: "Validate each member path before extraction; reject entries with ../ or absolute paths"
+    fp_risk: MEDIUM
+    references:
+      - "https://blog.huntr.com/pivoting-archive-slip-bugs-into-high-value-ai-ml-bounties"
+
+  - id: SAST-051
+    name: unsafe_tarfile_extract
+    description: "tarfile extract without member filtering — symlink and path traversal"
+    pattern: '(?i)tarfile\.open\s*\([^)]*\).*\.extractall\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-22, CWE-59]
+    fix_hint: "Use tarfile.extractall(filter='data') (Python 3.12+) or validate members"
+    fp_risk: MEDIUM
+    references:
+      - "https://blog.huntr.com/pivoting-archive-slip-bugs-into-high-value-ai-ml-bounties"
+
+  # ─── Prompt Construction ─────────────────────────────────────────────
+  - id: SAST-060
+    name: unvalidated_prompt_construction
+    description: "User input directly interpolated into prompt template"
+    pattern: '(?i)(?:prompt|system_message|instruction)\s*=\s*f[''"].*\{.*(?:user_input|query|message|request|input)'
+    severity: HIGH
+    cwe_ids: [CWE-74]
+    fix_hint: "Sanitize user input; use parameterized prompt templates"
+    fp_risk: HIGH
+
+  - id: SAST-061
+    name: prompt_format_injection
+    description: "String format() with user input in prompt"
+    pattern: '(?i)(?:prompt|template|instruction).*\.format\s*\(.*(?:user|input|query)'
+    severity: MEDIUM
+    cwe_ids: [CWE-74]
+    fix_hint: "Use parameterized templates with explicit escaping"
+    fp_risk: HIGH
+
+  # ─── LLM Output Handling ────────────────────────────────────────────
+  - id: SAST-070
+    name: unescaped_llm_html_output
+    description: "LLM output directly rendered as HTML — XSS risk"
+    pattern: '(?i)(?:innerHTML|dangerouslySetInnerHTML|Markup|safe)\s*[=({]\s*.*(?:response|output|completion|result)'
+    severity: HIGH
+    cwe_ids: [CWE-79]
+    fix_hint: "Always HTML-escape LLM output before rendering"
+    fp_risk: MEDIUM
+
+  - id: SAST-071
+    name: llm_output_sql
+    description: "LLM output used in SQL query construction"
+    pattern: '(?i)(?:execute|cursor\.execute|query)\s*\(.*(?:response|output|completion|generated|result)'
+    severity: CRITICAL
+    cwe_ids: [CWE-89]
+    fix_hint: "Never use LLM output in raw SQL; use parameterized queries"
+    fp_risk: MEDIUM

@@ -1,0 +1,94 @@
+# ============================================================================
+# Eresus Sentinel — Docker Compose Stack
+# ============================================================================
+# Usage:
+#   docker compose up -d        — Start all services
+#   docker compose logs -f      — Follow logs
+#   docker compose down         — Stop all services
+#
+# Services:
+#   sentinel-api    — Main API (port 8080)
+#   prometheus      — Metrics collection (port 9090)
+# ============================================================================
+
+services:
+  # ── Sentinel API Server ──────────────────────────────────────────
+  sentinel-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentinel-api
+    restart: unless-stopped
+    ports:
+      - "${SENTINEL_PORT:-8080}:8080"
+    volumes:
+      - ./config:/app/config:ro
+      - ./rules:/app/rules:ro
+      - sentinel-logs:/app/logs
+      - sentinel-data:/app/data
+    environment:
+      - SENTINEL_ENV=${SENTINEL_ENV:-production}
+      - SENTINEL_LOG_LEVEL=${SENTINEL_LOG_LEVEL:-INFO}
+      - SENTINEL_METRICS=1
+      - SENTINEL_VAULT=${SENTINEL_VAULT:-0}
+      - SENTINEL_AUDIT_LOG=/app/logs/audit.jsonl
+      - SENTINEL_POLICY=/app/config/policy.yaml
+      - SENTINEL_CORS_ORIGINS=${SENTINEL_CORS_ORIGINS:-*}
+      - SENTINEL_AUTH_TYPE=${SENTINEL_AUTH_TYPE:-}
+      - SENTINEL_AUTH_TOKEN=${SENTINEL_AUTH_TOKEN:-}
+      - SENTINEL_RATE_LIMIT=${SENTINEL_RATE_LIMIT:-100/minute}
+      # AI backend (optional)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+    networks:
+      - sentinel-net
+
+  # ── Prometheus (Metrics) ─────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: sentinel-prometheus
+    restart: unless-stopped
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - sentinel-net
+    depends_on:
+      sentinel-api:
+        condition: service_healthy
+
+volumes:
+  sentinel-logs:
+    driver: local
+  sentinel-data:
+    driver: local
+  prometheus-data:
+    driver: local
+
+networks:
+  sentinel-net:
+    driver: bridge

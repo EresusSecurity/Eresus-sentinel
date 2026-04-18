@@ -1,0 +1,63 @@
+# ============================================================================
+# Eresus Sentinel — GitHub Actions CI Integration
+# ============================================================================
+#
+# Scans PRs and commits for ML security anti-patterns using
+# the diff scanner module.
+#
+# Add this file to .github/workflows/eresus-sentinel.yml
+# ============================================================================
+
+name: Eresus Sentinel ML Security Scan
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ml-security-scan:
+    name: ML Security Diff Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Eresus Sentinel
+        run: |
+          pip install -e ./eresus-sentinel/
+
+      - name: Scan PR Diff
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD | \
+            python3 -m sentinel.cli_dispatch --module diff --target -
+        env:
+          ERESUS_CI_MODE: "true"
+
+      - name: Scan Push Diff
+        if: github.event_name == 'push'
+        run: |
+          python3 -m sentinel.cli_dispatch --module diff \
+            --target "${{ github.event.before }}..${{ github.sha }}"
+        env:
+          ERESUS_CI_MODE: "true"
+
+      - name: Fail on Critical Findings
+        if: failure()
+        run: |
+          echo "::error::Eresus Sentinel detected critical ML security issues in this change."
+          echo "Review the scan output above for details."
+          exit 1

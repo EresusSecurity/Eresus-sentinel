@@ -1,0 +1,59 @@
+# ── Build ────────────────────────────────
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+*.egg
+dist
+build
+.eggs
+
+# ── IDE ──────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# ── Dev ──────────────────────────────────
+.git
+.github
+.gitignore
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+.coverage.*
+
+# ── Docs / Meta ──────────────────────────
+docs/
+refs/
+notebooks/
+*.md
+!README.md
+mkdocs.yml
+CHANGELOG.md
+STACK.md
+
+# ── CI ───────────────────────────────────
+ci/
+.pre-commit-config.yaml
+.editorconfig
+.gsd/
+
+# ── Docker ───────────────────────────────
+Dockerfile
+Dockerfile.cuda
+docker-compose.yml
+.dockerignore
+
+# ── Data ─────────────────────────────────
+tests/
+payloads/
+*.pkl
+*.pt
+*.safetensors
+*.gguf
+*.onnx
+sentinel_audit*.jsonl

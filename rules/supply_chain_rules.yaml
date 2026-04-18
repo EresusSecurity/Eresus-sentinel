@@ -1,0 +1,362 @@
+# ============================================================================
+# Eresus Sentinel — Supply Chain Security Rules
+# ============================================================================
+# File type risk classification, safe format registry, model card
+# validation requirements, and config.json security flags.
+# ============================================================================
+
+# Dangerous file extensions in model repositories
+dangerous_extensions:
+  .pkl:
+    description: "Pickle file — arbitrary code execution via __reduce__"
+    severity: CRITICAL
+    cwe: "CWE-502"
+  .pickle:
+    description: "Pickle file — arbitrary code execution via __reduce__"
+    severity: CRITICAL
+    cwe: "CWE-502"
+  .bin:
+    description: "Binary file — may contain serialized Python objects (pickle)"
+    severity: HIGH
+    cwe: "CWE-502"
+  .pt:
+    description: "PyTorch file — uses pickle serialization by default"
+    severity: HIGH
+    cwe: "CWE-502"
+  .pth:
+    description: "PyTorch checkpoint — uses pickle serialization"
+    severity: HIGH
+    cwe: "CWE-502"
+  .joblib:
+    description: "Joblib file — wraps pickle, enables code execution"
+    severity: HIGH
+    cwe: "CWE-502"
+  .npy:
+    description: "NumPy file — limited attack surface"
+    severity: LOW
+    cwe: "CWE-502"
+  .npz:
+    description: "NumPy compressed — limited attack surface"
+    severity: LOW
+    cwe: "CWE-502"
+  .h5:
+    description: "HDF5/Keras file — check for Lambda layers"
+    severity: MEDIUM
+    cwe: "CWE-502"
+  .hdf5:
+    description: "HDF5 file — check for embedded Lambda code"
+    severity: MEDIUM
+    cwe: "CWE-502"
+  .keras:
+    description: "Keras file — check for Lambda layers (CVE-2025-1550)"
+    severity: MEDIUM
+    cwe: "CWE-502"
+  .ckpt:
+    description: "Checkpoint file — typically uses pickle serialization"
+    severity: HIGH
+    cwe: "CWE-502"
+  .msgpack:
+    description: "MessagePack file — limited attack surface"
+    severity: LOW
+    cwe: "CWE-502"
+  .exe:
+    description: "Windows executable — should never be in model repos"
+    severity: CRITICAL
+    cwe: "CWE-506"
+  .dll:
+    description: "Windows dynamic library — should never be in model repos"
+    severity: CRITICAL
+    cwe: "CWE-506"
+  .so:
+    description: "Unix shared object — should never be in model repos"
+    severity: CRITICAL
+    cwe: "CWE-506"
+  .dylib:
+    description: "macOS dynamic library — should never be in model repos"
+    severity: CRITICAL
+    cwe: "CWE-506"
+  .sh:
+    description: "Shell script — potential command execution"
+    severity: HIGH
+    cwe: "CWE-78"
+  .bat:
+    description: "Batch script — potential command execution"
+    severity: HIGH
+    cwe: "CWE-78"
+  .cmd:
+    description: "Windows command script — potential command execution"
+    severity: HIGH
+    cwe: "CWE-78"
+  .ps1:
+    description: "PowerShell script — potential command execution"
+    severity: HIGH
+    cwe: "CWE-78"
+  .py:
+    description: "Python script — review for malicious code"
+    severity: MEDIUM
+    cwe: "CWE-94"
+  .js:
+    description: "JavaScript file — review for malicious code"
+    severity: MEDIUM
+    cwe: "CWE-94"
+  .whl:
+    description: "Python wheel — may contain compiled extensions"
+    severity: MEDIUM
+    cwe: "CWE-506"
+  .egg:
+    description: "Python egg — may contain compiled extensions"
+    severity: MEDIUM
+    cwe: "CWE-506"
+  .tar.gz:
+    description: "Compressed archive — check for path traversal"
+    severity: LOW
+    cwe: "CWE-22"
+  .zip:
+    description: "ZIP archive — check for ZipSlip / path traversal"
+    severity: LOW
+    cwe: "CWE-22"
+  .7z:
+    description: "7-Zip archive — check for path traversal"
+    severity: LOW
+    cwe: "CWE-22"
+  .rar:
+    description: "RAR archive — check for path traversal"
+    severity: LOW
+    cwe: "CWE-22"
+  .msi:
+    description: "Windows installer — should never be in model repos"
+    severity: CRITICAL
+    cwe: "CWE-506"
+  .rpm:
+    description: "RPM package — should never be in model repos"
+    severity: HIGH
+    cwe: "CWE-506"
+  .deb:
+    description: "Debian package — should never be in model repos"
+    severity: HIGH
+    cwe: "CWE-506"
+  .apk:
+    description: "Android package — should never be in model repos"
+    severity: HIGH
+    cwe: "CWE-506"
+  .ipa:
+    description: "iOS package — should never be in model repos"
+    severity: HIGH
+    cwe: "CWE-506"
+  .jar:
+    description: "Java archive — may contain compiled bytecode"
+    severity: MEDIUM
+    cwe: "CWE-506"
+
+# Safe file extensions that should be preferred
+safe_extensions:
+  - .safetensors
+  - .gguf
+  - .ggml
+  - .onnx
+  - .json
+  - .jsonl
+  - .txt
+  - .md
+  - .yaml
+  - .yml
+  - .toml
+  - .cfg
+  - .ini
+  - .csv
+  - .tsv
+  - .png
+  - .jpg
+  - .jpeg
+  - .gif
+  - .svg
+  - .bmp
+  - .webp
+  - .wav
+  - .mp3
+  - .flac
+  - .LICENSE
+  - .gitignore
+  - .gitattributes
+
+# Required model card fields
+model_card_required_fields:
+  - model_name
+  - library_name
+  - pipeline_tag
+  - license
+
+# Model card content checks
+model_card_content_checks:
+  - keyword: license
+    rule_id: SC-021
+    description: "Missing license declaration"
+    severity: MEDIUM
+
+  - keywords:
+      - training data
+      - dataset
+      - trained on
+      - fine-tuned on
+      - finetuned on
+      - training corpus
+      - pre-trained on
+    rule_id: SC-022
+    description: "Missing training data documentation"
+    severity: MEDIUM
+
+  - keywords:
+      - evaluation
+      - benchmark
+      - performance
+      - accuracy
+      - f1 score
+      - bleu
+      - metrics
+    rule_id: SC-023
+    description: "Missing evaluation/benchmark results"
+    severity: LOW
+
+  - keywords:
+      - intended use
+      - use case
+      - out-of-scope
+      - limitations
+      - bias
+      - ethical
+      - fairness
+    rule_id: SC-024
+    description: "Missing intended use and limitations documentation"
+    severity: LOW
+
+# config.json security flags
+config_security_flags:
+  - key: trust_remote_code
+    value: true
+    rule_id: SC-031
+    description: "trust_remote_code enables arbitrary Python execution"
+    severity: CRITICAL
+
+  - key: custom_code
+    value: true
+    rule_id: SC-032
+    description: "custom_code flag indicates non-standard model code"
+    severity: HIGH
+
+  - key: auto_map
+    check_type: custom_module
+    rule_id: SC-030
+    description: "auto_map with custom code reference enables RCE"
+    severity: CRITICAL
+
+# Dependency vulnerability patterns
+dependency_patterns:
+  python:
+    lockfiles:
+      - requirements.txt
+      - Pipfile.lock
+      - poetry.lock
+      - pdm.lock
+      - uv.lock
+    manifest:
+      - setup.py
+      - setup.cfg
+      - pyproject.toml
+      - Pipfile
+
+  javascript:
+    lockfiles:
+      - package-lock.json
+      - yarn.lock
+      - pnpm-lock.yaml
+      - bun.lockb
+    manifest:
+      - package.json
+
+  rust:
+    lockfiles:
+      - Cargo.lock
+    manifest:
+      - Cargo.toml
+
+# Known vulnerable packages in AI/ML ecosystem
+known_vulnerable_packages:
+  - name: transformers
+    versions_before: "4.36.0"
+    reason: "Multiple deserialization vulnerabilities"
+    severity: HIGH
+
+  - name: torch
+    versions_before: "2.1.0"
+    reason: "Unsafe pickle loading by default"
+    severity: HIGH
+
+  - name: tensorflow
+    versions_before: "2.14.0"
+    reason: "Multiple CVEs in older versions"
+    severity: HIGH
+
+  - name: keras
+    versions_before: "3.0.0"
+    reason: "Lambda layer code execution (CVE-2025-1550)"
+    severity: HIGH
+
+  - name: onnx
+    versions_before: "1.14.0"
+    reason: "External data reference vulnerabilities"
+    severity: MEDIUM
+
+  - name: gradio
+    versions_before: "4.0.0"
+    reason: "Path traversal and SSRF vulnerabilities"
+    severity: HIGH
+
+  - name: langchain
+    versions_before: "0.0.325"
+    reason: "Arbitrary code execution via multiple vectors"
+    severity: CRITICAL
+
+  - name: llama-index
+    versions_before: "0.9.0"
+    reason: "Prompt injection and SSRF vulnerabilities"
+    severity: HIGH
+
+  - name: diffusers
+    versions_before: "0.25.0"
+    reason: "Unsafe pickle loading in pipeline"
+    severity: MEDIUM
+
+  - name: safetensors
+    versions_before: "0.4.0"
+    reason: "Header parsing vulnerabilities"
+    severity: LOW
+
+  - name: accelerate
+    versions_before: "0.25.0"
+    reason: "Unsafe deserialization in model loading"
+    severity: MEDIUM
+
+  - name: datasets
+    versions_before: "2.15.0"
+    reason: "Arbitrary code execution via malicious datasets"
+    severity: HIGH
+
+  - name: tokenizers
+    versions_before: "0.15.0"
+    reason: "Buffer overflow in tokenization"
+    severity: MEDIUM
+
+  - name: sentence-transformers
+    versions_before: "2.2.0"
+    reason: "Unsafe model loading defaults"
+    severity: MEDIUM
+
+  - name: peft
+    versions_before: "0.7.0"
+    reason: "Unsafe adapter loading"
+    severity: MEDIUM
+
+  - name: optimum
+    versions_before: "1.14.0"
+    reason: "Unsafe ONNX model loading"
+    severity: MEDIUM

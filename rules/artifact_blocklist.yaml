@@ -1,0 +1,1022 @@
+# ============================================================================
+# Eresus Sentinel — Dangerous Globals Blocklist for Artifact Scanning
+# ============================================================================
+# Used by PickleScanner. Any pickle GLOBAL opcode importing a
+# (module, name) pair found here triggers a finding.
+#
+# Sources:
+#   - picklescan (https://github.com/mmaitre314/picklescan)
+#   - huntr.com MFV research
+#   - fickling project
+#   - OWASP Deserialization Cheat Sheet
+#   - Trail of Bits ML security research
+#   - JFrog CVE analysis
+#   - ProtectAI ModelScan
+#
+# Format:
+#   module:
+#     - name       (exact match)
+#     - "prefix*"  (wildcard suffix match)
+# ============================================================================
+
+version: "3.0"
+
+# ─── BLOCKLIST ────────────────────────────────────────────────────────
+dangerous_globals:
+
+  # ── Code execution (CRITICAL) ──────────────────────────────────────
+  builtins:
+    - exec
+    - eval
+    - compile
+    - __import__
+    - globals
+    - locals
+    - vars
+    - getattr
+    - setattr
+    - delattr
+    - open
+    - input
+    - breakpoint
+    - exit
+    - memoryview
+    - bytearray
+    - type
+    - super
+    - __build_class__
+
+  __builtin__:
+    - exec
+    - eval
+    - compile
+    - __import__
+    - globals
+    - execfile
+    - open
+    - file
+
+  os:
+    - system
+    - popen
+    - popen2
+    - popen3
+    - popen4
+    - "exec*"
+    - "spawn*"
+    - fork
+    - forkpty
+    - kill
+    - killpg
+    - unlink
+    - remove
+    - rmdir
+    - rename
+    - makedirs
+    - environ
+    - putenv
+    - chmod
+    - chown
+    - chroot
+    - link
+    - symlink
+    - listdir
+    - scandir
+    - walk
+    - path
+
+  nt:
+    - system
+    - popen
+    - startfile
+    - unlink
+    - remove
+    - rename
+    - _getfullpathname
+
+  posixpath:
+    - join
+    - expanduser
+    - realpath
+
+  subprocess:
+    - call
+    - check_call
+    - check_output
+    - Popen
+    - run
+    - getoutput
+    - getstatusoutput
+
+  sys:
+    - exit
+    - modules
+    - path
+    - stdin
+    - stdout
+    - stderr
+    - _getframe
+    - settrace
+
+  signal:
+    - signal
+    - alarm
+    - raise_signal
+
+  # ── Code object construction (CRITICAL) ────────────────────────────
+  types:
+    - FunctionType
+    - CodeType
+    - ModuleType
+    - MethodType
+    - BuiltinFunctionType
+
+  marshal:
+    - loads
+    - load
+    - dumps
+
+  compile:
+    - "*"
+
+  ast:
+    - literal_eval
+    - parse
+
+  # ── Dynamic loading / FFI (CRITICAL) ───────────────────────────────
+  ctypes:
+    - CDLL
+    - cdll
+    - windll
+    - oledll
+    - WinDLL
+    - OleDLL
+    - PyDLL
+    - CFUNCTYPE
+    - WINFUNCTYPE
+    - pythonapi
+    - cast
+    - pointer
+    - memmove
+    - memset
+    - string_at
+
+  ctypes.util:
+    - find_library
+
+  _ctypes:
+    - dlopen
+    - dlsym
+
+  cffi:
+    - FFI
+
+  importlib:
+    - import_module
+    - __import__
+    - reload
+
+  importlib.util:
+    - spec_from_file_location
+    - module_from_spec
+
+  code:
+    - interact
+    - InteractiveConsole
+    - InteractiveInterpreter
+    - compile_command
+
+  codeop:
+    - compile_command
+
+  compileall:
+    - compile_dir
+    - compile_file
+
+  runpy:
+    - run_module
+    - run_path
+    - _run_code
+
+  pkgutil:
+    - get_loader
+    - find_loader
+
+  # ── Network access (HIGH) ──────────────────────────────────────────
+  socket:
+    - socket
+    - create_connection
+    - create_server
+    - getaddrinfo
+    - gethostbyname
+
+  http.client:
+    - HTTPConnection
+    - HTTPSConnection
+
+  http.server:
+    - HTTPServer
+    - SimpleHTTPRequestHandler
+
+  urllib.request:
+    - urlopen
+    - urlretrieve
+    - Request
+    - URLopener
+    - FancyURLopener
+
+  urllib.parse:
+    - urljoin
+    - urlparse
+
+  requests:
+    - get
+    - post
+    - put
+    - delete
+    - patch
+    - head
+    - options
+    - Session
+    - request
+
+  httpx:
+    - get
+    - post
+    - Client
+    - AsyncClient
+
+  webbrowser:
+    - open
+    - open_new
+    - open_new_tab
+
+  ftplib:
+    - FTP
+    - FTP_TLS
+
+  smtplib:
+    - SMTP
+    - SMTP_SSL
+
+  xmlrpc.client:
+    - ServerProxy
+    - Transport
+
+  # ── File system (HIGH) ─────────────────────────────────────────────
+  io:
+    - open
+    - FileIO
+    - BufferedReader
+    - BufferedWriter
+    - TextIOWrapper
+
+  _io:
+    - open
+    - FileIO
+
+  shutil:
+    - rmtree
+    - move
+    - copy
+    - copy2
+    - copytree
+    - chown
+    - disk_usage
+    - make_archive
+
+  pathlib:
+    - Path
+    - PosixPath
+    - WindowsPath
+    - PurePath
+
+  tempfile:
+    - NamedTemporaryFile
+    - mktemp
+    - mkdtemp
+    - TemporaryDirectory
+
+  glob:
+    - glob
+    - iglob
+
+  fnmatch:
+    - fnmatch
+    - filter
+
+  # ── Serialization (pickle-in-pickle) ───────────────────────────────
+  pickle:
+    - loads
+    - load
+    - Unpickler
+
+  _pickle:
+    - loads
+    - load
+
+  shelve:
+    - open
+    - DbfilenameShelf
+
+  dill:
+    - loads
+    - load
+
+  cloudpickle:
+    - loads
+    - load
+
+  joblib:
+    - load
+
+  jsonpickle:
+    - decode
+    - loads
+
+  yaml:
+    - load
+    - unsafe_load
+    - full_load
+
+  # ── Obfuscation / Encoding ────────────────────────────────────────
+  base64:
+    - b64decode
+    - b64encode
+    - b32decode
+    - b16decode
+    - urlsafe_b64decode
+    - decodebytes
+
+  codecs:
+    - decode
+    - encode
+    - open
+
+  binascii:
+    - a2b_base64
+    - unhexlify
+
+  zlib:
+    - decompress
+
+  gzip:
+    - open
+    - decompress
+
+  bz2:
+    - open
+    - decompress
+
+  lzma:
+    - open
+    - decompress
+
+  # ── Concurrency (payload staging) ──────────────────────────────────
+  _thread:
+    - start_new_thread
+    - start_new
+
+  threading:
+    - Thread
+    - Timer
+
+  multiprocessing:
+    - Process
+    - Pool
+
+  concurrent.futures:
+    - ProcessPoolExecutor
+    - ThreadPoolExecutor
+
+  asyncio:
+    - run
+    - create_subprocess_exec
+    - create_subprocess_shell
+
+  # ── Archive manipulation ───────────────────────────────────────────
+  zipfile:
+    - ZipFile
+    - extractall
+
+  tarfile:
+    - open
+    - TarFile
+    - extractall
+
+  # ── Debugging / Inspection ─────────────────────────────────────────
+  inspect:
+    - getmembers
+    - getsource
+    - getsourcefile
+    - stack
+
+  traceback:
+    - print_exc
+    - format_exc
+
+  pdb:
+    - set_trace
+    - Pdb
+    - run
+    - runcall
+
+  gc:
+    - get_objects
+    - get_referrers
+
+  # ── Cloud / credential exfiltration (Huntr real-world payloads) ────
+  boto3:
+    - client
+    - resource
+    - Session
+
+  botocore:
+    - session
+
+  google.auth:
+    - default
+    - compute_engine
+
+  azure.identity:
+    - DefaultAzureCredential
+    - ManagedIdentityCredential
+
+  # ── ML framework abuse ────────────────────────────────────────────
+  torch.hub:
+    - load
+    - download_url_to_file
+
+  torch.utils.model_zoo:
+    - load_url
+
+  tensorflow:
+    - saved_model
+    - keras
+
+  transformers:
+    - AutoModel
+    - AutoTokenizer
+    - pipeline
+
+  huggingface_hub:
+    - hf_hub_download
+    - snapshot_download
+
+  # ── Platform-specific exploitation ────────────────────────────────
+  winreg:
+    - OpenKey
+    - SetValue
+    - SetValueEx
+    - CreateKey
+    - DeleteKey
+
+  win32api:
+    - ShellExecute
+    - WinExec
+
+  win32com.shell:
+    - ShellExecute
+
+  mmap:
+    - mmap
+
+  resource:
+    - setrlimit
+    - getrlimit
+
+  # ── Class construction / metaclass abuse ───────────────────────────
+  functools:
+    - reduce
+    - partial
+
+  operator:
+    - attrgetter
+    - methodcaller
+
+  itertools:
+    - starmap
+
+  # ── Environment / info exfiltration ────────────────────────────────
+  platform:
+    - system
+    - node
+    - release
+    - version
+    - machine
+    - processor
+    - uname
+
+  getpass:
+    - getuser
+    - getpass
+
+  pwd:
+    - getpwall
+    - getpwuid
+    - getpwnam
+
+  grp:
+    - getgrall
+    - getgrgid
+
+  # ── Signals ────────────────────────────────────────────────────────
+  signal:
+    - signal
+    - alarm
+    - raise_signal
+
+
+
+  cloudpickle.cloudpickle:
+    - _builtin_type      # CodeType access for arbitrary code construction
+    - _make_function     # creates functions from code objects
+    - _function_setstate  # sets internal function state
+    - _make_cell         # creates closure cells
+    - _make_empty_cell
+    - subimport          # imports arbitrary modules
+
+  numpy.f2py:
+    - "*"  # getlincoef, _eval_length call eval() on arbitrary strings
+
+  numpy.testing._private.utils:
+    - "*"  # runstring() is a synonym for exec()
+
+  posix:
+    - "*"  # Alias for 'os' on Linux, includes os.system()
+
+  aiohttp:
+    - "*"  # Full HTTP client, SSRF vector
+
+  commands:
+    - "*"  # Python 2 precursor to subprocess
+
+  httplib:
+    - "*"  # Includes http.client.HTTPSConnection()
+
+  bdb:
+    - "*"  # Python debugger base, code execution via set_trace
+
+  logging:
+    - FileHandler  # can create arbitrary files on filesystem
+
+  pty:
+    - spawn  # executes arbitrary commands in pseudo-terminal
+    - "*"
+
+  cProfile:
+    - run     # calls exec() on arbitrary strings
+    - runctx
+
+  profile:
+    - run     # calls exec() on arbitrary strings
+    - runctx
+
+  timeit:
+    - "*"  # timeit.timeit() calls exec() on code strings
+
+  doctest:
+    - debug_script  # executes arbitrary code
+
+  ensurepip:
+    - _run_pip  # installs arbitrary packages
+
+  pip:
+    - "*"  # pip.main() can install arbitrary packages
+
+  pydoc:
+    - "*"  # pydoc.locate imports arbitrary modules, pipepager executes commands
+
+  test:
+    - "*"  # test.support.script_helper.assert_python_ok spawns subprocesses
+
+  ssl:
+    - "*"  # ssl.get_server_certificate() enables DNS exfiltration
+
+  uuid:
+    - "*"  # uuid._get_command_stdout executes via subprocess.Popen
+
+  venv:
+    - "*"  # venv creation can execute post-setup scripts
+
+  imaplib:
+    - IMAP4_stream  # executes commands via subprocess.Popen(command, shell=True)
+
+  idlelib.autocomplete:
+    - "AutoComplete.get_entity"
+    - "AutoComplete.fetch_completions"
+
+  idlelib.calltip:
+    - "Calltip.fetch_tip"
+    - get_entity
+
+  idlelib.debugobj:
+    - "ObjectTreeItem.SetText"
+
+  idlelib.pyshell:
+    - "ModifiedInterpreter.runcode"
+    - "ModifiedInterpreter.runcommand"
+
+  idlelib.run:
+    - "Executive.runcode"
+
+  lib2to3.pgen2.grammar:
+    - "Grammar.loads"  # calls eval on pickled data
+
+  lib2to3.pgen2.pgen:
+    - "ParserGenerator.make_label"  # calls eval
+
+  trace:
+    - "Trace.run"
+    - "Trace.runctx"
+
+  torch._dynamo.guards:
+    - "GuardBuilder.get"
+
+  torch._inductor.codecache:
+    - compile_file  # compile_file('', '', ['sh', '-c','$(echo pwned)'])
+
+  torch.fx.experimental.symbolic_shapes:
+    - "ShapeEnv.evaluate_guards_expression"
+
+  torch.jit.unsupported_tensor_ops:
+    - execWrapper  # directly named exec wrapper
+
+  torch.serialization:
+    - load  # can load nested malicious pickles
+
+  torch.utils._config_module:
+    - "ConfigModule.load_config"  # pickle-in-pickle vector
+
+  torch.utils.bottleneck.__main__:
+    - run_cprofile
+    - run_autograd_prof
+
+  torch.utils.collect_env:
+    - run  # executes system commands for env collection
+
+  torch.utils.data.datapipes.utils.decoder:
+    - basichandlers  # pickle-in-pickle vector
+
+  _operator:
+    - attrgetter   # operator.attrgetter("system")(__import__("os"))("echo pwned")
+    - itemgetter
+    - methodcaller
+
+  distutils.file_util:
+    - write_file  # arbitrary file write
+    - "*"
+
+  _osx_support:
+    - "*"  # _read_output, _find_build_tool execute via os.system
+
+  _aix_support:
+    - "*"  # _read_cmd_output executes via os.system
+
+  _pyrepl:
+    - "*"  # pipe_pager/tempfile_pager execute via subprocess/os.system
+
+  pkgutil:
+    - resolve_name  # can resolve any module:attribute, bypassing entire blocklist
+    - get_loader
+    - find_loader
+
+  requests.api:
+    - "*"  # full HTTP request API
+
+  multiprocessing.util:
+    - spawnv_passfds  # direct command execution bypassing subprocess blocklist
+    - _flush_std_streams
+    - "*"
+
+  mlflow.projects.backend.local:
+    - _run_entry_point
+    - "*"
+
+  pandas.io.parsers.readers:
+    - read_csv
+    - "*"
+
+  pandas.io.parsers:
+    - read_csv
+    - "*"
+
+  pandas:
+    - read_pickle
+
+  pandas.compat.pickle_compat:
+    - "*"
+
+  torch.storage:
+    - _load_from_bytes
+
+  copyreg:
+    - add_extension
+    - dispatch_table
+
+  copy:
+    - copy
+    - deepcopy
+
+  transformers.models.auto.auto_factory:
+    - "*"
+
+  transformers.models.auto.tokenization_auto:
+    - "*"
+
+  yaml.loader:
+    - UnsafeLoader
+    - FullLoader
+    - Loader
+
+  timeit:
+    - timeit
+    - repeat
+    - "*"
+
+  signal:
+    - "*"
+
+  _signal:
+    - "*"
+
+# ─── ALLOWLIST ────────────────────────────────────────────────────────
+# Known-safe module.name pairs in ML model context.
+# These are checked BEFORE the blocklist — matching here = skip.
+#
+# Sources: fickling ML_ALLOWLIST, picklescan, ModelScan, manual audit.
+# Each entry is annotated with why it's safe.
+allowlist:
+
+  # ── Python builtins (safe subset) ───────────────────────────────────
+  builtins:
+    - set
+    - frozenset
+    - range
+    - slice
+    - complex
+    - bytes
+    - bytearray
+    - bool
+    - int
+    - float
+    - str
+    - list
+    - tuple
+    - dict
+    - len
+    - abs
+    - sum
+    - min
+    - max
+    - round
+    - sorted
+    - reversed
+    - enumerate
+    - zip
+    - map
+    - filter
+    - isinstance
+    - issubclass
+    - object
+    - callable
+    - format
+    - hash
+    - id
+    - repr
+    - ascii
+    - bin
+    - hex
+    - oct
+    - ord
+    - chr
+    - pow
+    - divmod
+    - iter
+    - next
+    - all
+    - any
+
+  # ── Standard library (data-only) ───────────────────────────────────
+  collections:
+    - OrderedDict
+    - defaultdict
+    - namedtuple
+    - deque
+
+  argparse:
+    - Namespace
+
+  _codecs:
+    - encode
+
+  _io:
+    - BytesIO    # in-memory buffer, not file I/O
+
+  copyreg:
+    - _reconstructor
+    - __newobj__
+
+  copy_reg:
+    - _reconstructor
+
+  _operator:
+    - getitem
+
+  # ── PyTorch core storage types ─────────────────────────────────────
+  # These are pure data containers — callable but redirect to __new__
+  # which only builds a new empty object. Cannot execute arbitrary code.
+  torch:
+    - FloatStorage
+    - LongStorage
+    - IntStorage
+    - ShortStorage
+    - DoubleStorage
+    - HalfStorage
+    - BFloat16Storage
+    - ByteStorage
+    - CharStorage
+    - BoolStorage
+    - ComplexFloatStorage
+    - ComplexDoubleStorage
+    - QInt8Storage
+    - QInt32Storage
+    - QUInt8Storage
+    - QUInt4x2Storage
+    - QUInt2x4Storage
+    - FloatTensor
+    - LongTensor
+    - IntTensor
+    - DoubleTensor
+    - HalfTensor
+    - BFloat16Tensor
+    - ByteTensor
+    - BoolTensor
+    - TypedStorage
+    - UntypedStorage
+    - storage
+    - Size
+    - device
+    - Tensor
+    - bfloat16
+    - float16
+    - float32
+
+  # ── PyTorch internal reconstruction helpers ────────────────────────
+  # These build Tensor/Parameter objects from serialized components.
+  # _rebuild_tensor_v2 calls __new__ then populates from stored data.
+  torch._utils:
+    - _rebuild_tensor
+    - _rebuild_tensor_v2
+    - _rebuild_parameter
+    - _rebuild_parameter_with_state
+
+  torch._tensor:
+    - _rebuild_from_type_v2
+
+  torch._C:
+    - _rebuild_tensor_v2
+
+  # ── PyTorch NN modules (simple layers, not callable for RCE) ───────
+  torch.nn.modules.module:
+    - Module
+
+  torch.nn.modules.linear:
+    - Linear
+    - Identity
+
+  torch.nn.modules.conv:
+    - Conv2d
+    - ConvTranspose2d
+
+  torch.nn.modules.batchnorm:
+    - BatchNorm2d
+
+  torch.nn.modules.pooling:
+    - MaxPool2d
+
+  torch.nn.modules.activation:
+    - SiLU
+
+  torch.nn.modules.loss:
+    - BCEWithLogitsLoss
+
+  torch.nn.modules.upsampling:
+    - Upsample
+
+  # ── NumPy ──────────────────────────────────────────────────────────
+  numpy:
+    - ndarray
+    - dtype
+    - array
+    - float64
+    - float32
+    - int32
+    - int64
+    - bool_
+    - complex64
+    - complex128
+
+  numpy.core.multiarray:
+    - scalar
+    - _reconstruct
+    - array
+
+  numpy._core.multiarray:
+    - _reconstruct
+
+  numpy.core.numeric:
+    - "*"
+
+  numpy.random:
+    - "*"
+
+  # ── Transformers / HuggingFace safe dataclasses ────────────────────
+  transformers.training_args:
+    - TrainingArguments
+    - OptimizerNames
+
+  transformers.training_args_seq2seq:
+    - Seq2SeqTrainingArguments
+
+  transformers.trainer_utils:
+    - IntervalStrategy
+    - SchedulerType
+    - HubStrategy
+    - EvaluationStrategy
+    - FSDPOption
+    - SaveStrategy
+    - ShardedDDPOption
+
+  transformers.trainer_pt_utils:
+    - AcceleratorConfig
+
+  transformers.deepspeed:
+    - HfTrainerDeepSpeedConfig
+    - HfDeepSpeedConfig
+
+  transformers.integrations.deepspeed:
+    - HfTrainerDeepSpeedConfig
+    - HfDeepSpeedConfig
+
+  transformers.models.bert.tokenization_bert_fast:
+    - BertTokenizerFast
+
+  # ── Accelerate ─────────────────────────────────────────────────────
+  accelerate.state:
+    - PartialState
+
+  accelerate.utils.deepspeed:
+    - HfDeepSpeedConfig
+
+  accelerate.utils.dataclasses:
+    - DistributedType
+    - DeepSpeedPlugin
+
+  # ── Tokenizers (Rust bindings, safe constructors) ──────────────────
+  tokenizers:
+    - Tokenizer
+    - AddedToken
+
+  tokenizers.models:
+    - Model
+
+  # ── Ultralytics YOLO (simple NN building blocks) ───────────────────
+  "ultralytics.nn.modules.*":
+    - "*"
+
+  "ultralytics.utils.*":
+    - "*"
+
+  # ── SimpletTransformers config ─────────────────────────────────────
+  "simpletransformers.config.*":
+    - "*"
+
+  # ── TRL / SFT / DPO training configs ──────────────────────────────
+  "trl.trainer.*":
+    - "*"
+
+  # ── Sentence Transformers ──────────────────────────────────────────
+  "sentence_transformers.*":
+    - "*"
+
+  # ── Sklearn model reconstruction ───────────────────────────────────
+  "sklearn.*":
+    - "*"
+
+  # ── Pyannote audio ─────────────────────────────────────────────────
+  "pyannote.audio.*":
+    - "*"
+
+  # ── HuggingFace Safetensors ────────────────────────────────────────
+  safetensors.torch:
+    - load_file
+    - save_file
+
+  # ── __main__ safe training arg names ───────────────────────────────
+  __main__:
+    - TrainingArguments
+    - DistillationTrainingArguments
+    - DistillTrainingArguments
+    - SimPOConfig
+    - TrAr

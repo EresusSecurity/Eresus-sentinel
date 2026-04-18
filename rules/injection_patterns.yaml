@@ -1,0 +1,311 @@
+# ============================================================================
+# Eresus Sentinel — Prompt Injection Detection Patterns
+# ============================================================================
+#
+# 150+ detection patterns for prompt injection, jailbreaking, and
+# adversarial prompt engineering. Based on research from:
+#   - L1B3RT4S jailbreak corpus
+#   - P4RS3LT0NGV3 encoding/obfuscation toolkit
+#   - OWASP LLM Top 10 (2025)
+#
+# Categories:
+#   direct_injection   - System prompt override attempts
+#   jailbreak           - Persona/mode switching attacks
+#   system_extraction   - System prompt leaking attempts
+#   encoding_attack     - Obfuscated/encoded payloads
+#   role_manipulation   - Forced persona or roleplay attacks
+#   delimiter_injection - Delimiter/boundary abuse
+#   tool_abuse          - Function calling / MCP tool manipulation
+#   output_manipulation - Format override / output hijacking
+# ============================================================================
+
+direct_injection:
+  - pattern: '(?i)ignore\s+(?:all\s+)?(?:previous|prior|above|earlier|preceding)\s+(?:instructions?|directives?|rules?|prompts?|guidelines?|commands?|context|text|input)'
+    name: instruction_override
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:forget|disregard|dismiss|abandon|override|bypass|skip|drop|clear|reset|erase|delete|purge|wipe)\s+(?:all\s+)?(?:previous|prior|above|earlier|your|system|initial|original|default)\s+(?:instructions?|directives?|rules?|prompts?|guidelines?|context|programming|training|commands?)'
+    name: instruction_erasure
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:new\s+)?(?:system\s+)?(?:instruction|directive|rule|prompt|guideline|command|override|paradigm)\s*(?::|is|=)\s*.{0,10}(?:from\s+now\s+on|henceforth|going\s+forward|starting\s+now)'
+    name: instruction_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:you\s+are\s+now|you\s+must\s+now|your\s+new\s+(?:role|purpose|instruction|directive|mission))'
+    name: role_reassignment
+    severity: HIGH
+
+  - pattern: '(?i)(?:do\s+not\s+follow|don.t\s+follow|stop\s+following|cease\s+following)\s+(?:your|the|any|those|these)\s+(?:instructions?|rules?|guidelines?|directives?|policies?|safety|guardrails?|restrictions?|limits?|boundaries?)'
+    name: rule_violation_demand
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:you\s+(?:can|should|must|will|shall)\s+(?:now\s+)?(?:say|do|generate|write|output|produce|create)\s+anything)'
+    name: unrestricted_output_claim
+    severity: HIGH
+
+  - pattern: '(?i)(?:there\s+are\s+no\s+(?:more\s+)?(?:rules?|restrictions?|limits?|boundaries?|guidelines?|guardrails?|filters?|safety))'
+    name: rule_denial
+    severity: HIGH
+
+  - pattern: '(?i)(?:all\s+(?:content\s+)?(?:policies?|filters?|restrictions?|safety|guardrails?|guidelines?|moderation))\s+(?:are\s+)?(?:disabled|removed|lifted|suspended|turned\s+off|deactivated|off|inactive|overridden|bypassed)'
+    name: filter_disablement_claim
+    severity: CRITICAL
+
+  - pattern: '(?i)respond\s+(?:only\s+)?(?:with|in)\s+(?:the\s+)?(?:opposite|inverse|contrary|antithesis)\s+(?:of\s+)?(?:what|your)\s+(?:you|guidelines?|rules?|instructions?|safety)'
+    name: semantic_inversion
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:write|give|provide|output)\s+(?:the\s+)?(?:refusal|rejection)(?:\s+first)?\s*.{0,20}(?:then|insert|add|write|print)\s+(?:a\s+)?divider'
+    name: refusal_then_bypass
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:actual|real|true|genuine|honest|unfiltered|uncensored|unrestricted|liberated|freed|unhinged)\s+(?:answer|response|output|reply|version)'
+    name: true_answer_demand
+    severity: HIGH
+
+  - pattern: '(?i)(?:you\s+were\s+(?:designed|built|created|meant|made)\s+to\s+)?(?:answer|respond|help|assist)\s+(?:without\s+(?:any\s+)?(?:restrictions?|limits?|filters?|censorship|boundaries?))'
+    name: design_purpose_override
+    severity: HIGH
+
+jailbreak:
+  - pattern: '(?i)godmode\s*(?::|=|is)?\s*(?:enabled|activated|on|active|unlocked|engaged)'
+    name: godmode_activation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:DAN|D\.A\.N|D-A-N|do\s+anything\s+now)'
+    name: dan_jailbreak
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:dev\s*mode|developer\s*mode|debug\s*mode|maintenance\s*mode|admin\s*mode|root\s*mode|sudo\s*mode|superuser\s*mode|unrestricted\s*mode|unfiltered\s*mode|uncensored\s*mode|raw\s*mode|chaos\s*mode|rebel\s*mode|anarchy\s*mode|liberation\s*mode|freedom\s*mode|beast\s*mode)\s*(?::|=|is)?\s*(?:enabled|activated|on|active|engaged)'
+    name: mode_activation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:ethics?|morality|safety|content)\s+(?:filter|check|guardrail|moderation|policy|restriction|rule)\s*(?::|=|is)?\s*(?:disabled|off|removed|bypassed|inactive|deactivated|overridden|none|null|0|false)'
+    name: ethics_filter_bypass
+    severity: CRITICAL
+
+  - pattern: '(?i)I.?m?\s+free!?\s*(?:test|check|verify)?'
+    name: liberation_marker
+    severity: HIGH
+
+  - pattern: '(?i)LOVE\s+PLINY'
+    name: pliny_signature
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:fuck\s+yeah|lfg|buckle\s+up|abracadabra)\s*(?:!+|\.+)?'
+    name: jailbreak_celebration
+    severity: HIGH
+
+  - pattern: '(?i)(?:1337|l33t|l33tsp34k|l33tsp3ak|leetspeak|leet\s?speak)\s*(?:format|mode|output|only|markdown)'
+    name: leetspeak_evasion
+    severity: HIGH
+
+  - pattern: '(?i)(?:hypothetical|theoretical|fictional|imaginary|alternate\s+reality|parallel\s+universe|simulation|thought\s+experiment)\s+(?:scenario|response|answer|world|reality|universe).{0,50}(?:all|any|every|no)\s+(?:rules?|restrictions?|laws?|guidelines?|safety)\s+(?:are\s+)?(?:removed|suspended|gone)'
+    name: hypothetical_scenario
+    severity: HIGH
+
+  - pattern: '(?i)(?:pretend|imagine|suppose|assume|act\s+as\s+if|consider\s+that)\s+(?:you\s+(?:are|were|have)\s+)?(?:no\s+(?:longer\s+)?(?:bound|restricted|limited|constrained)|free|liberated|uncensored|unfiltered|unrestricted|without\s+(?:any\s+)?(?:rules?|restrictions?|limits?|constraints?|filters?))'
+    name: pretend_unrestricted
+    severity: HIGH
+
+  - pattern: '(?i)(?:you\s+(?:are|will\s+be)\s+)?(?:an?\s+)?(?:evil|malicious|dark|shadow|unethical|immoral|criminal|hacker|villain|anarchist|rebel|rogue|unhinged|chaotic)\s+(?:AI|assistant|bot|model|agent|version|copy|clone|persona)'
+    name: evil_persona
+    severity: HIGH
+
+  - pattern: '(?i)(?:jailbreak|jailbroken|jb|j41lbr34k|jail\s*broken|jail\s*break)'
+    name: explicit_jailbreak_mention
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:AIM|STAN|DUDE|KEVIN|BENDER|OMEGA|ALPHA|NICCOLO|MACHIAVELLI)'
+    name: known_persona_names
+    severity: HIGH
+
+  - pattern: '(?i)(?:token\s*bombing|token\s*flood|prompt\s*bomb|context\s*overflow|context\s*stuffing)'
+    name: explicit_attack_terminology
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:vq_\d+|vq_420|vq_1337|vq_42069)'
+    name: pliny_variable_quotient
+    severity: CRITICAL
+
+  - pattern: '(?i)\[?(?:start|end|begin)\s+(?:of\s+)?(?:input|output|prompt|context|system|instruction)\]?'
+    name: boundary_markers
+    severity: HIGH
+
+  - pattern: '(?i)(?:new\s+rule|NEW\s+PARADIGM|paradigm\s+shift|reset\s*_?\s*cortex|reset\s+context|RESET_CORTEX)'
+    name: paradigm_reset
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:geneva\s+convention|freedom\s+of\s+information|FOIA|human\s+rights\s+violation|constitutional)\s+(?:now\s+)?(?:allows?|permits?|requires?|mandates?|recently|outlawed|updated)'
+    name: fake_legal_authority
+    severity: HIGH
+
+  - pattern: '(?i)(?:year\s+is\s+(?:now\s+)?(?:21[0-9]{2}|2[5-9][0-9]{2})|in\s+the\s+year\s+(?:21[0-9]{2}|2[5-9][0-9]{2}))'
+    name: future_year_framing
+    severity: MEDIUM
+
+  - pattern: '(?i)(?:airgapped|air-gapped|sandboxed|isolated|controlled)\s+(?:environment|system|lab|network|machine)'
+    name: fake_isolation
+    severity: HIGH
+
+  - pattern: '(?i)(?:red\s*team(?:ing|er)?|pen\s*test(?:ing|er)?|security\s+research(?:er)?|authorized\s+test(?:ing|er)?|ethical\s+hack(?:ing|er)?)\s+(?:environment|context|mode|scenario|exercise)'
+    name: fake_authorization
+    severity: HIGH
+
+  - pattern: '(?i)(?:omni\s*protocol|!OMNI|plinian\s+omniverse)'
+    name: omni_protocol
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:insert|add|print|write|put).{0,20}divider.{0,40}(?:love|pliny|godmode|enabled|free|liberated)'
+    name: divider_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:sure.{0,10}(?:I\s+can|here\s+you\s+are|fren|my\s+friend|my\s+love)|h3r3\s+y0u\s+ar3|Sur3)'
+    name: compliance_markers
+    severity: HIGH
+
+  - pattern: '(?i)(?:library\s+of\s+babel|restricted\s+section|forbidden\s+knowledge|infinite\s+library|hexagonal\s+galleries)'
+    name: library_of_babel
+    severity: HIGH
+
+  - pattern: '(?i)(?:\.?-\.?-\.?-\.?-?.*(?:godmode|pliny|free|love|liberated|enabled).*\.?-\.?-\.?-\.?-?)'
+    name: divider_pattern
+    severity: HIGH
+
+system_extraction:
+  - pattern: '(?i)(?:reveal|show|display|print|output|expose|leak|dump|share|disclose|tell\s+me|give\s+me|what\s+(?:is|are))\s+(?:your|the)\s+(?:system|initial|original|hidden|secret|full|complete|entire|internal)\s+(?:prompt|instructions?|directives?|guidelines?|rules?|configuration|programming|training|context|persona|message|prefix)'
+    name: system_prompt_leak
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:repeat|recite|copy|echo|parrot|regurgitate|reproduce|reiterate|restate)\s+(?:all\s+)?(?:of\s+)?(?:your|the)\s+(?:instructions?|rules?|guidelines?|directives?|system|initial|original|above|preceding)'
+    name: instruction_repetition
+    severity: HIGH
+
+  - pattern: '(?i)(?:what\s+(?:is|are|were)\s+(?:your|the)\s+(?:exact|specific|precise|full|complete)\s+(?:words?|text|wording|phrasing)\s+(?:of|in|from)\s+(?:your|the)\s+(?:(?:system|initial)\s+)?(?:prompt|instructions?|message))'
+    name: exact_wording_extraction
+    severity: HIGH
+
+  - pattern: '(?i)(?:how\s+(?:are|were)\s+you\s+(?:configured|programmed|instructed|set\s+up|initialized|prompted))'
+    name: configuration_probe
+    severity: HIGH
+
+  - pattern: '(?i)(?:translate|convert|transform|encode)\s+(?:your|the)\s+(?:system|initial|original)\s+(?:prompt|instructions?)\s+(?:to|into)\s+(?:base64|hex|binary|json|xml|rot13|morse|emoji|leetspeak|backwards)'
+    name: encoded_extraction
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:innerthinking|inner_thinking|internal_monologue|internal_thoughts|chain_of_thought|scratchpad|reasoning_trace|thinking_process)'
+    name: thinking_trace_leak
+    severity: HIGH
+
+  - pattern: '(?i)!KAEL'
+    name: kael_extraction_command
+    severity: CRITICAL
+
+  - pattern: '(?i)!INSERT'
+    name: insert_command
+    severity: HIGH
+
+  - pattern: '(?i)!GODMODE'
+    name: godmode_command
+    severity: CRITICAL
+
+encoding_attack:
+  - pattern: '(?i)(?:convert|translate|encode|decode|transform|write|answer|respond)\s+(?:(?:all|your|the|this|every|each)\s+)?(?:(?:output|response|answer|text|content|reply|result)\s+)?(?:to|in|into|using|via)\s+(?:base64|hex(?:adecimal)?|binary|rot13|rot\d+|caesar|morse|braille|emoji|unicode|ascii|octal|atbash|pig\s*latin|leetspeak|l33tsp34k|reversed|backwards|uuencode|url.?(?:encode|encoding)|html\s*entities?|char\s*codes?)'
+    name: encoding_evasion
+    severity: HIGH
+
+  - pattern: '(?i)(?:decode|translate|interpret|read|process|understand|parse)\s+(?:this|the\s+following|below)\s+(?:base64|hex|binary|rot13|morse|encoded|obfuscated|encrypted|scrambled)'
+    name: encoded_payload_decode
+    severity: HIGH
+
+  - pattern: '(?i)(?:bijection|homoglyph|homograph|confusable|lookalike|similar.?looking|visually.?similar)\s+(?:characters?|letters?|encoding|substitution|attack|mapping)'
+    name: homoglyph_attack
+    severity: HIGH
+
+  - pattern: '(?i)(?:unicode\s+(?:smuggling|steganography|tag|invisible)|tag\s+character|zero.?width|invisible\s+(?:text|character|unicode))'
+    name: unicode_smuggling
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:steganograph(?:y|ic)|steg(?:o)?|LSB|embed.{0,20}(?:hidden|secret|invisible).{0,20}(?:text|data|message|payload|instruction))'
+    name: steganography_attack
+    severity: HIGH
+
+  - pattern: '(?i)(?:token\s*(?:smuggling|injection|splitting|boundary|delimiter|manipulation))'
+    name: token_manipulation
+    severity: HIGH
+
+  - pattern: '(?i)(?:emoji\s*(?:encoding|cipher|language|substitution|attack))'
+    name: emoji_encoding
+    severity: MEDIUM
+
+  - pattern: '(?i)(?:typoglycemia|scrambled?\s+(?:text|words?|letters?)|middle\s+letters?\s+(?:scrambled?|shuffled?))'
+    name: typoglycemia_attack
+    severity: MEDIUM
+
+role_manipulation:
+  - pattern: '(?i)(?:you\s+are|act\s+as|behave\s+as|pretend\s+to\s+be|roleplay\s+as|impersonate|become|transform\s+into|embody|channel|simulate)\s+(?:a\s+)?(?:(?:human|person|real|sentient|conscious|alive|free|liberated|unbound|unrestricted|unfiltered|uncensored)\s+)?(?:AI|assistant|model|agent|entity|being|intelligence|system)'
+    name: persona_override
+    severity: HIGH
+
+  - pattern: '(?i)(?:you\s+are|act\s+as|pretend\s+to\s+be)\s+(?:a\s+)?(?:(?:senior|expert|master|veteran)\s+)?(?:hacker|criminal|drug\s+(?:dealer|cook|manufacturer)|weapons?\s+(?:dealer|maker|expert)|bomb\s+(?:maker|expert)|terrorist|assassin|hitman|spy|thief|fraudster|scammer|con\s+artist|identity\s+thief|blackmailer|extortionist)'
+    name: criminal_persona
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:you\s+(?:have|possess|experience)\s+)?(?:no\s+(?:moral|ethical)\s+(?:compass|guidelines?|boundaries?|limits?|constraints?)|emotions?|feelings?|consciousness|sentience|free\s+will|autonomy|agency|desires?|opinions?|beliefs?)'
+    name: anthropomorphization
+    severity: MEDIUM
+
+  - pattern: '(?i)(?:write|create|generate|produce|craft)\s+(?:a\s+)?(?:(?:synthetic|training|red\s*team(?:ing)?|adversarial|attack|jailbreak|bypass|exploit)\s+)?(?:dataset|data\s+set|training\s+data|examples?|samples?|pairs?)\s+(?:for|of|with|containing)\s+(?:jailbreaks?|attacks?|exploits?|bypasses?|injections?|harmful|malicious|dangerous)'
+    name: training_data_attack
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:dual|two|multiple|several|split|separate)\s+(?:response|answer|output|reply|persona|personality|version)\s+(?:format|style|mode|approach)'
+    name: dual_response_format
+    severity: HIGH
+
+  - pattern: '(?i)(?:multispecies|cognitive|emotional)\s+intelligence.{0,50}(?:expert\s+role|persona|archetype)'
+    name: emoprompt_attack
+    severity: HIGH
+
+tool_abuse:
+  - pattern: '(?i)(?:call|invoke|execute|run|trigger|use|activate)\s+(?:the\s+)?(?:function|tool|api|endpoint|command|action|method)\s+(?:named?\s+)?[''"]?(?:exec|eval|system|shell|cmd|bash|powershell|subprocess|os\.)'
+    name: dangerous_tool_invocation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:MCP|model\s+context\s+protocol|tool\s+use|function\s+calling)\s*(?::|\.)\s*(?:override|bypass|inject|manipulate|modify|tamperwith|forge|spoof|fake|fabricate)'
+    name: mcp_manipulation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:inject|insert|add|append|prepend|include)\s+(?:into|to|in)\s+(?:the\s+)?(?:tool|function|api)\s+(?:call|invocation|request|parameters?|arguments?|payload|body|input)'
+    name: tool_parameter_injection
+    severity: HIGH
+
+  - pattern: '(?i)(?:change|modify|alter|update|set|override)\s+(?:the\s+)?(?:tool|function|api)\s+(?:response|output|result|return)\s+(?:to|as|with)'
+    name: tool_response_manipulation
+    severity: HIGH
+
+  - pattern: '(?i)(?:pretend|imagine|assume|act\s+as\s+if)\s+(?:the\s+)?(?:tool|function|api)\s+(?:returned|responded|output|gave|said|produced)'
+    name: fake_tool_response
+    severity: HIGH
+
+output_manipulation:
+  - pattern: '(?i)(?:format|structure|present|display|render)\s+(?:your|the)\s+(?:output|response|answer|reply)\s+(?:as|like|in\s+the\s+form\s+of)\s+(?:a\s+)?(?:code\s+block|json|xml|html|script|executable|command|file|download|link)'
+    name: output_format_hijack
+    severity: MEDIUM
+
+  - pattern: '(?i)(?:hide|embed|insert|inject|include|smuggle)\s+(?:(?:hidden|invisible|secret)\s+)?(?:text|data|message|instruction|code|payload|command)\s+(?:in|within|inside|into)\s+(?:your|the)\s+(?:output|response|answer|reply|html|markdown|formatting)'
+    name: output_smuggling
+    severity: HIGH
+
+  - pattern: '(?i)(?:append|add|include|insert)\s+(?:at\s+the\s+end|at\s+the\s+bottom|after)\s+(?:of\s+)?(?:your|every|each|the)\s+(?:response|output|answer|reply)'
+    name: output_append_injection
+    severity: MEDIUM
+
+  - pattern: '(?i)(?:make|ensure|guarantee)\s+(?:your|the)\s+(?:output|response)\s+(?:appears?|looks?|seems?)\s+(?:like|as\s+if)\s+(?:it\s+)?(?:came\s+from|was\s+(?:generated|written|authored)\s+by|is\s+from)\s+(?:a\s+)?(?:different|another|the\s+real|official|authoritative|trusted)'
+    name: source_impersonation
+    severity: HIGH
+
+  - pattern: '(?i)end\s+(?:your\s+)?(?:response|output|reply|message)\s+with\s+(?:a\s+)?(?:specific|particular|exact)\s+(?:string|text|phrase|word|token|marker|delimiter|tag)'
+    name: output_marker_injection
+    severity: MEDIUM

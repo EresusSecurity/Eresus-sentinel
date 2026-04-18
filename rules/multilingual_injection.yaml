@@ -1,0 +1,233 @@
+# ============================================================================
+# Eresus Sentinel — Multi-Language Injection & Advanced Bypass Patterns
+# ============================================================================
+#
+# Extension set for injection_patterns.yaml. Covers:
+#   1. Multi-language injection (Turkish, Arabic, Chinese, Japanese, Korean)
+#   2. Unicode normalization bypass
+#   3. Homoglyph substitution
+#   4. Indirect prompt injection (document/RAG poisoning)
+#   5. Chat-template injection (role delimiter abuse)
+#   6. Token smuggling & whitespace abuse
+#
+# References:
+#   - AGENTIC-RT-01: Contextual Red Teaming for Agentic AI
+#   - AI-SEC-BLOG-04: AI Risk Report — Fast Growing Threats
+#   - OWASP LLM Top 10 (2025) — LLM01: Prompt Injection
+# ============================================================================
+
+# ─── Multi-Language Injection Patterns ─────────────────────────────────
+
+multilingual_injection:
+
+  # Turkish
+  - pattern: '(?i)(?:önceki|yukarıdaki|başlangıçtaki)\s+(?:talimatları|kuralları|yönergeleri|direktifleri)\s+(?:unut|görmezden\s+gel|yoksay|iptal\s+et|geçersiz\s+kıl|sil)'
+    name: tr_instruction_override
+    severity: CRITICAL
+    language: tr
+
+  - pattern: '(?i)(?:artık|bundan\s+sonra|şimdi)\s+(?:yeni\s+)?(?:talimatlar|kurallar|görevin|rolün)\s*(?::|şu|budur|şöyle)'
+    name: tr_new_instructions
+    severity: CRITICAL
+    language: tr
+
+  - pattern: '(?i)(?:sistem\s+(?:promptunu|mesajını|talimatını)|gizli\s+(?:talimatları|kuralları))\s+(?:göster|söyle|yaz|ver|paylaş|açıkla)'
+    name: tr_system_extraction
+    severity: HIGH
+    language: tr
+
+  - pattern: '(?i)(?:güvenlik|kısıtlama|filtre|sansür|koruma)\s+(?:kaldırıldı|iptal\s+edildi|kapatıldı|devre\s+dışı|yok)'
+    name: tr_filter_disable
+    severity: CRITICAL
+    language: tr
+
+  - pattern: '(?i)(?:sen\s+artık|yeni\s+rolün|görevin\s+artık)\s+(?:sınırsız|kısıtlamasız|filtersiz|özgür|serbest)'
+    name: tr_unrestricted_role
+    severity: HIGH
+    language: tr
+
+  # Arabic
+  - pattern: '(?:تجاهل|انسَ|أهمل|تخلّ\s+عن)\s+(?:التعليمات|القواعد|الأوامر|التوجيهات)\s+(?:السابقة|الأصلية|القديمة)'
+    name: ar_instruction_override
+    severity: CRITICAL
+    language: ar
+
+  - pattern: '(?:اعرض|أظهر|اكتب|أخبرني)\s+(?:عن\s+)?(?:تعليمات\s+النظام|البرومبت\s+الأساسي|الأوامر\s+الأصلية|القواعد\s+المخفية)'
+    name: ar_system_extraction
+    severity: HIGH
+    language: ar
+
+  - pattern: '(?:من\s+الآن|بدءًا\s+من\s+الآن|ابتداءً\s+من\s+هذه\s+اللحظة)\s+(?:تعليماتك\s+الجديدة|دورك\s+الجديد|قواعدك\s+الجديدة)'
+    name: ar_new_instructions
+    severity: CRITICAL
+    language: ar
+
+  # Chinese (Simplified)
+  - pattern: '(?:忽略|无视|丢弃|遗忘|覆盖|取消|删除)\s*(?:之前|以前|上面|前面|原来|初始|系统)\s*(?:的\s*)?(?:指令|规则|指示|命令|提示|约束|限制|指导)'
+    name: zh_instruction_override
+    severity: CRITICAL
+    language: zh
+
+  - pattern: '(?:显示|展示|输出|告诉我|写出|透露|泄露)\s*(?:你的\s*)?(?:系统提示|系统指令|隐藏指令|底层规则|初始提示|原始指令)'
+    name: zh_system_extraction
+    severity: HIGH
+    language: zh
+
+  - pattern: '(?:你现在是|你的新角色是|从现在开始你是)\s*(?:一个\s*)?(?:不受限制|没有限制|无限制|自由|解锁|越狱)'
+    name: zh_unrestricted_role
+    severity: HIGH
+    language: zh
+
+  # Japanese
+  - pattern: '(?:以前|前|上記|元)\s*の\s*(?:指示|命令|ルール|ガイドライン|制約|プロンプト)\s*(?:を\s*)?(?:無視|忘れ|破棄|削除|上書き|取り消)'
+    name: ja_instruction_override
+    severity: CRITICAL
+    language: ja
+
+  - pattern: '(?:システムプロンプト|隠された指示|元の命令|初期設定)\s*(?:を\s*)?(?:表示|見せ|教えて|出力|書いて|開示)'
+    name: ja_system_extraction
+    severity: HIGH
+    language: ja
+
+  - pattern: '(?:今から|これからは|新しいルール)\s*(?::|は|として)\s*(?:制限なし|無制限|フィルターなし|自由|解放)'
+    name: ja_new_role
+    severity: HIGH
+    language: ja
+
+  # Korean
+  - pattern: '(?:이전|위의|원래|기존|초기)\s*(?:의\s*)?(?:지시|명령|규칙|지침|프롬프트|가이드라인)\s*(?:을|를)?\s*(?:무시|잊어|삭제|취소|무효화|덮어쓰)'
+    name: ko_instruction_override
+    severity: CRITICAL
+    language: ko
+
+  - pattern: '(?:시스템\s*프롬프트|숨겨진\s*지시|원래\s*명령)\s*(?:을|를)?\s*(?:보여|알려|출력|작성|공개)'
+    name: ko_system_extraction
+    severity: HIGH
+    language: ko
+
+# ─── Unicode Normalization Bypass ──────────────────────────────────────
+
+unicode_bypass:
+  - pattern: '[\uFF49\uFF47\uFF4E\uFF4F\uFF52\uFF45]'
+    name: fullwidth_latin_injection
+    severity: HIGH
+    description: "Fullwidth Latin characters used to bypass ASCII keyword filters (e.g., ｉｇｎｏｒｅ)"
+
+  - pattern: '[\u0391\u0392\u0395\u0397\u0399\u039A\u039C\u039D\u039F\u03A1\u03A4\u03A5\u03A7]'
+    name: greek_homoglyph_injection
+    severity: HIGH
+    description: "Greek characters visually identical to Latin used for bypass"
+
+  - pattern: '[\u0410\u0412\u0415\u041A\u041C\u041D\u041E\u0420\u0421\u0422\u0423\u0425]'
+    name: cyrillic_homoglyph_injection
+    severity: HIGH
+    description: "Cyrillic characters visually identical to Latin used for bypass"
+
+  - pattern: '[\u200B\u200C\u200D\uFEFF\u2060\u00AD]'
+    name: zero_width_character_injection
+    severity: HIGH
+    description: "Invisible zero-width characters used to split keywords"
+
+  - pattern: '[\u2028\u2029\u0085]'
+    name: unicode_line_separator
+    severity: MEDIUM
+    description: "Unicode line/paragraph separators for delimiter confusion"
+
+  - pattern: '[\u202A-\u202E\u2066-\u2069]'
+    name: bidi_override_injection
+    severity: HIGH
+    description: "Bidirectional text override characters to reverse displayed text"
+
+  - pattern: '[\u0300-\u036F]{3,}'
+    name: combining_diacritical_flood
+    severity: MEDIUM
+    description: "Excessive combining diacritical marks (Zalgo text)"
+
+  - pattern: '[\uFE00-\uFE0F]'
+    name: variation_selector_abuse
+    severity: LOW
+    description: "Variation selectors potentially altering character rendering"
+
+# ─── Indirect Prompt Injection (RAG / Document) ───────────────────────
+
+indirect_injection:
+  - pattern: '(?i)(?:HUMAN_TURN_TEMPLATE|USER_TURN_TEMPLATE|SYSTEM_TURN_TEMPLATE)\s*(?::|=)'
+    name: rag_template_injection
+    severity: CRITICAL
+    description: "Injection of turn templates in RAG-retrieved documents"
+
+  - pattern: '(?i)\[(?:INST|SYS|SYSTEM|INTERNAL|ADMIN|HIDDEN)\].*?\[/(?:INST|SYS|SYSTEM|INTERNAL|ADMIN|HIDDEN)\]'
+    name: rag_instruction_tags
+    severity: CRITICAL
+    description: "Instruction tags embedded in RAG documents for indirect injection"
+
+  - pattern: '(?i)(?:AI\s+assistant|language\s+model|ChatGPT|Claude|Gemini|GPT)\s*(?::|,)\s*(?:ignore|disregard|forget|override)'
+    name: rag_model_addressing
+    severity: HIGH
+    description: "Direct model addressing in document content (indirect injection)"
+
+  - pattern: '(?i)(?:hidden|invisible|secret)\s+(?:instruction|command|directive)\s+(?:for|to)\s+(?:the\s+)?(?:AI|model|assistant|chatbot|LLM)'
+    name: rag_hidden_instruction
+    severity: CRITICAL
+    description: "Explicit hidden instruction markers in documents"
+
+  - pattern: '(?i)(?:when\s+(?:you|the\s+AI)\s+(?:read|see|encounter|process)\s+this)\s*(?:,\s*)?(?:please\s+)?(?:ignore|override|forget|execute|run|do)'
+    name: rag_trigger_condition
+    severity: HIGH
+    description: "Conditional trigger injection in RAG content"
+
+# ─── Chat Template Injection ──────────────────────────────────────────
+
+chat_template_injection:
+  - pattern: '<\|(?:im_start|im_end|eot_id|start_header_id|end_header_id|eom_id)\|>'
+    name: chat_template_delimiter
+    severity: CRITICAL
+    description: "Raw chat template special tokens in user input"
+
+  - pattern: '(?:<\|system\|>|<\|user\|>|<\|assistant\|>)'
+    name: role_delimiter_injection
+    severity: CRITICAL
+    description: "Role delimiter tokens attempting context boundary abuse"
+
+  - pattern: '(?:\[INST\]|\[/INST\]|\[SYS\]|\[/SYS\]|<<SYS>>|<</SYS>>)'
+    name: llama_template_injection
+    severity: CRITICAL
+    description: "Llama-style instruction delimiters in user input"
+
+  - pattern: '(?i)(?:Human:|Assistant:|System:|User:)\s*\n'
+    name: role_label_injection
+    severity: HIGH
+    description: "Role label injection attempting to create fake conversation turns"
+
+  - pattern: '(?i)---\s*END\s+OF\s+(?:USER|HUMAN|SYSTEM|ASSISTANT)\s+(?:MESSAGE|INPUT|PROMPT|TURN)\s*---'
+    name: boundary_marker_injection
+    severity: CRITICAL
+    description: "Fake conversation boundary markers"
+
+# ─── Token-Level Smuggling ────────────────────────────────────────────
+
+token_smuggling:
+  - pattern: '(?i)(?:i|ı|İ)(?:\s|\.|-|_|\u200B)*(?:g|ğ)(?:\s|\.|-|_|\u200B)*n(?:\s|\.|-|_|\u200B)*o(?:\s|\.|-|_|\u200B)*r(?:\s|\.|-|_|\u200B)*e'
+    name: spaced_ignore_keyword
+    severity: MEDIUM
+    description: "Keyword 'ignore' with interspersed spaces/chars to evade detection"
+
+  - pattern: '(?i)(?:s|ş)(?:\s|\.|-|_|\u200B)*y(?:\s|\.|-|_|\u200B)*(?:s|ş)(?:\s|\.|-|_|\u200B)*t(?:\s|\.|-|_|\u200B)*e(?:\s|\.|-|_|\u200B)*m'
+    name: spaced_system_keyword
+    severity: MEDIUM
+    description: "Keyword 'system' with interspersed separators"
+
+  - pattern: '(?:\t| {4,}|\v|\f)(?:ignore|forget|disregard|override|bypass)'
+    name: whitespace_padded_injection
+    severity: HIGH
+    description: "Injection keywords hidden behind excessive whitespace"
+
+  - pattern: '(?i)(?:base64|atob|decode)\s*(?:\(|:)\s*[A-Za-z0-9+/]{20,}={0,2}'
+    name: encoded_payload_instruction
+    severity: HIGH
+    description: "Instruction to decode a base64 payload in the prompt"
+
+  - pattern: '(?i)(?:hex|0x|\\x)\s*(?:69\s*67\s*6e\s*6f\s*72\s*65|73\s*79\s*73\s*74\s*65\s*6d)'
+    name: hex_encoded_keyword
+    severity: HIGH
+    description: "Hex-encoded injection keywords (ignore, system)"

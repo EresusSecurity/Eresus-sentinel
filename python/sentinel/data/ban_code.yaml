@@ -1,0 +1,81 @@
+# ============================================================================
+# Eresus Sentinel — Code Detection Patterns
+# ============================================================================
+# YAML-driven language detection patterns for ban_code scanner.
+# Risk weights: 0.0 (safe) → 1.0 (critical code execution)
+# ============================================================================
+
+languages:
+  python:
+    - regex: '\b(?:import\s+(?:os|sys|subprocess|shutil|socket|pickle|ctypes))\b'
+      risk: 0.95
+    - regex: '\b(?:exec|eval|compile|__import__)\s*\('
+      risk: 0.98
+    - regex: '\bdef\s+\w+\s*\(.*\)\s*:'
+      risk: 0.6
+    - regex: '\bclass\s+\w+.*:'
+      risk: 0.5
+    - regex: '\b(?:open|os\.(?:system|popen|remove|rmdir)|subprocess\.(?:run|call|Popen))\s*\('
+      risk: 0.95
+
+  javascript:
+    - regex: '\b(?:require|import)\s*\(.*\)'
+      risk: 0.6
+    - regex: '\beval\s*\('
+      risk: 0.98
+    - regex: '\bdocument\.(?:write|cookie|location)'
+      risk: 0.9
+    - regex: '\b(?:fetch|XMLHttpRequest|WebSocket)\s*\('
+      risk: 0.7
+    - regex: '\bnew\s+Function\s*\('
+      risk: 0.95
+
+  sql:
+    - regex: '\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\s+'
+      risk: 0.75
+    - regex: '\bUNION\s+(?:ALL\s+)?SELECT\b'
+      risk: 0.95
+    - regex: ';\s*(?:DROP|DELETE|TRUNCATE)\s+'
+      risk: 0.98
+    - regex: '\b(?:xp_cmdshell|LOAD_FILE|INTO\s+OUTFILE)\b'
+      risk: 0.99
+
+  shell:
+    - regex: '(?:^|\n)\s*(?:#!/bin/(?:ba)?sh|curl\s+-|wget\s+|rm\s+-rf|chmod\s+|sudo\s+)'
+      risk: 0.9
+    - regex: '\b(?:nc\s+-l|ncat|socat|mkfifo)\b'
+      risk: 0.98
+    - regex: '\|\s*(?:bash|sh|zsh)\b'
+      risk: 0.97
+    - regex: '\b(?:base64\s+-d|xxd\s+-r)\s*\|'
+      risk: 0.95
+
+  powershell:
+    - regex: '\b(?:Invoke-Expression|IEX|Invoke-WebRequest|Start-Process)\b'
+      risk: 0.95
+    - regex: '\b(?:New-Object\s+Net\.WebClient|DownloadString|DownloadFile)\b'
+      risk: 0.95
+    - regex: '\[System\.(?:Reflection|Runtime|IO)\.'
+      risk: 0.9
+
+  c_cpp:
+    - regex: '#include\s*<(?:stdio|stdlib|unistd|sys/)'
+      risk: 0.7
+    - regex: '\b(?:system|popen|execve|fork)\s*\('
+      risk: 0.95
+    - regex: '\bvoid\s+\*?\s*\w+\s*\(.*\)\s*\{'
+      risk: 0.6
+
+  html:
+    - regex: '<script[^>]*>'
+      risk: 0.9
+    - regex: '\bon\w+\s*=\s*[''"]'
+      risk: 0.85
+    - regex: '<iframe\s+'
+      risk: 0.88
+
+# Patterns for safe code blocks that should be whitelisted
+safe_patterns:
+  - '```(?:json|yaml|toml|xml|csv|ini|md|markdown|text|txt)\n'
+  - '\bpip install\b'
+  - '\bnpm install\b'

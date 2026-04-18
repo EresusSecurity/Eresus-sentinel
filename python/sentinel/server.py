@@ -34,7 +34,7 @@ import logging
 import os
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict
 from typing import Any, Optional
 
@@ -303,7 +303,7 @@ def create_app(
         def _scan_one(item):
             return sentinel.scan_conversation(item.prompt, item.output)
 
-        with ThreadPoolExecutor(max_workers=max_batch_workers) as pool:
+        with ProcessPoolExecutor(max_workers=max_batch_workers) as pool:
             conv_results = list(pool.map(_scan_one, req.items))
 
         results = []

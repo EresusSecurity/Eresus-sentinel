@@ -6,6 +6,8 @@ Defines the scanner contract all firewall scanners implement.
 
 from __future__ import annotations
 
+import os
+import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
@@ -134,9 +136,15 @@ class FirewallPipeline:
     ):
         self._scanners = scanners or []
         self._parallel = parallel
-        self._max_workers = max_workers
+        # Worker count: CLI/constructor > env var > cpu_count > fallback
+        env_workers = os.environ.get("SENTINEL_MAX_WORKERS")
+        if env_workers and env_workers.isdigit():
+            self._max_workers = int(env_workers)
+        else:
+            self._max_workers = min(max_workers, os.cpu_count() or 4)
         self._fail_open = fail_open
         self._vault = vault
+        self._lock = threading.Lock()  # Thread safety for shared state
 
     def add_scanner(self, scanner) -> None:
         self._scanners.append(scanner)
@@ -225,14 +233,14 @@ class FirewallPipeline:
         )
 
     def _scan_parallel(self, text: str, prompt: str) -> ScanResult:
-        """Parallel scan — all scanners run concurrently."""
+        """Parallel scan — all scanners run concurrently with thread safety."""
         import time as _time
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ProcessPoolExecutor, as_completed
 
-        all_findings = []
+        all_findings: list[Finding] = []
         max_risk = 0.0
         result_action = ScanAction.PASS
-        scanner_timings = {}
+        scanner_timings: dict[str, float] = {}
 
         def _run_scanner(scanner):
             scanner_name = type(scanner).__name__
@@ -256,29 +264,36 @@ class FirewallPipeline:
                     return None, scanner_name, elapsed_ms
                 raise
 
-        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
             futures = [executor.submit(_run_scanner, s) for s in self._scanners]
             for future in as_completed(futures):
                 result, scanner_name, elapsed_ms = future.result()
-                scanner_timings[scanner_name] = round(elapsed_ms, 2)
 
-                if result is None:
-                    continue
+                # Thread-safe aggregation of results
+                with self._lock:
+                    scanner_timings[scanner_name] = round(elapsed_ms, 2)
 
-                all_findings.extend(result.findings)
-                max_risk = max(max_risk, result.risk_score)
+                    if result is None:
+                        continue
 
-                if result.action == ScanAction.BLOCK:
-                    result_action = ScanAction.BLOCK
-                elif result.action == ScanAction.WARN and result_action == ScanAction.PASS:
-                    result_action = ScanAction.WARN
+                    all_findings.extend(result.findings)
+                    max_risk = max(max_risk, result.risk_score)
+
+                    if result.action == ScanAction.BLOCK:
+                        result_action = ScanAction.BLOCK
+                    elif result.action == ScanAction.WARN and result_action == ScanAction.PASS:
+                        result_action = ScanAction.WARN
 
         return ScanResult(
             sanitized=text,
             action=result_action,
             risk_score=max_risk,
             findings=all_findings,
-            metadata={"scanner_timings": scanner_timings, "parallel": True},
+            metadata={
+                "scanner_timings": scanner_timings,
+                "parallel": True,
+                "workers": self._max_workers,
+            },
         )
 
     def _has_redact_scanners(self) -> bool:

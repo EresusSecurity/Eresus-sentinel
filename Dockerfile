@@ -23,15 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Install dependencies first (layer caching)
+# Copy all source files needed for install
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install ".[api,otel]"
-
-# Copy source
 COPY python/ ./python/
 COPY rules/ ./rules/
-RUN pip install --no-cache-dir --prefix=/install -e "."
+
+# Single install — no -e flag (editable installs break with --prefix)
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install ".[all]"
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime

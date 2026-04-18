@@ -24,6 +24,27 @@ from sentinel.finding import Finding
 
 logger = logging.getLogger(__name__)
 
+# Built-in ignores — always applied, not user-configurable
+BUILTIN_IGNORES = [
+    ".git/**",
+    ".venv/**",
+    "venv/**",
+    "env/**",
+    "node_modules/**",
+    "__pycache__/**",
+    ".mypy_cache/**",
+    ".pytest_cache/**",
+    ".tox/**",
+    ".eggs/**",
+    "*.pyc",
+    "*.pyo",
+    ".ruff_cache/**",
+    ".sentinel-cache/**",
+    "dist/**",
+    "build/**",
+    "*.egg-info/**",
+]
+
 
 class SuppressionEngine:
     """Filter findings based on suppression rules."""
@@ -39,7 +60,7 @@ class SuppressionEngine:
     ):
         self._root = Path(project_root) if project_root else Path.cwd()
         self._allowed_rules = set(allowed_rules or [])
-        self._ignore_paths = ignore_paths or []
+        self._ignore_paths = list(BUILTIN_IGNORES) + (ignore_paths or [])
         self._shadow_mode = shadow_mode
         self._ignore_patterns = self._load_ignore_file(ignore_file)
         self._hash_suppressions = self._load_hash_file(hash_file)

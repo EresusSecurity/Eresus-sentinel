@@ -138,63 +138,110 @@ def _severity_dashboard(findings):
 
 
 def cmd_scan(args):
-    """Full scan."""
+    """Full scan with mode filtering, timeout, and worker configuration."""
+    import signal
     from sentinel.cli_dispatch import (
         dispatch_artifact, dispatch_firewall_input, dispatch_firewall_output,
         dispatch_sast, dispatch_agent, dispatch_supply_chain,
         dispatch_diff, dispatch_notebook, dispatch_validate_rules,
     )
 
-    _header(f"full scan → {args.path}")
+    # Propagate --workers to env for downstream ProcessPoolExecutor
+    if getattr(args, "workers", None):
+        os.environ["SENTINEL_MAX_WORKERS"] = str(args.workers)
 
-    modules = [
-        ("artifact",      "artifact scan",     dispatch_artifact),
-        ("firewall.in",   "input firewall",    dispatch_firewall_input),
-        ("firewall.out",  "output firewall",   dispatch_firewall_output),
-        ("sast",          "static analysis",   dispatch_sast),
-        ("agent",         "agent/mcp",         dispatch_agent),
-        ("supply-chain",  "supply chain",      dispatch_supply_chain),
-        ("diff",          "git diff",          dispatch_diff),
-        ("notebook",      "notebooks",         dispatch_notebook),
-        ("rules",         "yaml validation",   dispatch_validate_rules),
+    scan_mode = getattr(args, "mode", "full")
+    _header(f"scan [{scan_mode}] → {args.path}")
+
+    # All available modules
+    all_modules = [
+        ("artifact",      "artifact scan",     dispatch_artifact,        {"full", "quick", "ml-only"}),
+        ("firewall.in",   "input firewall",    dispatch_firewall_input,  {"full", "quick"}),
+        ("firewall.out",  "output firewall",   dispatch_firewall_output, {"full", "quick"}),
+        ("sast",          "static analysis",   dispatch_sast,            {"full", "quick", "static-only"}),
+        ("agent",         "agent/mcp",         dispatch_agent,           {"full", "static-only"}),
+        ("supply-chain",  "supply chain",      dispatch_supply_chain,    {"full", "static-only"}),
+        ("diff",          "git diff",          dispatch_diff,            {"full", "quick", "static-only"}),
+        ("notebook",      "notebooks",         dispatch_notebook,        {"full", "quick"}),
+        ("rules",         "yaml validation",   dispatch_validate_rules,  {"full"}),
     ]
+
+    # Filter modules by scan mode
+    modules = [(n, l, f) for n, l, f, modes in all_modules if scan_mode in modes]
+
+    if scan_mode != "full":
+        console.print(f"  [dim]mode={scan_mode} → {len(modules)}/{len(all_modules)} modules[/dim]")
 
     results = []
     all_findings = []
     t0 = time.perf_counter()
+    _scan_cancelled = False
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold]{task.description}"),
-        BarColumn(bar_width=20),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("scanning...", total=len(modules))
+    # Graceful SIGINT handler
+    _original_sigint = signal.getsignal(signal.SIGINT)
 
-        for name, label, func in modules:
-            progress.update(task, description=f"{label}...")
-            t1 = time.perf_counter()
-            try:
-                findings = func(args.path) or []
-                ok = True
-            except Exception as e:
-                findings = []
-                ok = False
-                err.print(f"  [dim red]⚠ {name}: {e}[/dim red]")
+    def _sigint_handler(signum, frame):
+        nonlocal _scan_cancelled
+        _scan_cancelled = True
+        console.print("\n  [yellow]⚠ Scan interrupted — showing partial results[/yellow]")
 
-            ms = (time.perf_counter() - t1) * 1000
-            fc = len(findings)
-            all_findings.extend(findings)
+    signal.signal(signal.SIGINT, _sigint_handler)
 
-            mark = "[green]✓[/green]" if ok and fc == 0 else "[yellow]![/yellow]" if ok else "[red]✗[/red]"
-            count_str = f"[red]{fc}[/red]" if fc > 0 else "[green]0[/green]"
-            console.print(f"  {mark} {label:<20} {count_str:>12} findings  [dim]{ms:>6.0f}ms[/dim]")
+    # Timeout via SIGALRM (Unix only)
+    timeout = getattr(args, "timeout", 0)
+    if timeout > 0 and hasattr(signal, "SIGALRM"):
+        def _timeout_handler(signum, frame):
+            nonlocal _scan_cancelled
+            _scan_cancelled = True
+            console.print(f"\n  [yellow]⚠ Scan timed out after {timeout}s — showing partial results[/yellow]")
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
 
-            results.append({"name": name, "label": label, "ms": ms, "ok": ok, "findings": fc})
-            progress.advance(task)
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]{task.description}"),
+            BarColumn(bar_width=20),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("scanning...", total=len(modules))
+
+            for name, label, func in modules:
+                if _scan_cancelled:
+                    break
+
+                progress.update(task, description=f"{label}...")
+                t1 = time.perf_counter()
+                try:
+                    findings = func(args.path) or []
+                    ok = True
+                except KeyboardInterrupt:
+                    _scan_cancelled = True
+                    findings = []
+                    ok = False
+                except Exception as e:
+                    findings = []
+                    ok = False
+                    err.print(f"  [dim red]⚠ {name}: {e}[/dim red]")
+
+                ms = (time.perf_counter() - t1) * 1000
+                fc = len(findings)
+                all_findings.extend(findings)
+
+                mark = "[green]✓[/green]" if ok and fc == 0 else "[yellow]![/yellow]" if ok else "[red]✗[/red]"
+                count_str = f"[red]{fc}[/red]" if fc > 0 else "[green]0[/green]"
+                console.print(f"  {mark} {label:<20} {count_str:>12} findings  [dim]{ms:>6.0f}ms[/dim]")
+
+                results.append({"name": name, "label": label, "ms": ms, "ok": ok, "findings": fc})
+                progress.advance(task)
+    finally:
+        # Restore signal handlers
+        signal.signal(signal.SIGINT, _original_sigint)
+        if timeout > 0 and hasattr(signal, "SIGALRM"):
+            signal.alarm(0)
 
     # Apply severity filter
     all_findings = _apply_severity_filter(all_findings, args)
@@ -203,9 +250,10 @@ def cmd_scan(args):
     total_f = len(all_findings)
     passed = sum(1 for r in results if r["ok"])
 
-    console.print(f"\n  [bold]{passed}/{len(results)}[/bold] passed · "
+    status = "[yellow]interrupted[/yellow]" if _scan_cancelled else ""
+    console.print(f"\n  [bold]{passed}/{len(modules)}[/bold] passed · "
                   f"[bold]{total_f}[/bold] finding(s) · "
-                  f"[dim]{wall:.1f}s[/dim]")
+                  f"[dim]{wall:.1f}s[/dim] {status}")
 
     # Severity dashboard
     if total_f > 0:
@@ -651,6 +699,25 @@ def cmd_doctor(args):
             checks_passed += 1
         except ImportError:
             _warn(f"{label} ({mod_name}) — not installed")
+            checks_passed += 1  # optional, don't fail
+
+    # ML Dependencies (needed for scan command ML features)
+    ml_deps = [
+        ("transformers", "HF Transformers", "pip install 'eresus-sentinel[ml]'"),
+        ("torch", "PyTorch", "pip install 'eresus-sentinel[ml]'"),
+        ("onnxruntime", "ONNX Runtime", "pip install 'eresus-sentinel[ml]'"),
+        ("tensorflow", "TensorFlow (optional)", "pip install tensorflow"),
+    ]
+    console.print("\n  [bold]ML Dependencies[/bold] [dim](needed for ML-based scanning)[/dim]")
+    for mod_name, label, install_hint in ml_deps:
+        checks_total += 1
+        try:
+            mod = __import__(mod_name)
+            ver = getattr(mod, "__version__", "?")
+            _ok(f"{label} ({mod_name} {ver})")
+            checks_passed += 1
+        except ImportError:
+            _warn(f"{label} ({mod_name}) — not installed → {install_hint}")
             checks_passed += 1  # optional, don't fail
 
     # 4. YAML rules validation
@@ -1630,11 +1697,22 @@ def main():
     parser.add_argument("--show-skipped", action="store_true", help="show files skipped due to unsupported format")
     parser.add_argument("--min-severity", choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
                         help="minimum severity to report")
+    parser.add_argument("--workers", type=int, default=None,
+                        help="max parallel workers (default: cpu_count, env: SENTINEL_MAX_WORKERS)")
+    parser.add_argument("--timeout", type=int, default=0,
+                        help="scan timeout in seconds (0 = no limit)")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="disable scan result caching")
+    parser.add_argument("--debug", action="store_true",
+                        help="show full stack traces on error")
 
     sub = parser.add_subparsers(dest="command")
 
     p = sub.add_parser("scan", help="full scan")
-    p.add_argument("path"); p.set_defaults(func=cmd_scan)
+    p.add_argument("path")
+    p.add_argument("--mode", choices=["full", "quick", "static-only", "ml-only"],
+                   default="full", help="scan mode (quick skips ML, static-only = SAST/secrets only)")
+    p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("firewall", aliases=["fw"], help="firewall scan")
     p.add_argument("input", help="text or - for stdin")
@@ -1809,8 +1887,19 @@ def main():
     try:
         result = args.func(args)
         sys.exit(result if isinstance(result, int) else 0)
+    except KeyboardInterrupt:
+        err.print("\n  [yellow]interrupted[/yellow]")
+        sys.exit(130)
     except Exception as e:
-        err.print(f"  [red]error:[/red] {e}")
+        # Import here to avoid circular imports
+        from sentinel.exceptions import SentinelError
+        if isinstance(e, SentinelError):
+            err.print(f"  [red]error:[/red] {e.user_message()}")
+        else:
+            err.print(f"  [red]error:[/red] {e}")
+        if getattr(args, "debug", False):
+            import traceback
+            err.print(traceback.format_exc())
         sys.exit(2)
 
 

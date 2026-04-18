@@ -7,10 +7,31 @@ from YAML files in the rules/ directory. No hardcoded patterns in code.
 
 import os
 import re
+import functools
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+
+# ── Module-level rule cache ──────────────────────────────────────────
+# All load_* functions are wrapped with lru_cache to avoid recompiling
+# regexes on every scan invocation. Call _clear_rule_cache() to reset.
+_cache_enabled = True
+
+
+def _clear_rule_cache():
+    """Clear all cached rule data. Useful for testing or hot-reload."""
+    load_secret_patterns.cache_clear()
+    load_injection_patterns.cache_clear()
+    load_sast_rules.cache_clear()
+    load_artifact_blocklist.cache_clear()
+    load_artifact_allowlist.cache_clear()
+    load_mcp_rules.cache_clear()
+    load_supply_chain_rules.cache_clear()
+    load_scanner_rules.cache_clear()
+    load_sast_secret_patterns.cache_clear()
+    load_taint_rules.cache_clear()
 
 
 # Default rules directory
@@ -34,6 +55,7 @@ def load_yaml(filename: str) -> Any:
         return yaml.safe_load(f) or {}
 
 
+@functools.lru_cache(maxsize=1)
 def load_secret_patterns() -> List[Dict[str, Any]]:
     """Load secret detection patterns from YAML and compile regexes.
     
@@ -69,6 +91,7 @@ def load_secret_patterns() -> List[Dict[str, Any]]:
     return patterns
 
 
+@functools.lru_cache(maxsize=1)
 def load_injection_patterns() -> Dict[str, List[Dict[str, Any]]]:
     """Load prompt injection patterns from YAML, organized by category.
     
@@ -103,6 +126,7 @@ def load_injection_patterns() -> Dict[str, List[Dict[str, Any]]]:
     return result
 
 
+@functools.lru_cache(maxsize=1)
 def load_sast_rules() -> List[Dict[str, Any]]:
     """Load SAST rules from YAML and compile regexes."""
     data = load_yaml("sast_rules.yaml")
@@ -135,6 +159,7 @@ def load_sast_rules() -> List[Dict[str, Any]]:
     return rules
 
 
+@functools.lru_cache(maxsize=1)
 def load_artifact_blocklist() -> Dict[str, List[str]]:
     """Load dangerous globals blocklist for pickle scanning."""
     data = load_yaml("artifact_blocklist.yaml")
@@ -143,6 +168,7 @@ def load_artifact_blocklist() -> Dict[str, List[str]]:
     return {}
 
 
+@functools.lru_cache(maxsize=1)
 def load_artifact_allowlist() -> Dict[str, List[str]]:
     """Load allowlisted globals for pickle scanning."""
     data = load_yaml("artifact_blocklist.yaml")
@@ -151,6 +177,7 @@ def load_artifact_allowlist() -> Dict[str, List[str]]:
     return {}
 
 
+@functools.lru_cache(maxsize=1)
 def load_mcp_rules() -> Dict[str, Any]:
     """Load MCP/Agent security rules from YAML.
 
@@ -187,6 +214,7 @@ def load_mcp_rules() -> Dict[str, Any]:
     }
 
 
+@functools.lru_cache(maxsize=1)
 def load_supply_chain_rules() -> Dict[str, Any]:
     """Load supply chain security rules from YAML.
 
@@ -205,6 +233,7 @@ def load_supply_chain_rules() -> Dict[str, Any]:
     return data
 
 
+@functools.lru_cache(maxsize=1)
 def load_scanner_rules() -> Dict[str, Any]:
     """Load artifact scanner patterns from scanner_rules.yaml.
 
@@ -221,6 +250,7 @@ def load_scanner_rules() -> Dict[str, Any]:
     return data
 
 
+@functools.lru_cache(maxsize=1)
 def load_sast_secret_patterns() -> List[Dict[str, Any]]:
     """Load SAST secret detection patterns from YAML and compile regexes.
 
@@ -255,6 +285,7 @@ def load_sast_secret_patterns() -> List[Dict[str, Any]]:
     return patterns
 
 
+@functools.lru_cache(maxsize=1)
 def load_taint_rules() -> Dict[str, List[Dict[str, Any]]]:
     """Load taint analysis rules (sources + sinks) from YAML.
 

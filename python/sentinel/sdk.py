@@ -60,6 +60,12 @@ class ConversationResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def _scan_conversation_pair(args):
+    """Top-level helper for ProcessPoolExecutor (must be picklable)."""
+    sentinel_instance, prompt, output = args
+    return sentinel_instance.scan_conversation(prompt, output)
+
+
 class Sentinel:
     """
     Main entry point for Eresus Sentinel.
@@ -311,9 +317,9 @@ class Sentinel:
         Uses concurrent.futures for parallel execution when self._parallel is True.
         """
         if self._parallel and len(items) > 1:
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                results = list(pool.map(lambda po: self.scan_conversation(po[0], po[1]), items))
+            from concurrent.futures import ProcessPoolExecutor
+            with ProcessPoolExecutor(max_workers=max_workers) as pool:
+                results = list(pool.map(_scan_conversation_pair, [(self, p, o) for p, o in items]))
             return results
 
         return [self.scan_conversation(p, o) for p, o in items]

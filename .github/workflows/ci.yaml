@@ -193,3 +193,67 @@ jobs:
 
           print('✅ All YAML rules validated successfully')
           "
+
+  # ========== INSTALL MATRIX ==========
+  install-matrix:
+    name: Install Matrix (${{ matrix.extras }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        extras: [".", ".[scan]", ".[all]"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install (${{ matrix.extras }})
+        run: pip install "${{ matrix.extras }}"
+
+      - name: Smoke test — version
+        run: python -m sentinel.cli version
+
+      - name: Smoke test — doctor
+        run: python -m sentinel.cli doctor
+
+      - name: Smoke test — help
+        run: python -m sentinel.cli scan --help
+
+  # ========== DOCKER BUILD ==========
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t eresus/sentinel:ci-test .
+
+      - name: Verify container starts
+        run: |
+          docker run --rm -d --name sentinel-test -p 8081:8080 eresus/sentinel:ci-test
+          sleep 5
+          curl -sf http://localhost:8081/health || (docker logs sentinel-test && exit 1)
+          docker stop sentinel-test
+
+  # ========== SETUP SCRIPT ==========
+  setup-script:
+    name: Setup Script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run setup script (--core for CI speed)
+        run: bash scripts/setup.sh --core
+
+      - name: Verify venv
+        run: |
+          source .venv/bin/activate
+          sentinel --version

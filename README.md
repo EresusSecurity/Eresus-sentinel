@@ -222,7 +222,7 @@ docker compose up
 
 ## License
 
-Proprietary — © 2024-2026 Eresus Security. See [LICENSE](LICENSE).
+Proprietary — © 2026 Eresus Security. See [LICENSE](LICENSE).
 
 ---
 

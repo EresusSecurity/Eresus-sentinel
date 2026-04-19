@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@theme {
+  /* Eresus color system — dark + orange accent (scanner style) */
+  --color-sentinel-bg: #0D0D0F;
+  --color-sentinel-card: #141417;
+  --color-sentinel-border: #1E1E24;
+  --color-sentinel-hover: #1A1A1F;
+  --color-sentinel-accent: #F59E0B;
+  --color-sentinel-glow: rgba(245, 158, 11, 0.08);
+
+  --color-primary-50: #FFFBEB;
+  --color-primary-100: #FEF3C7;
+  --color-primary-200: #FDE68A;
+  --color-primary-300: #FCD34D;
+  --color-primary-400: #FBBF24;
+  --color-primary-500: #F59E0B;
+  --color-primary-600: #D97706;
+  --color-primary-700: #B45309;
+  --color-primary-800: #92400E;
+  --color-primary-900: #78350F;
+
+  --color-term-green: #22C55E;
+  --color-term-dim: #4ADE8033;
+
+  --font-sans: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+}
+
+/* ── Scrollbar — near-invisible ──────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1C1C22; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2A2A35; }
+
+/* ── Animations — subtle, fast, purposeful ───────────────── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3); }
+  50% { box-shadow: 0 0 8px 2px rgba(245, 158, 11, 0.1); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out both;
+}
+.animate-slide-in {
+  animation: slide-in-right 0.2s ease-out both;
+}
+.pulse-glow {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+.terminal-cursor::after {
+  content: "▊";
+  animation: terminal-blink 1s step-end infinite;
+  color: #F59E0B;
+  font-weight: 400;
+}
+
+/* ── Cards — razor-thin borders, no rounded bloat ────────── */
+.stat-card {
+  transition: border-color 0.15s ease;
+}
+.stat-card:hover {
+  border-color: #F59E0B40;
+}
+
+/* ── Scan line effect on scan ────────────────────────────── */
+.scanning::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #DC2626, transparent);
+  animation: scan-line 1.5s ease-in-out infinite;
+}
+
+/* ── Selection ───────────────────────────────────────────── */
+::selection { background: #DC262640; color: #fff; }
+
+/* ── Base reset ──────────────────────────────────────────── */
+body {
+  margin: 0;
+  background: #09090B;
+  -webkit-font-smoothing: antialiased;
+}
+#root {
+  min-height: 100vh;
+}
+
+/* ── Input focus — red glow ──────────────────────────────── */
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: #DC262660 !important;
+  box-shadow: 0 0 0 1px #DC262620;
+}

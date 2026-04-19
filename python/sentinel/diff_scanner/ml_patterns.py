@@ -63,7 +63,7 @@ UNSAFE_DESERIALIZATION = [
         id="DIFF-DESER-002",
         name="torch_load_no_weights_only",
         pattern=re.compile(
-            r"torch\.load\s*\([^)]*(?<!\bweights_only\s*=\s*True)\)"
+            r"torch\.load\s*\((?!.*weights_only\s*=\s*True)[^)]*\)"
         ),
         severity="CRITICAL",
         description=(

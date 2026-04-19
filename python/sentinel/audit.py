@@ -242,6 +242,56 @@ class AuditLogger:
 
             self._count += 1
 
+        # Async DB write (fire-and-forget from sync context)
+        self._emit_to_db(record)
+
+    def _emit_to_db(self, record: AuditRecord) -> None:
+        """Best-effort write to PostgreSQL if configured."""
+        try:
+            from sentinel.db import is_db_enabled
+            if not is_db_enabled():
+                return
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._async_db_write(record))
+            except RuntimeError:
+                # No running loop — skip DB write
+                pass
+        except ImportError:
+            pass
+
+    async def _async_db_write(self, record: AuditRecord) -> None:
+        """Write audit record to PostgreSQL."""
+        try:
+            from sentinel.db import get_db, AuditLog
+            async with get_db() as db:
+                db.add(AuditLog(
+                    record_id=record.record_id,
+                    scanner=record.scanner,
+                    scanner_type=record.scanner_type,
+                    action=record.action,
+                    risk_score=record.risk_score,
+                    finding_count=record.finding_count,
+                    latency_ms=record.latency_ms,
+                    prompt_hash=record.prompt_hash,
+                    output_length=record.output_length,
+                    model=record.model,
+                    session_id=record.session_id,
+                    user_id=record.user_id,
+                    data_subject_id=record.data_subject_id,
+                    retention_days=record.retention_days,
+                    classification=record.classification,
+                    finding_severities=record.finding_severities,
+                    finding_rule_ids=record.finding_rule_ids,
+                    tags=record.tags,
+                    trace_id=record.trace_id,
+                    span_id=record.span_id,
+                    extra_data=record.metadata,
+                ))
+        except Exception as e:
+            logger.debug("Audit DB write failed (non-critical): %s", e)
+
     def _check_rotation(self) -> None:
         """Rotate log file if it exceeds max size."""
         if self._path and self._path.exists():
@@ -390,7 +440,14 @@ class AuditLogger:
                         continue
                     try:
                         record = json.loads(line)
-                        writer.writerow(record)
+                        # Sanitize values to prevent CSV formula injection
+                        sanitized = {}
+                        for k, v in record.items():
+                            if isinstance(v, str) and v and v[0] in ('=', '+', '-', '@', '\t', '\r'):
+                                sanitized[k] = "'" + v
+                            else:
+                                sanitized[k] = v
+                        writer.writerow(sanitized)
                         count += 1
                     except (json.JSONDecodeError, Exception):
                         continue

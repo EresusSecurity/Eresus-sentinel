@@ -8,10 +8,38 @@
 #
 # Services:
 #   sentinel-api    — Main API (port 8080)
+#   sentinel-db     — PostgreSQL database (port 5432)
 #   prometheus      — Metrics collection (port 9090)
 # ============================================================================
 
 services:
+  # ── PostgreSQL Database ──────────────────────────────────────────
+  sentinel-db:
+    image: postgres:16-alpine
+    container_name: sentinel-db
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - sentinel-pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-sentinel}
+      - POSTGRES_USER=${POSTGRES_USER:-sentinel}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentinel} -d ${POSTGRES_DB:-sentinel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    networks:
+      - sentinel-net
+
   # ── Sentinel API Server ──────────────────────────────────────────
   sentinel-api:
     build:
@@ -33,10 +61,14 @@ services:
       - SENTINEL_VAULT=${SENTINEL_VAULT:-0}
       - SENTINEL_AUDIT_LOG=/app/logs/audit.jsonl
       - SENTINEL_POLICY=/app/config/policy.yaml
-      - SENTINEL_CORS_ORIGINS=${SENTINEL_CORS_ORIGINS:-*}
+      - SENTINEL_CORS_ORIGINS=${SENTINEL_CORS_ORIGINS:-http://localhost:8080}
       - SENTINEL_AUTH_TYPE=${SENTINEL_AUTH_TYPE:-}
       - SENTINEL_AUTH_TOKEN=${SENTINEL_AUTH_TOKEN:-}
       - SENTINEL_RATE_LIMIT=${SENTINEL_RATE_LIMIT:-100/minute}
+      - SENTINEL_PASSWORD=${SENTINEL_PASSWORD:?SENTINEL_PASSWORD env var is required}
+      - SENTINEL_USER=${SENTINEL_USER:-admin}
+      # PostgreSQL
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD env var is required}@sentinel-db:5432/${POSTGRES_DB:-sentinel}
       # AI backend (optional)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -55,6 +87,9 @@ services:
         reservations:
           memory: 512M
           cpus: "0.5"
+    depends_on:
+      sentinel-db:
+        condition: service_healthy
     networks:
       - sentinel-net
 
@@ -74,7 +109,7 @@ services:
       - '--storage.tsdb.retention.time=30d'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api=false'
     networks:
       - sentinel-net
     depends_on:
@@ -85,6 +120,8 @@ volumes:
   sentinel-logs:
     driver: local
   sentinel-data:
+    driver: local
+  sentinel-pgdata:
     driver: local
   prometheus-data:
     driver: local

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Production-grade AI/LLM Security Platform — Artifact scanning, input/output firewalls, red teaming, agent security, and ML supply chain auditing"
 readme = "docs/QUICKSTART.md"
 license = "LicenseRef-Proprietary"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.15"
 authors = [
     {name = "Eresus Security", email = "engineering@eresussec.com"}
 ]
@@ -69,6 +69,12 @@ hf = [
 ]
 vault = [
     "cryptography>=42.0,<44",
+]
+db = [
+    "sqlalchemy[asyncio]>=2.0.30,<3",
+    "asyncpg>=0.29.0,<1",
+    "alembic>=1.13.0,<2",
+    "bcrypt>=4.0.0,<6",
 ]
 otel = [
     "opentelemetry-api>=1.25.0,<2",

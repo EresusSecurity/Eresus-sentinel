@@ -1,5 +1,5 @@
 """
- Artifact Scanner Module (17 format scanners)
+ Artifact Scanner Module (20 format scanners + 3 analyzers)
 
 Comprehensive model file security analysis covering:
 - Pickle (.pkl, .pickle) — opcode disassembly
@@ -19,6 +19,9 @@ Comprehensive model file security analysis covering:
 - TFLite/LiteRT (.tflite) — FlatBuffer validation, custom ops, tensor overflow
 - TorchMobile (.ptl) — bytecode analysis, pickle, native lib detection
 - LlamaFile (.llamafile) — executable envelope + embedded GGUF analysis
+- Trojan Detector — weight distribution anomaly analysis
+- Binary Tail Scanner — PE/ELF/Mach-O/shell detection in file tails
+- CVE Detector — known ML/AI CVE pattern matching
 """
 
 from .pickle_scanner import PickleScanner
@@ -38,6 +41,9 @@ from .torchmobile_scanner import TorchMobileScanner
 from .llamafile_scanner import LlamaFileScanner
 from .xgboost_scanner import XGBoostScanner
 from .numpy_scanner import NumpyScanner
+from .trojan_detector import TrojanDetector
+from .binary_tail_scanner import BinaryTailScanner
+from .cve_detector import CVEDetector
 
 __all__ = [
     "PickleScanner",
@@ -56,4 +62,7 @@ __all__ = [
     "LlamaFileScanner",
     "XGBoostScanner",
     "NumpyScanner",
+    "TrojanDetector",
+    "BinaryTailScanner",
+    "CVEDetector",
 ]

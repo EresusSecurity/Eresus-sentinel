@@ -78,6 +78,15 @@ class PolicyConfig:
     audit_all: bool = True         # Log all scan results
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self):
+        """Validate thresholds are within safe bounds."""
+        if not (0.0 < self.global_threshold <= 1.0):
+            logger.warning("Invalid global_threshold %.2f, clamping to [0.01, 1.0]", self.global_threshold)
+            self.global_threshold = max(0.01, min(1.0, self.global_threshold))
+        if not (0.0 < self.max_risk_score <= 1.0):
+            logger.warning("Invalid max_risk_score %.2f, clamping to [0.01, 1.0]", self.max_risk_score)
+            self.max_risk_score = max(0.01, min(1.0, self.max_risk_score))
+
 
 # ── Scanner registry ─────────────────────────────────────────────────
 

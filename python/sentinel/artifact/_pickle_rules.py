@@ -137,6 +137,17 @@ def _check_list(module: str, name: str, rule_dict: dict) -> bool:
                     if _matches_pattern(name, pattern):
                         return True
 
+    # Parent module wildcard propagation:
+    # If os has "*", then os.path.join is also blocked.
+    if "." in module:
+        parts = module.split(".")
+        for i in range(1, len(parts)):
+            parent = ".".join(parts[:i])
+            if parent in rule_dict:
+                for pattern in rule_dict[parent]:
+                    if pattern == "*":
+                        return True
+
     return False
 
 

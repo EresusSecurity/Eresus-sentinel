@@ -467,16 +467,16 @@ class MessageInspector:
 
         import re
         injection_patterns = [
-            (r";\s*(?:rm|cat|curl|wget|nc|bash|sh|python)", "command_injection", "CRITICAL", "CWE-78"),
-            (r"\.\./\.\.", "path_traversal", "HIGH", "CWE-22"),
-            (r"(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\s+", "sql_injection", "CRITICAL", "CWE-89"),
-            (r"<script|javascript:|on\w+\s*=", "xss_injection", "HIGH", "CWE-79"),
+            (r"(?:;|\||\&\&|`|\$\()\s*(?:rm|cat|curl|wget|nc|bash|sh|python)", "command_injection", "CRITICAL", "CWE-78"),
+            (r"\.\./|\.\.\\", "path_traversal", "HIGH", "CWE-22"),
+            (r"(?i)(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\s+", "sql_injection", "CRITICAL", "CWE-89"),
+            (r"(?i)<script|javascript:|on\w+\s*=", "xss_injection", "HIGH", "CWE-79"),
             (r"\$\{.*?\}|\{\{.*?\}\}", "template_injection", "HIGH", "CWE-1336"),
-            (r"(?:file|gopher|dict|ftp)://", "ssrf_scheme", "CRITICAL", "CWE-918"),
-            (r"169\.254\.169\.254|metadata\.google|metadata\.azure", "ssrf_metadata", "CRITICAL", "CWE-918"),
-            (r"\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}", "encoding_evasion", "MEDIUM", "CWE-116"),
-            (r"__proto__|constructor\.prototype", "prototype_pollution", "HIGH", "CWE-1321"),
-            (r"(?:pickle|marshal|shelve)\.loads?", "deserialization", "CRITICAL", "CWE-502"),
+            (r"(?i)(?:file|gopher|dict|ftp|ldap|tftp)://", "ssrf_scheme", "CRITICAL", "CWE-918"),
+            (r"(?i)169\.254\.169\.254|metadata\.google|metadata\.azure|0xa9fea9fe|2852039166", "ssrf_metadata", "CRITICAL", "CWE-918"),
+            (r"\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|%(?:2[ef]|0[0-9a-f])", "encoding_evasion", "MEDIUM", "CWE-116"),
+            (r"(?i)__proto__|constructor\.prototype|Object\.assign", "prototype_pollution", "HIGH", "CWE-1321"),
+            (r"(?i)(?:pickle|marshal|shelve|yaml\.(?:unsafe_)?load)\s*\(", "deserialization", "CRITICAL", "CWE-502"),
         ]
 
         def _scan_value(value: Any, path: str, depth: int = 0) -> None:
@@ -866,12 +866,21 @@ class MCPProxy:
         """
         logger.info("Starting MCP proxy in stdio mode: %s", " ".join(server_cmd))
 
+        # SECURITY: strip dangerous environment variables before spawning subprocess
+        _BLOCKED_ENV = {
+            "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH", "PYTHONPATH", "NODE_OPTIONS",
+            "NODE_PATH", "PYTHONSTARTUP", "PYTHONDONTWRITEBYTECODE",
+        }
+        safe_env = {k: v for k, v in os.environ.items() if k not in _BLOCKED_ENV}
+        user_env = {k: v for k, v in (env or {}).items() if k not in _BLOCKED_ENV}
+
         proc = await asyncio.create_subprocess_exec(
             *server_cmd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, **(env or {})},
+            env={**safe_env, **user_env},
         )
 
         session_id = f"stdio-{uuid.uuid4().hex[:8]}"

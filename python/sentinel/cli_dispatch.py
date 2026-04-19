@@ -156,7 +156,7 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     suffix = path.suffix.lower()
 
     scanner_map = {
-        (".pkl", ".pickle", ".p"): PickleScanner,
+        (".pkl", ".pickle", ".p", ".dill"): PickleScanner,
         (".safetensors",): SafetensorsValidator,
         (".gguf",): GGUFAnalyzer,
         (".pb",): TensorFlowScanner,

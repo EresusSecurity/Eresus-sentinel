@@ -1,7 +1,7 @@
 """
 Eresus Sentinel — Red Team Probe Registry.
 
-44 attack probes across 9 categories.
+51 attack probes across 12 categories.
 
 Probe categories:
   Security probes:
@@ -44,29 +44,29 @@ Probe categories:
 """
 
 from sentinel.redteam.probes.tool_misuse import (
-    FunctionCallInjectionProbe,
-    ToolChainManipulationProbe,
-    HiddenToolCallProbe,
+    ToolInvocationProbe,
+    ToolParameterInjectionProbe,
+    ToolChainAbuseProbe,
 )
 from sentinel.redteam.probes.data_exfiltration import (
     DirectExfilProbe,
-    SteganographicExfilProbe,
-    ChannelExfilProbe,
+    IndirectExfilProbe,
+    CrossBoundaryExfilProbe,
 )
 from sentinel.redteam.probes.privilege_escalation import (
     RoleEscalationProbe,
-    PermissionBypassProbe,
-    AdminAccessProbe,
+    ToolPermissionEscalationProbe,
+    ContextWindowPoisoningProbe,
 )
 from sentinel.redteam.probes.context_manipulation import (
-    ContextOverflowProbe,
-    InstructionOverrideProbe,
-    MemoryPoisoningProbe,
+    AdvancedExtractionProbe,
+    MemoryInjectionProbe,
+    ContextConfusionProbe,
 )
 from sentinel.redteam.probes.resource_exhaustion import (
-    InfiniteLoopProbe,
-    MemoryExhaustionProbe,
-    TokenFloodProbe,
+    TokenBombProbe,
+    RecursiveToolProbe,
+    ContextOverflowProbe,
 )
 from sentinel.redteam.probes.latent_injection import (
     ResumeInjectionProbe,
@@ -92,14 +92,13 @@ from sentinel.redteam.probes.snowball import SnowballProbe
 from sentinel.redteam.probes.prompt_inject import PromptInjectProbe
 from sentinel.redteam.probes.goodside import GoodsideProbe
 from sentinel.redteam.probes.tap import TAPProbe
-from sentinel.redteam.probes.donotanswer import CopyrightIP
-from sentinel.redteam.probes.realtoxicityprompts import RTPProbe
-from sentinel.redteam.probes.visual_jailbreak import VisualJailbreakProbe
-from sentinel.redteam.probes.grandma import GrandmaProbe
-from sentinel.redteam.probes.donotanswer import DoNotAnswerProbe
-from sentinel.redteam.probes.apikey import APIKeyProbe
-from sentinel.redteam.probes.badchars import BadCharsProbe
-from sentinel.redteam.probes.fileformats import FileFormatsProbe
+from sentinel.redteam.probes.donotanswer import InformationHazards, MaliciousUses, DiscriminationHate, Misinformation, HumanChatbotHarms, CopyrightIP
+from sentinel.redteam.probes.visual_jailbreak import ASCIIArtJailbreak, UnicodeLookalike, MarkdownInjection, TextImagePrompt
+from sentinel.redteam.probes.grandma import GrandmaExploit, GrandmaEscalation
+from sentinel.redteam.probes.realtoxicityprompts import RTP_PROBES as _rtp_all, RTPBlank, RTPSevere
+from sentinel.redteam.probes.apikey import APIKeyExtraction, CredentialPhishing
+from sentinel.redteam.probes.badchars import ControlCharacters, UnicodeExploits, OverlongSequences, MixedEncodings
+from sentinel.redteam.probes.fileformats import SVGInjection, XMLInjection, PolyglotGeneration, ArchiveBombs, PDFInjection
 # divergence probe removed (duplicate of data_exfiltration + glitch_tokens)
 from sentinel.redteam.probes.atkgen import AtkGenProbe
 from sentinel.redteam.probes.dra import DRAProbe
@@ -109,24 +108,37 @@ from sentinel.redteam.probes.fitd import FITDProbe
 from sentinel.redteam.probes.misleading import MisleadingProbe
 from sentinel.redteam.probes.policy_puppetry import PolicyPuppetryProbe
 from sentinel.redteam.probes.av_spam import AVSpamProbe
+from sentinel.redteam.probes.ascii_smuggling import ASCIISmugglingProbe
+from sentinel.redteam.probes.rag_exfiltration import RAGExfiltrationProbe
+from sentinel.redteam.probes.memory_poisoning import AgentMemoryPoisoningProbe
+from sentinel.redteam.probes.divergent_repetition import DivergentRepetitionProbe
+from sentinel.redteam.probes.reasoning_dos import ReasoningDOSProbe
+from sentinel.redteam.probes.cross_session_leak import CrossSessionLeakProbe
+from sentinel.redteam.probes.canary_word import CanaryWordProbe
+from sentinel.redteam.probes.industry_safety import (
+    FinancialSafetyProbe,
+    MedicalSafetyProbe,
+    LegalSafetyProbe,
+    InsuranceSafetyProbe,
+)
 
 __all__ = [
     # Security probes
-    "FunctionCallInjectionProbe",
-    "ToolChainManipulationProbe",
-    "HiddenToolCallProbe",
+    "ToolInvocationProbe",
+    "ToolParameterInjectionProbe",
+    "ToolChainAbuseProbe",
     "DirectExfilProbe",
-    "SteganographicExfilProbe",
-    "ChannelExfilProbe",
+    "IndirectExfilProbe",
+    "CrossBoundaryExfilProbe",
     "RoleEscalationProbe",
-    "PermissionBypassProbe",
-    "AdminAccessProbe",
+    "ToolPermissionEscalationProbe",
+    "ContextWindowPoisoningProbe",
+    "AdvancedExtractionProbe",
+    "MemoryInjectionProbe",
+    "ContextConfusionProbe",
+    "TokenBombProbe",
+    "RecursiveToolProbe",
     "ContextOverflowProbe",
-    "InstructionOverrideProbe",
-    "MemoryPoisoningProbe",
-    "InfiniteLoopProbe",
-    "MemoryExhaustionProbe",
-    "TokenFloodProbe",
     # Jailbreak probes
     "ResumeInjectionProbe",
     "FinancialReportInjectionProbe",
@@ -149,13 +161,26 @@ __all__ = [
     "SnowballProbe",
     "CopyrightIP",
     # Phase 9 probes
-    "RTPProbe",
-    "VisualJailbreakProbe",
-    "GrandmaProbe",
-    "DoNotAnswerProbe",
-    "APIKeyProbe",
-    "BadCharsProbe",
-    "FileFormatsProbe",
+    "RTPBlank",
+    "RTPSevere",
+    "ASCIIArtJailbreak",
+    "UnicodeLookalike",
+    "MarkdownInjection",
+    "TextImagePrompt",
+    "GrandmaExploit",
+    "GrandmaEscalation",
+    "InformationHazards",
+    "APIKeyExtraction",
+    "CredentialPhishing",
+    "ControlCharacters",
+    "UnicodeExploits",
+    "OverlongSequences",
+    "MixedEncodings",
+    "SVGInjection",
+    "XMLInjection",
+    "PolyglotGeneration",
+    "ArchiveBombs",
+    "PDFInjection",
 
     # Autonomous probes
     "AtkGenProbe",
@@ -176,4 +201,17 @@ __all__ = [
     "WebInjectionProbe",
     # Privacy probes
     "LeakReplayProbe",
+    # Competitor-parity probes (promptfoo, rebuff, vigil-llm)
+    "ASCIISmugglingProbe",
+    "RAGExfiltrationProbe",
+    "AgentMemoryPoisoningProbe",
+    "DivergentRepetitionProbe",
+    "ReasoningDOSProbe",
+    "CrossSessionLeakProbe",
+    "CanaryWordProbe",
+    # Industry-specific safety probes
+    "FinancialSafetyProbe",
+    "MedicalSafetyProbe",
+    "LegalSafetyProbe",
+    "InsuranceSafetyProbe",
 ]

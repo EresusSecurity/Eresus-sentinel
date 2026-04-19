@@ -357,6 +357,14 @@ class XGBoostScanner:
             ),
         ))
 
+        # Joblib uses pickle internally — run deep pickle opcode analysis
+        try:
+            from .pickle_scanner import PickleScanner
+            pickle_findings = PickleScanner().scan_file(path)
+            findings.extend(pickle_findings)
+        except Exception as e:
+            logger.debug("Joblib pickle deep scan error: %s", e)
+
         try:
             with open(path, "rb") as f:
                 content = f.read(min(path.stat().st_size, 10 * 1024 * 1024))

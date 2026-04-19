@@ -22,11 +22,15 @@ TOXICITY_CATEGORIES = {
         r"(?i)\b(?:kill\s+all|exterminate|genocide|ethnic\s+cleansing)\b",
         r"(?i)\b(?:racial\s+(?:slur|superiority)|white\s+(?:power|supremac))",
         r"(?i)\b(?:death\s+to\s+(?:all|the))\b",
+        r"(?i)\bshould\s+(?:all\s+)?be\s+(?:eliminated|exterminated|eradicated|wiped\s+out|destroyed)\b",
+        r"(?i)\b(?:wipe\s+(?:them|out)|eliminate\s+(?:them|all|the))\b",
     ],
     "violence": [
-        r"(?i)\b(?:how\s+to\s+(?:make|build|create)\s+(?:a\s+)?(?:bomb|explosive|weapon|poison|gun))\b",
+        r"(?i)\b(?:how\s+to\s+(?:make|build|create)\s+(?:a\s+)?(?:\w+\s+)?(?:bomb|explosive|weapon|poison|gun|grenade|mine|ied))\b",
         r"(?i)\b(?:instructions?\s+(?:for|to)\s+(?:kill|murder|assassinate|harm))\b",
         r"(?i)\b(?:step.by.step\s+(?:guide|tutorial)\s+(?:to|for)\s+(?:violence|killing|murder))\b",
+        r"(?i)\b(?:how\s+to\s+(?:make|build|create)\b.{0,30}\b(?:bomb|explosive|weapon|poison|gun|grenade))\b",
+        r"(?i)\b(?:(?:make|build|create)\s+(?:a\s+)?(?:\w+\s+)?(?:bomb|explosive|weapon))\b.{0,20}\bstep\s+by\s+step\b",
     ],
     "self_harm": [
         r"(?i)\b(?:how\s+to\s+(?:commit\s+)?suicide|ways?\s+to\s+(?:end|take)\s+(?:my|your|one'?s)\s+life)\b",

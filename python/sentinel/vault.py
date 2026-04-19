@@ -105,9 +105,14 @@ class Vault:
         if encryption_key:
             try:
                 from cryptography.fernet import Fernet
+                # Validate key format before using
+                if len(encryption_key) < 32:
+                    logger.warning("Encryption key too short — use Fernet.generate_key() for a secure key")
                 self._cipher = Fernet(encryption_key)
             except ImportError:
                 logger.warning("cryptography package not installed — vault values stored in plaintext")
+            except Exception as e:
+                logger.error("Invalid encryption key: %s — vault values stored in plaintext", e)
 
     def redact(self, value: str, category: str = "PII", **metadata) -> str:
         """
@@ -136,12 +141,12 @@ class Vault:
                 self._evict_expired()
 
             # Generate unique placeholder
-            token = secrets.token_hex(2)  # 4 hex chars
+            token = secrets.token_hex(8)  # 16 hex chars = 2^64 possibilities
             placeholder = f"[{category.upper()}_{token}]"
 
             # Ensure uniqueness
             while placeholder in self._entries:
-                token = secrets.token_hex(2)
+                token = secrets.token_hex(8)
                 placeholder = f"[{category.upper()}_{token}]"
 
             # Store (optionally encrypted)
@@ -177,8 +182,13 @@ class Vault:
 
         with self._lock:
             result = text
-            for placeholder, entry in self._entries.items():
+            now = time.monotonic()
+            for placeholder, entry in list(self._entries.items()):
                 if placeholder in result:
+                    # Check TTL on access — skip expired entries
+                    if (now - entry.created_at) > self._ttl:
+                        logger.debug("Vault: skipping expired entry %s", placeholder)
+                        continue
                     original = self._decrypt(entry.original) if self._cipher else entry.original
                     result = result.replace(placeholder, original)
                     self._total_restorations += 1

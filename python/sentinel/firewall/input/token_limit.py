@@ -54,6 +54,10 @@ class TokenLimitScanner(InputScanner):
         self._encoder = None
 
         try:
+            import sys
+            # tiktoken 0.12.0 segfaults on Python 3.14 (SIGSEGV in CoreBPE.__new__)
+            if sys.version_info >= (3, 14):
+                raise ImportError("tiktoken crashes on Python 3.14+")
             import tiktoken
             self._encoder = tiktoken.get_encoding(encoding)
         except (ImportError, Exception):

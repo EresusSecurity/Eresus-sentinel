@@ -6,11 +6,13 @@ Defines the scanner contract all firewall scanners implement.
 
 from __future__ import annotations
 
+import logging
 import os
-import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 from sentinel.finding import Finding
 
@@ -144,7 +146,6 @@ class FirewallPipeline:
             self._max_workers = min(max_workers, os.cpu_count() or 4)
         self._fail_open = fail_open
         self._vault = vault
-        self._lock = threading.Lock()  # Thread safety for shared state
 
     def add_scanner(self, scanner) -> None:
         self._scanners.append(scanner)
@@ -233,16 +234,27 @@ class FirewallPipeline:
         )
 
     def _scan_parallel(self, text: str, prompt: str) -> ScanResult:
-        """Parallel scan — all scanners run concurrently with thread safety."""
+        """Parallel scan — all scanners run concurrently using threads.
+
+        Uses ThreadPoolExecutor (not ProcessPoolExecutor) because:
+        1. Scanner objects are not picklable (closures, locks, ML models)
+        2. Most scanners are IO-bound (regex, HTTP, model inference)
+        3. Threads share memory safely for result aggregation
+        """
         import time as _time
-        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
 
         all_findings: list[Finding] = []
         max_risk = 0.0
         result_action = ScanAction.PASS
         scanner_timings: dict[str, float] = {}
+        fail_open = self._fail_open
+        max_workers = self._max_workers
 
-        def _run_scanner(scanner):
+        # Per-scanner timeout in seconds (env override supported)
+        _scanner_timeout = float(os.environ.get("SENTINEL_SCANNER_TIMEOUT", "30"))
+
+        def _run_one(scanner):
             scanner_name = type(scanner).__name__
             start = _time.perf_counter()
             try:
@@ -256,33 +268,34 @@ class FirewallPipeline:
                 return result, scanner_name, elapsed_ms
             except Exception as e:
                 elapsed_ms = (_time.perf_counter() - start) * 1000
-                if self._fail_open:
-                    import logging
-                    logging.getLogger(__name__).warning(
-                        "Scanner %s failed (fail-open): %s", scanner_name, e
-                    )
+                if fail_open:
+                    _log.warning("Scanner %s failed (fail-open): %s", scanner_name, e)
                     return None, scanner_name, elapsed_ms
                 raise
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
-            futures = [executor.submit(_run_scanner, s) for s in self._scanners]
-            for future in as_completed(futures):
-                result, scanner_name, elapsed_ms = future.result()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {executor.submit(_run_one, s): s for s in self._scanners}
+            for future in as_completed(future_map, timeout=_scanner_timeout * len(self._scanners)):
+                try:
+                    result, scanner_name, elapsed_ms = future.result(timeout=_scanner_timeout)
+                except FutureTimeout:
+                    scanner_name = type(future_map[future]).__name__
+                    _log.error("Scanner %s timed out after %.0fs — skipping", scanner_name, _scanner_timeout)
+                    scanner_timings[scanner_name] = _scanner_timeout * 1000
+                    continue
 
-                # Thread-safe aggregation of results
-                with self._lock:
-                    scanner_timings[scanner_name] = round(elapsed_ms, 2)
+                scanner_timings[scanner_name] = round(elapsed_ms, 2)
 
-                    if result is None:
-                        continue
+                if result is None:
+                    continue
 
-                    all_findings.extend(result.findings)
-                    max_risk = max(max_risk, result.risk_score)
+                all_findings.extend(result.findings)
+                max_risk = max(max_risk, result.risk_score)
 
-                    if result.action == ScanAction.BLOCK:
-                        result_action = ScanAction.BLOCK
-                    elif result.action == ScanAction.WARN and result_action == ScanAction.PASS:
-                        result_action = ScanAction.WARN
+                if result.action == ScanAction.BLOCK:
+                    result_action = ScanAction.BLOCK
+                elif result.action == ScanAction.WARN and result_action == ScanAction.PASS:
+                    result_action = ScanAction.WARN
 
         return ScanResult(
             sanitized=text,
@@ -292,16 +305,24 @@ class FirewallPipeline:
             metadata={
                 "scanner_timings": scanner_timings,
                 "parallel": True,
-                "workers": self._max_workers,
+                "workers": max_workers,
             },
         )
 
     def _has_redact_scanners(self) -> bool:
-        """Check if any scanner might return REDACT action."""
-        # Heuristic: check if scanner class name contains 'Anonymize' or 'Sensitive'
+        """Check if any scanner may return REDACT action.
+
+        Scanners that perform redaction should set class attribute
+        ``supports_redact = True`` for reliable detection.
+        Falls back to a name-based heuristic for legacy scanners.
+        """
         for scanner in self._scanners:
+            # Explicit marker — preferred
+            if getattr(scanner, "supports_redact", False):
+                return True
+            # Legacy heuristic fallback
             name = type(scanner).__name__.lower()
-            if "anonymize" in name or "sensitive" in name or "redact" in name:
+            if "anonymize" in name or "sensitive" in name or "redact" in name or "pii" in name:
                 return True
         return False
 

@@ -5,6 +5,7 @@ Central rule loading utility. All scanners load their patterns/rules
 from YAML files in the rules/ directory. No hardcoded patterns in code.
 """
 
+import logging
 import os
 import re
 import functools
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+_log = logging.getLogger(__name__)
 
 
 # ── Module-level rule cache ──────────────────────────────────────────
@@ -86,7 +89,13 @@ def load_secret_patterns() -> List[Dict[str, Any]]:
                 "tags": entry.get("tags", []),
                 "fp_note": entry.get("fp_note", ""),
             })
-        except re.error:
+        except re.error as exc:
+            _log.warning(
+                "rules.py: skipping invalid regex in secret_patterns.yaml "
+                "(id=%r): %s",
+                entry.get("id", entry.get("name", "?")),
+                exc,
+            )
             continue  # Skip invalid regex
     return patterns
 
@@ -120,7 +129,14 @@ def load_injection_patterns() -> Dict[str, List[Dict[str, Any]]]:
                     "severity": entry.get("severity", "MEDIUM"),
                     "weight": entry.get("weight", 0.5),
                 })
-            except re.error:
+            except re.error as exc:
+                _log.warning(
+                    "rules.py: skipping invalid regex in injection_patterns.yaml "
+                    "(category=%r, id=%r): %s",
+                    category,
+                    entry.get("id", entry.get("name", "?")),
+                    exc,
+                )
                 continue
         result[category] = compiled
     return result
@@ -154,7 +170,12 @@ def load_sast_rules() -> List[Dict[str, Any]]:
                 "fp_risk": entry.get("fp_risk", "MEDIUM"),
                 "references": entry.get("references", []),
             })
-        except re.error:
+        except re.error as exc:
+            _log.warning(
+                "rules.py: skipping invalid regex in sast_rules.yaml (id=%r): %s",
+                entry.get("id", entry.get("name", "?")),
+                exc,
+            )
             continue
     return rules
 

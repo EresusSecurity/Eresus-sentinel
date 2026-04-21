@@ -102,6 +102,17 @@ def _discover_classes(
 
             # Generate registry key: ClassName → snake_case
             key = _to_registry_key(attr_name)
+            if key in registry:
+                existing = registry[key]
+                logger.warning(
+                    "Plugin key collision: %r already registered as %s.%s; "
+                    "overwriting with %s.%s — rename one of the classes to avoid this",
+                    key,
+                    existing.__module__,
+                    existing.__name__,
+                    full_module_name,
+                    attr_name,
+                )
             registry[key] = obj
             logger.debug("Discovered: %s → %s.%s", key, full_module_name, attr_name)
 

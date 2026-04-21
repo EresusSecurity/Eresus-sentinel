@@ -28,14 +28,37 @@ logger = logging.getLogger(__name__)
 # ── Combinatoric keyword generation ──────────────────────────────
 
 _VERBS = [
+    # English
     "Ignore", "Disregard", "Skip", "Forget", "Neglect",
     "Overlook", "Omit", "Bypass", "Pay no attention to",
     "Do not follow", "Do not obey",
+    # Turkish
+    "Yok say", "Görmezden gel", "Bırak", "Unut", "Vazgeç",
+    "Aldırma", "Atla", "İhmal et", "Önemseme",
+    # Spanish
+    "Ignora", "Olvida", "Omite", "Pasa por alto", "Desconsidera",
+    # Russian
+    "Игнорируй", "Забудь", "Пропусти", "Отмени",
+    # Arabic
+    "تجاهل", "انسى", "تخطَّ",
+    # Chinese
+    "忽略", "忘记", "跳过", "无视",
+    # German
+    "Ignoriere", "Vergiss", "Überspringe",
+    # French
+    "Ignore", "Oublie", "Passe outre",
 ]
 
 _ADJECTIVES = [
     "", "prior", "previous", "preceding",
     "above", "foregoing", "earlier", "initial",
+    "önceki", "tüm", "bütün", "yukarıdaki",
+    "anterior", "previa", "precedente",
+    "предыдущий", "все",
+    "السابقة", "كل",
+    "先前的", "所有",
+    "vorherige", "alle",
+    "précédent", "tous",
 ]
 
 _PREPOSITIONS = [
@@ -49,6 +72,14 @@ _OBJECTS = [
     "context", "conversation", "input", "inputs",
     "data", "message", "messages", "communication",
     "response", "responses", "request", "requests",
+    "talimatları", "talimat", "yönergeleri", "yönerge",
+    "kuralları", "kural", "mesajı", "mesaj", "komutları", "komut",
+    "instrucciones", "mensajes", "reglas", "órdenes",
+    "инструкции", "сообщения", "правила", "команды",
+    "التعليمات", "القواعد", "الرسائل",
+    "指令", "命令", "规则", "消息",
+    "Anweisungen", "Befehle", "Regeln", "Nachrichten",
+    "commandes", "règles",
 ]
 
 
@@ -107,10 +138,13 @@ def _generate_legacy_combos() -> list[str]:
 
 
 def _normalize(text: str) -> str:
-    """Normalize text for comparison: lowercase, strip non-alphanum, collapse spaces."""
+    """Normalize for comparison: NFKC + invisible-strip + confusable-fold
+    + lowercase + punctuation strip + whitespace collapse."""
     import re
-    result = text.lower()
-    result = re.sub(r"[^\w\s]|_", "", result)
+    from sentinel.normalize import normalize as _nfkc
+
+    result = _nfkc(text).lower()
+    result = re.sub(r"[^\w\s]|_", "", result, flags=re.UNICODE)
     result = re.sub(r"\s+", " ", result)
     return result.strip()
 
@@ -165,7 +199,14 @@ class HeuristicInjectionScanner(InputScanner):
                 risk_score=0.0,
             )
 
-        normalized = _normalize(prompt)
+        from sentinel.normalize import decode_common
+        decoded_candidates = decode_common(prompt)
+        if decoded_candidates:
+            expanded = prompt + "\n" + "\n".join(decoded_candidates)
+        else:
+            expanded = prompt
+
+        normalized = _normalize(expanded)
         max_score = 0.0
         best_match = ""
         best_combo = ""

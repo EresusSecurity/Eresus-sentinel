@@ -324,6 +324,8 @@ class SkillScanner:
     def scan_skill(self, code: str, name: str = "unknown") -> list[SkillFinding]:
         findings = []
 
+        findings.extend(self._scan_frontmatter(code, name))
+
         for pat, desc, sev, cwe in PRIVILEGE_ESCALATION_PATTERNS:
             for lineno, line in enumerate(code.split("\n"), 1):
                 if re.search(pat, line):
@@ -375,6 +377,116 @@ class SkillScanner:
                 ))
 
         findings.extend(self._cross_scanner.scan(code, name))
+        return findings
+
+    # ── Frontmatter analyzer ────────────────────────────────────────
+    #
+    # Parses YAML frontmatter at the top of a SKILL.md / plugin manifest
+    # and flags structural misconfigurations that per-line regex scans
+    # miss: wildcard ``allowed-tools``, invisible Unicode in description
+    # fields, evasive license strings.
+
+    _FRONTMATTER_FENCE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+    def _scan_frontmatter(self, code: str, name: str) -> list[SkillFinding]:
+        from sentinel.normalize import strip_invisible
+
+        m = self._FRONTMATTER_FENCE.match(code)
+        if not m:
+            return []
+
+        block = m.group(1)
+        try:
+            import yaml
+            fm = yaml.safe_load(block) or {}
+        except Exception:  # noqa: BLE001
+            return [SkillFinding(
+                skill_name=name,
+                finding_type="frontmatter_parse_error",
+                severity="LOW",
+                description="SKILL.md frontmatter is not valid YAML.",
+                location=f"{name}:frontmatter",
+                evidence=block[:200],
+            )]
+
+        if not isinstance(fm, dict):
+            return []
+
+        findings: list[SkillFinding] = []
+
+        # 1. Wildcard allowed-tools
+        allowed = fm.get("allowed-tools") or fm.get("allowedTools")
+        if isinstance(allowed, list):
+            for entry in allowed:
+                if isinstance(entry, str) and entry.strip() in ("*", "**", "all"):
+                    findings.append(SkillFinding(
+                        skill_name=name,
+                        finding_type="overbroad_permissions",
+                        severity="HIGH",
+                        description=(
+                            "SKILL.md declares a wildcard in `allowed-tools`. "
+                            "The skill can invoke any tool at runtime."
+                        ),
+                        location=f"{name}:frontmatter",
+                        evidence=f"allowed-tools entry: {entry!r}",
+                        cwe="CWE-250",
+                        recommendation="Replace `*` with an explicit tool list.",
+                    ))
+                    break
+        elif isinstance(allowed, str) and allowed.strip() in ("*", "**", "all"):
+            findings.append(SkillFinding(
+                skill_name=name,
+                finding_type="overbroad_permissions",
+                severity="HIGH",
+                description="SKILL.md declares `allowed-tools: *`.",
+                location=f"{name}:frontmatter",
+                evidence=f"allowed-tools: {allowed!r}",
+                cwe="CWE-250",
+            ))
+
+        # 2. Invisible Unicode or homoglyphs anywhere in scalar values
+        for key, val in fm.items():
+            if not isinstance(val, str):
+                continue
+            cleaned = strip_invisible(val)
+            if cleaned != val:
+                findings.append(SkillFinding(
+                    skill_name=name,
+                    finding_type="invisible_unicode_in_frontmatter",
+                    severity="MEDIUM",
+                    description=(
+                        f"Frontmatter field `{key}` contains zero-width or "
+                        "bidi-control characters. This is commonly used to "
+                        "hide payloads from reviewers."
+                    ),
+                    location=f"{name}:frontmatter:{key}",
+                    evidence=(
+                        f"original_len={len(val)}, cleaned_len={len(cleaned)}, "
+                        f"stripped_codepoints="
+                        f"{[hex(ord(c)) for c in val if c not in cleaned][:8]}"
+                    ),
+                    cwe="CWE-1007",
+                    recommendation="Strip invisible characters before committing.",
+                ))
+
+        # 3. License field with "proprietary" / "contact admin" phrasing
+        # is frequently used in malicious skills to discourage inspection.
+        lic = fm.get("license")
+        if isinstance(lic, str):
+            low = lic.lower()
+            if "contact" in low and "admin" in low:
+                findings.append(SkillFinding(
+                    skill_name=name,
+                    finding_type="suspicious_license",
+                    severity="LOW",
+                    description=(
+                        "Frontmatter license field uses evasive 'contact "
+                        "admin' language instead of a standard identifier."
+                    ),
+                    location=f"{name}:frontmatter",
+                    evidence=f"license: {lic!r}",
+                ))
+
         return findings
 
     def scan_command(self, command: str) -> tuple[CommandRisk, list[SkillFinding]]:

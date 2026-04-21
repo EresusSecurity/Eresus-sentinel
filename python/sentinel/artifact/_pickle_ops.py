@@ -83,4 +83,14 @@ class PickleAnalysis:
     dup_count: int = 0                     # Stack DUP opcode count
     has_invalid_opcode: bool = False        # Corrupt/evasion indicator
     has_unused_assignments: bool = False    # Variables assigned but never used
+    # ── Advanced analysis engines ────────────────────────────────
+    has_setstate_gadget: bool = False        # BUILD opcode with dangerous __setstate__
+    has_obj_pop_bypass: bool = False         # OBJ+POP invisibility attack
+    non_standard_imports: list = field(default_factory=list)  # Imports outside stdlib+allowlist
+    has_non_standard_import: bool = False
+    interpretation_errors: list[str] = field(default_factory=list)
+    # Internal structural counters (set by analyzer, used by post-walk passes)
+    _get_count: int = 0
+    _put_count: int = 0
+    _memo_size: int = 0
 

@@ -55,6 +55,8 @@ dangerous_globals:
     - execfile
     - open
     - file
+    - apply
+    - getattr
 
   os:
     - system
@@ -184,6 +186,7 @@ dangerous_globals:
     - interact
     - InteractiveConsole
     - InteractiveInterpreter
+    - "InteractiveInterpreter.runcode"
     - compile_command
 
   codeop:
@@ -425,7 +428,6 @@ dangerous_globals:
     - get_objects
     - get_referrers
 
-  # ── Cloud / credential exfiltration (Huntr real-world payloads) ────
   boto3:
     - client
     - resource
@@ -740,6 +742,92 @@ dangerous_globals:
   _signal:
     - "*"
 
+  # ── Missing modules from fickling UNSAFE_IMPORTS + GHSA bypasses ─────
+  _frozen_importlib:
+    - "*"
+
+  _frozen_importlib_external:
+    - "*"
+
+  _imp:
+    - "*"
+
+  zipimport:
+    - "*"
+
+  socketserver:
+    - "*"  # TCPServer/UDPServer bind network ports
+
+  nntplib:
+    - "*"  # NNTP client — SSRF vector
+
+  poplib:
+    - "*"  # POP3 client — SSRF vector
+
+  telnetlib:
+    - "*"  # Telnet client — SSRF vector
+
+  fileinput:
+    - "*"  # reads/modifies arbitrary files
+
+  linecache:
+    - "*"  # reads arbitrary file lines
+
+  difflib:
+    - "*"  # can trigger file reads for comparison
+
+  select:
+    - "*"  # I/O multiplexing for network operations
+
+  selectors:
+    - "*"  # high-level I/O multiplexing
+
+  logging:
+    - "*"  # FileHandler/SocketHandler can create files/open network sockets
+
+  syslog:
+    - "*"  # Unix syslog access
+
+  sqlite3:
+    - "*"  # create/read arbitrary database files
+
+  _sqlite3:
+    - "*"
+
+  py_compile:
+    - "*"  # writes .pyc files
+
+  pexpect:
+    - "*"  # spawns and controls child processes
+
+  shelve:
+    - "*"  # opens database files with pickle inside
+
+  xmlrpc:
+    - "*"  # XML-RPC client/server — network access
+
+  asyncio.unix_events:
+    - "_UnixSubprocessTransport._start"  # direct subprocess execution
+    - "*"
+
+  torch._dynamo:
+    - "*"  # JIT compilation — arbitrary code execution
+
+  torch._inductor:
+    - "*"  # code generation and execution
+
+  torch.jit:
+    - "*"  # JIT compilation — arbitrary code execution
+
+  torch.compile:
+    - "*"  # code compilation
+
+  numpy.distutils:
+    - "*"  # executes arbitrary build commands
+
+  distutils:
+    - "*"  # build system — code execution
+
 # ─── ALLOWLIST ────────────────────────────────────────────────────────
 # Known-safe module.name pairs in ML model context.
 # These are checked BEFORE the blocklist — matching here = skip.
@@ -817,21 +905,12 @@ allowlist:
     - Pattern
 
   ast:
-    - literal_eval
-    - parse
     - dump
 
-  platform:
-    - system
-    - machine
-    - python_version
-    - node
-    - platform
-    - processor
+  # platform: removed — blocklisted for info exfiltration
 
   functools:
     - reduce
-    - partial
     - lru_cache
     - wraps
     - total_ordering
@@ -841,8 +920,6 @@ allowlist:
     - getitem
     - add
     - mul
-    - itemgetter
-    - attrgetter
 
   pathlib:
     - PurePath

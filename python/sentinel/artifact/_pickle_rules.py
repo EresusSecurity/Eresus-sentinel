@@ -18,12 +18,13 @@ def load_default_rules() -> tuple[dict, dict]:
 _CRITICAL_NAMES = frozenset({
     "exec", "eval", "compile", "system", "popen",
     "Popen", "call", "check_output", "run",
-    "__import__", "getattr", "execfile",
+    "__import__", "getattr", "execfile", "apply",
     "FunctionType", "CodeType",
     "loads",
     "spawnv_passfds", "_run_entry_point", "runstring",
     "_load_from_bytes", "add_extension",
     "__subclasses__", "__builtins__",
+    "partial", "attrgetter", "methodcaller",
 })
 
 _CRITICAL_MODULES = frozenset({
@@ -80,7 +81,7 @@ def classify_severity(module: str, name: str) -> Severity:
 
 _UNIVERSAL_DANGEROUS = frozenset({
     "__import__", "getattr", "setattr", "delattr",
-    "eval", "exec", "execfile",
+    "eval", "exec", "execfile", "apply",
     "__subclasses__", "__base__", "__mro__",
     "__globals__", "__builtins__",
     "__getattribute__", "__class__",

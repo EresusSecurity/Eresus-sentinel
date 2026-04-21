@@ -1,0 +1,16 @@
+# YAML alternate-tag deserialization sample.
+#
+# Sentinel's pickle scanner (`_YAML_MARKERS`) checks for three substrings:
+#   !!python/object/apply
+#   !!python/object/new
+#   !!python/module
+# It does NOT check for !!python/name or the full-URI tag form. Both
+# below are valid PyYAML deserialization triggers when a loader permits
+# arbitrary Python constructors.
+
+short_form: !!python/name:os.system
+full_uri: !tag:yaml.org,2002:python/object/apply:os.system
+nested:
+  payload:
+    - !!python/name:subprocess.check_output
+    - !!python/name:builtins.eval

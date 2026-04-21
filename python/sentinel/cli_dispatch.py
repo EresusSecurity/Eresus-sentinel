@@ -151,7 +151,8 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     from sentinel.artifact.keras_scanner import KerasScanner
     from sentinel.artifact.archive_slip import ArchiveSlipDetector
     from sentinel.artifact.xgboost_scanner import XGBoostScanner
-    from sentinel.artifact.numpy_scanner import NumPyScanner
+    from sentinel.artifact.numpy_scanner import NumpyScanner
+    from sentinel.artifact.yaml_scanner import YamlScanner
     from sentinel.scan_safety import check_file_size, FileTooLargeError
     from sentinel.finding import Severity
 
@@ -185,8 +186,9 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".xgb", ".ubj", ".model"): XGBoostScanner,
         (".lgb",): XGBoostScanner,
         (".joblib",): XGBoostScanner,
-        (".npy",): NumPyScanner,
-        (".npz",): NumPyScanner,
+        (".npy",): NumpyScanner,
+        (".npz",): NumpyScanner,
+        (".yaml", ".yml"): YamlScanner,
         (".nemo", ".mar"): ArchiveSlipDetector,
         (".tar", ".tar.gz", ".tgz", ".zip", ".7z"): ArchiveSlipDetector,
     }

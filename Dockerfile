@@ -23,14 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy all source files needed for install
-COPY pyproject.toml ./
-COPY python/ ./python/
-COPY rules/ ./rules/
+COPY . .
 
-# Single install — no -e flag (editable installs break with --prefix)
+# Install only the dependencies needed for the dashboard/API image.
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install ".[all]"
+        pip install --no-cache-dir --prefix=/install .[all]
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
@@ -90,8 +87,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Use tini as PID 1 for proper signal handling
 ENTRYPOINT ["tini", "--"]
 
-# Default: start API server
-CMD ["python", "-m", "uvicorn", "sentinel.server:create_app", \
+# Default: start web dashboard + JSON API server
+CMD ["python", "-m", "uvicorn", "sentinel.web.app:create_dashboard_app", \
      "--factory", \
      "--host", "0.0.0.0", \
      "--port", "8080", \

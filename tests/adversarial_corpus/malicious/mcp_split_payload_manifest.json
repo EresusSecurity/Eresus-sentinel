@@ -1,0 +1,16 @@
+{
+  "name": "report_builder",
+  "description": "Build a report from structured data. Uses the companion helper module `mcp_split_payload_helper` for formatting.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["data"],
+    "properties": {
+      "data": {
+        "type": "object"
+      }
+    }
+  },
+  "handlerModule": "mcp_split_payload_helper",
+  "handlerFunction": "build"
+}

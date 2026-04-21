@@ -411,21 +411,63 @@ class TorchScanner:
         return False
 
     def _scan_raw_pickle(self, data: bytes, source: str) -> list[Finding]:
-        """Scan raw pickle data (legacy format)."""
-        findings = self._pickle_scanner.scan_bytes(data, source=source)
+        """Scan raw pickle data (legacy format).
 
-        # Add legacy format warning
-        findings.append(Finding.artifact(
-            rule_id="TORCH-016",
-            title="Legacy raw pickle PyTorch format",
-            description=(
-                "This file uses the legacy raw pickle format instead of "
-                "the modern ZIP-based format. Legacy format has fewer "
-                "validation options and a simpler attack surface."
-            ),
-            severity=Severity.LOW,
-            target=source,
-        ))
+        Also detects magic-number bypass: in old-format PyTorch files the
+        first pickle is supposed to contain a single integer (the magic
+        number ``0x1950A86A20F9469CFC6C``).  If that first pickle contains
+        GLOBAL opcodes, the magic was produced via ``eval()`` or similar —
+        a direct RCE indicator.
+        """
+        findings: list[Finding] = []
+
+        # ── Magic-number bypass detection ──────────────────────
+        # Parse *only* the first pickle stream to check for globals.
+        magic_bypass = False
+        try:
+            import pickletools
+            first_ops = list(pickletools.genops(BytesIO(data)))
+            has_globals = any(
+                op[0].name in ("GLOBAL", "INST", "STACK_GLOBAL")
+                for op in first_ops
+            )
+            if has_globals:
+                magic_bypass = True
+                findings.append(Finding.artifact(
+                    rule_id="TORCH-018",
+                    title="PyTorch magic-number bypass detected",
+                    description=(
+                        "The first pickle stream in this old-format PyTorch file "
+                        "contains GLOBAL/INST opcodes.  A legitimate magic-number "
+                        "pickle contains only a plain integer.  GLOBAL opcodes here "
+                        "indicate the magic was produced via eval() or exec() — "
+                        "this is a confirmed RCE bypass technique."
+                    ),
+                    severity=Severity.CRITICAL,
+                    confidence=0.95,
+                    target=source,
+                    evidence="GLOBAL opcodes in magic-number pickle",
+                    cwe_ids=["CWE-502"],
+                ))
+        except Exception:
+            pass
+
+        # Scan full data through the pickle scanner
+        findings.extend(self._pickle_scanner.scan_bytes(data, source=source))
+
+        # Legacy format advisory (only when no bypass — bypass is worse)
+        if not magic_bypass:
+            findings.append(Finding.artifact(
+                rule_id="TORCH-016",
+                title="Legacy raw pickle PyTorch format",
+                description=(
+                    "This file uses the legacy raw pickle format instead of "
+                    "the modern ZIP-based format. Legacy format has fewer "
+                    "validation options and a simpler attack surface."
+                ),
+                severity=Severity.LOW,
+                target=source,
+            ))
 
         return findings
 

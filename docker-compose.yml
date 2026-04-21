@@ -19,7 +19,7 @@ services:
     container_name: sentinel-db
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - sentinel-pgdata:/var/lib/postgresql/data
     environment:
@@ -99,7 +99,7 @@ services:
     container_name: sentinel-prometheus
     restart: unless-stopped
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "${PROMETHEUS_PORT:-19090}:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus

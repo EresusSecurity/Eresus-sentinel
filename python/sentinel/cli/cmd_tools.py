@@ -354,7 +354,7 @@ def cmd_shell(args):
                 avg = sum(h["ms"] for h in history) / total
                 console.print(f"    [dim]{total} scans · {passed} passed · avg {avg:.0f}ms[/dim]")
             elif cmd == "/history":
-                for i, h in enumerate(history):
+                for _i, h in enumerate(history):
                     mark = "[green]✓[/green]" if h["ok"] else "[red]✗[/red]"
                     console.print(f"    {mark} {h['text'][:50]}  → {h['count']} findings")
             else:

@@ -72,7 +72,7 @@ def _discover_classes(
 
     package_dir = Path(package.__file__).parent
 
-    for importer, modname, ispkg in pkgutil.iter_modules([str(package_dir)]):
+    for _importer, modname, _ispkg in pkgutil.iter_modules([str(package_dir)]):
         if modname.startswith("_"):
             continue
 

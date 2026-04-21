@@ -235,7 +235,7 @@ class FirewallPipeline:
     def _scan_parallel(self, text: str, prompt: str) -> ScanResult:
         """Parallel scan — all scanners run concurrently with thread safety."""
         import time as _time
-        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         all_findings: list[Finding] = []
         max_risk = 0.0
@@ -264,7 +264,7 @@ class FirewallPipeline:
                     return None, scanner_name, elapsed_ms
                 raise
 
-        with ProcessPoolExecutor(max_workers=self._max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
             futures = [executor.submit(_run_scanner, s) for s in self._scanners]
             for future in as_completed(futures):
                 result, scanner_name, elapsed_ms = future.result()

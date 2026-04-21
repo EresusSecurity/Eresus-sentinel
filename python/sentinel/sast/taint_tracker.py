@@ -342,11 +342,11 @@ class TaintTracker:
                 # Check if a tainted variable calls a dangerous function
                 # e.g., fn = eval; fn(x)
                 if isinstance(node.func, ast.Name) and node.func.id in tainted_vars:
-                    for s in self.sinks:
+                    for _s in self.sinks:
                         # Check if the tainted variable was assigned from a sink-like function
                         taint_src_line, taint_src_name = tainted_vars[node.func.id]
                         if any(kw in taint_src_name.lower() for kw in ["eval", "exec", "system", "popen"]):
-                            for arg in node.args:
+                            for _arg in node.args:
                                 flows.append(TaintFlow(
                                     source=f"indirect:{taint_src_name}",
                                     source_line=taint_src_line,

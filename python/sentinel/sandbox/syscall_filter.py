@@ -174,7 +174,7 @@ class SyscallFilter:
 
     @classmethod
     def from_profile_name(cls, name: str) -> SyscallFilter:
-        for pt, prof in BUILTIN_PROFILES.items():
+        for _pt, prof in BUILTIN_PROFILES.items():
             if prof.name == name:
                 return cls(prof)
         raise ValueError(f"Unknown profile: {name}. Available: {[p.name for p in BUILTIN_PROFILES.values()]}")

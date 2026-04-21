@@ -658,12 +658,12 @@ class PickleScanner:
         # Variables stored in memo after REDUCE but never read via GET
         # indicate side-effect-only operations (e.g., os.system("cmd"))
         _memo_referenced = set()
-        for opcode, arg, pos in ops:
+        for opcode, arg, _pos in ops:
             if opcode.name in MEMO_READ_OPS and isinstance(arg, int):
                 _memo_referenced.add(arg)
         _memo_written_after_reduce = set()
         _last_was_reduce = False
-        for opcode, arg, pos in ops:
+        for opcode, arg, _pos in ops:
             if opcode.name in REDUCE_OPS:
                 _last_was_reduce = True
             elif opcode.name in MEMO_WRITE_OPS:

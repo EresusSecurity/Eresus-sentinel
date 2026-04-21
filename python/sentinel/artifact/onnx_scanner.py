@@ -647,7 +647,7 @@ class ONNXScanner:
                     ))
 
             # Short patterns need context: must be preceded by alnum/path char
-            for short_pat, variant in _CONTEXT_NATIVE_PATTERNS:
+            for short_pat, _variant in _CONTEXT_NATIVE_PATTERNS:
                 idx = 0
                 while True:
                     idx = data.find(short_pat, idx)

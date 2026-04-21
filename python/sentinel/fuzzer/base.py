@@ -121,7 +121,7 @@ class Generator(ABC):
         import random as _random
         rng = _random.Random(seed)
         results = []
-        for i in range(count):
+        for _i in range(count):
             sample_seed = rng.randint(0, 2**64 - 1)
             results.append(self.generate(seed=sample_seed))
         return results

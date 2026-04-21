@@ -257,7 +257,7 @@ class InjectionPluginRegistry:
     @classmethod
     def generate_all(cls, count_per_plugin: int = 5, seed: int | None = None) -> list[InjectionPayload]:
         results = []
-        for name, plugin_cls in cls.PLUGINS.items():
+        for _name, plugin_cls in cls.PLUGINS.items():
             results.extend(plugin_cls.generate(count=count_per_plugin, seed=seed))
         return results
 

@@ -8,10 +8,13 @@ from YAML files in the rules/ directory. No hardcoded patterns in code.
 import os
 import re
 import functools
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 # ── Module-level rule cache ──────────────────────────────────────────
@@ -86,8 +89,8 @@ def load_secret_patterns() -> List[Dict[str, Any]]:
                 "tags": entry.get("tags", []),
                 "fp_note": entry.get("fp_note", ""),
             })
-        except re.error:
-            continue  # Skip invalid regex
+        except re.error as exc:
+            logger.warning("Skipping invalid regex in secret_patterns.yaml (id=%r): %s", entry.get("id", entry.get("name", "unknown")), exc)
     return patterns
 
 
@@ -120,8 +123,8 @@ def load_injection_patterns() -> Dict[str, List[Dict[str, Any]]]:
                     "severity": entry.get("severity", "MEDIUM"),
                     "weight": entry.get("weight", 0.5),
                 })
-            except re.error:
-                continue
+            except re.error as exc:
+                logger.warning("Skipping invalid regex in injection_patterns.yaml (category=%r, id=%r): %s", category, entry.get("id", entry.get("name", "unknown")), exc)
         result[category] = compiled
     return result
 
@@ -154,8 +157,8 @@ def load_sast_rules() -> List[Dict[str, Any]]:
                 "fp_risk": entry.get("fp_risk", "MEDIUM"),
                 "references": entry.get("references", []),
             })
-        except re.error:
-            continue
+        except re.error as exc:
+            logger.warning("Skipping invalid regex in sast_rules.yaml (id=%r): %s", entry.get("id", entry.get("name", "unknown")), exc)
     return rules
 
 
@@ -202,8 +205,8 @@ def load_mcp_rules() -> Dict[str, Any]:
                 "description": entry.get("description", ""),
                 "severity": entry.get("severity", "HIGH"),
             })
-        except re.error:
-            continue
+        except re.error as exc:
+            logger.warning("Skipping invalid regex in mcp_rules.yaml (name=%r): %s", entry.get("name", "unknown"), exc)
 
     return {
         "dangerous_capabilities": data.get("dangerous_capabilities", {}),
@@ -280,8 +283,8 @@ def load_sast_secret_patterns() -> List[Dict[str, Any]]:
                     "severity": entry.get("severity", "HIGH"),
                     "description": entry.get("description", ""),
                 })
-            except re.error:
-                continue
+            except re.error as exc:
+                logger.warning("Skipping invalid regex in sast_secret_patterns.yaml (id=%r): %s", entry.get("id", "unknown"), exc)
     return patterns
 
 
@@ -313,8 +316,8 @@ def load_taint_rules() -> Dict[str, List[Dict[str, Any]]]:
                     "pattern": re.compile(entry["pattern"]),
                     "description": entry.get("description", ""),
                 })
-            except re.error:
-                continue
+            except re.error as exc:
+                logger.warning("Skipping invalid regex in taint_rules.yaml sources (name=%r): %s", entry.get("name", "unknown"), exc)
 
     sinks = []
     for _category, entries in data.get("sinks", {}).items():
@@ -329,8 +332,8 @@ def load_taint_rules() -> Dict[str, List[Dict[str, Any]]]:
                     "cwe": entry.get("cwe", "CWE-20"),
                     "description": entry.get("description", ""),
                 })
-            except re.error:
-                continue
+            except re.error as exc:
+                logger.warning("Skipping invalid regex in taint_rules.yaml sinks (name=%r): %s", entry.get("name", "unknown"), exc)
 
     return {"sources": sources, "sinks": sinks}
 

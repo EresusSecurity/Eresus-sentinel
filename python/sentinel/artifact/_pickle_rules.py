@@ -80,11 +80,10 @@ def classify_severity(module: str, name: str) -> Severity:
 
 _UNIVERSAL_DANGEROUS = frozenset({
     "__import__", "getattr", "setattr", "delattr",
-    "eval", "exec", "compile", "execfile",
+    "eval", "exec", "execfile",
     "__subclasses__", "__base__", "__mro__",
     "__globals__", "__builtins__",
     "__getattribute__", "__class__",
-    "__reduce__", "__reduce_ex__",
 })
 
 _HEURISTIC_KEYWORDS = (
@@ -94,8 +93,26 @@ _HEURISTIC_KEYWORDS = (
     "_load_from_bytes", "add_extension",
     "FunctionType", "CodeType",
     "timeit", "read_pickle",
-    "signal", "alarm",
 )
+
+# Modules where heuristic keyword substring matching should be suppressed
+# because their attribute names legitimately contain those substrings.
+_HEURISTIC_SAFE_CONTEXTS = frozenset({
+    "re", "ast", "platform", "functools", "operator",
+    "pathlib", "uuid", "signal", "math", "statistics",
+    "collections", "itertools", "string", "textwrap",
+    "dataclasses", "typing", "enum", "decimal", "fractions",
+    "datetime", "calendar", "time", "locale", "copy",
+    "json", "csv", "configparser", "logging", "unittest",
+    "pprint", "heapq", "bisect", "array", "struct",
+    "hashlib", "hmac", "secrets", "html", "xml",
+    "email", "mimetypes", "difflib", "abc",
+    "numpy", "numpy.core", "numpy.core.multiarray",
+    "numpy._core.multiarray", "numpy.core.numeric",
+    "torch", "torch._utils", "torch._tensor", "torch._C",
+    "torch.nn.modules.module", "torch.nn.modules.linear",
+    "sklearn", "pandas",
+})
 
 
 def is_dangerous(module: str, name: str, blocklist: dict, allowlist: dict) -> bool:
@@ -112,10 +129,11 @@ def is_dangerous(module: str, name: str, blocklist: dict, allowlist: dict) -> bo
     if name in _UNIVERSAL_DANGEROUS:
         return True
 
-    # Heuristic fallback
-    name_lower = name.lower()
-    if any(k in name_lower for k in _HEURISTIC_KEYWORDS):
-        return True
+    # Heuristic fallback — skip if module is known-safe context
+    if module not in _HEURISTIC_SAFE_CONTEXTS:
+        name_lower = name.lower()
+        if any(k in name_lower for k in _HEURISTIC_KEYWORDS):
+            return True
 
     return False
 

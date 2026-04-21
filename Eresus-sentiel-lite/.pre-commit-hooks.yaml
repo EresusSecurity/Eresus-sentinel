@@ -1,0 +1,70 @@
+# Eresus Sentinel — pre-commit hook manifest.
+#
+# Usage in a consumer repo's .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/eresussec/eresus-sentinel
+#       rev: v0.1.0
+#       hooks:
+#         - id: sentinel-scan
+#         - id: sentinel-scan-skills
+#         - id: sentinel-scan-mcp
+#         - id: sentinel-scan-artifacts
+#
+# Each hook runs a narrow subset of the full scanner catalogue so pre-commit
+# stays fast. Use `sentinel scan --ci` in CI for full coverage.
+
+- id: sentinel-scan
+  name: Eresus Sentinel (fast)
+  description: >-
+    Run Sentinel's fast scanners (secrets, SAST, skill frontmatter, MCP
+    schema) against the staged files. Artifact scanning is skipped; use
+    `sentinel-scan-artifacts` for that.
+  entry: python -m sentinel.cli scan --fast --stdin-files
+  language: python
+  pass_filenames: true
+  require_serial: false
+  stages: [pre-commit]
+  additional_dependencies: []
+
+- id: sentinel-scan-skills
+  name: Eresus Sentinel — skills
+  description: >-
+    Audit SKILL.md and plugin manifests for overbroad permissions,
+    invisible-Unicode frontmatter, dangerous triggers, and privilege
+    escalation patterns.
+  entry: python -m sentinel.cli skill-scan
+  language: python
+  files: "(SKILL\\.md$|skills?/.*\\.(md|yaml|yml|py)$)"
+  stages: [pre-commit]
+
+- id: sentinel-scan-mcp
+  name: Eresus Sentinel — MCP
+  description: >-
+    Validate MCP tool manifests for dangerous capabilities, schema
+    laxity, and missing authentication.
+  entry: python -m sentinel.cli mcp-validate
+  language: python
+  files: "(mcp.*\\.(json|ya?ml)$|tools\\.(json|ya?ml)$)"
+  stages: [pre-commit]
+
+- id: sentinel-scan-artifacts
+  name: Eresus Sentinel — model artifacts
+  description: >-
+    Scan model artifacts (pickle / safetensors / GGUF / ONNX / Keras /
+    TFLite / TorchMobile / Numpy / XGBoost) for unsafe deserialization
+    and archive-slip.
+  entry: python -m sentinel.cli artifact-scan
+  language: python
+  files: "\\.(pkl|pickle|pt|pth|bin|safetensors|gguf|onnx|h5|hdf5|keras|tflite|joblib|npy|npz|xgb|lgb)$"
+  stages: [pre-commit, pre-push]
+
+- id: sentinel-scan-yaml
+  name: Eresus Sentinel — YAML deserialization tags
+  description: >-
+    Detect unsafe `!!python/object/*`, `!!python/name:`, and full-URI
+    YAML tags that trigger arbitrary Python deserialization.
+  entry: python -m sentinel.cli artifact-scan
+  language: python
+  files: "\\.(ya?ml)$"
+  stages: [pre-commit]

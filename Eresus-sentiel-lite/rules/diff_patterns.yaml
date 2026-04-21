@@ -1,0 +1,206 @@
+# ============================================================================
+# Eresus Sentinel — Diff-Based ML Security Anti-Pattern Rules
+# ============================================================================
+#
+# 20 patterns for detecting ML security regressions in code diffs.
+# Used by DiffScanner to catch unsafe changes before they merge.
+#
+# Categories:
+#   unsafe_deserialization — pickle/torch/joblib/numpy unsafe loading
+#   trust_remote_code     — HuggingFace trust_remote_code and auto_map
+#   safety_flag_weakening — Disabling built-in safety mechanisms
+#   code_execution        — eval/exec/subprocess in ML paths
+#   supply_chain          — Unsafe package additions, unpinned deps
+#   credential_exposure   — Hardcoded API keys, tokens, secrets
+#
+# Severity levels:
+#   CRITICAL — Immediate exploitation risk (RCE, credential leak)
+#   HIGH     — Significant security weakening
+#   MEDIUM   — Potential risk requiring review
+#   LOW      — Minor concern or best practice violation
+# ============================================================================
+
+unsafe_deserialization:
+  - id: DIFF-DESER-001
+    name: pickle_load_unsafe
+    pattern: 'pickle\.loads?\s*\('
+    severity: CRITICAL
+    cwe: CWE-502
+    owasp: LLM05
+    description: "pickle.load() enables arbitrary code execution during deserialization"
+    remediation: "Use safetensors or validate with fickling before loading"
+
+  - id: DIFF-DESER-002
+    name: torch_load_no_weights_only
+    pattern: 'torch\.load\s*\([^)]*\)(?!.*weights_only\s*=\s*True)'
+    severity: CRITICAL
+    cwe: CWE-502
+    owasp: LLM05
+    description: "torch.load() without weights_only=True uses pickle internally"
+    remediation: "Add weights_only=True or migrate to safetensors"
+
+  - id: DIFF-DESER-003
+    name: joblib_load
+    pattern: 'joblib\.load\s*\('
+    severity: HIGH
+    cwe: CWE-502
+    owasp: LLM05
+    description: "joblib.load() uses pickle internally for deserialization"
+    remediation: "Replace with safetensors or ONNX"
+
+  - id: DIFF-DESER-004
+    name: numpy_allow_pickle
+    pattern: 'np\.load\s*\([^)]*allow_pickle\s*=\s*True'
+    severity: HIGH
+    cwe: CWE-502
+    owasp: LLM05
+    description: "numpy.load() with allow_pickle=True enables object deserialization"
+    remediation: "Use allow_pickle=False or validate .npy files first"
+
+trust_remote_code:
+  - id: DIFF-TRUST-001
+    name: trust_remote_code_true
+    pattern: 'trust_remote_code\s*=\s*True'
+    severity: CRITICAL
+    cwe: CWE-94
+    owasp: LLM05
+    description: "Downloads and executes arbitrary Python from model repository"
+    remediation: "Remove trust_remote_code=True or audit remote code thoroughly"
+
+  - id: DIFF-TRUST-002
+    name: auto_map_config
+    pattern: '"auto_map"\s*:\s*\{'
+    severity: HIGH
+    cwe: CWE-94
+    owasp: LLM05
+    file_filter: 'config\.json$'
+    description: "auto_map in config.json specifies custom classes loaded at import time"
+    remediation: "Remove auto_map or audit referenced classes"
+
+safety_flag_weakening:
+  - id: DIFF-SAFETY-001
+    name: weights_only_false
+    pattern: 'weights_only\s*=\s*False'
+    severity: CRITICAL
+    cwe: CWE-502
+    owasp: LLM05
+    description: "Explicitly disabling PyTorch deserialization safety"
+    remediation: "Set weights_only=True or use safetensors"
+
+  - id: DIFF-SAFETY-002
+    name: safe_globals_expansion
+    pattern: '(?:add_safe_globals|safe_globals|SAFE_GLOBALS)\s*[\.\(=]'
+    severity: HIGH
+    cwe: CWE-502
+    owasp: LLM05
+    description: "Expanding PyTorch safe_globals weakens deserialization allowlist"
+    remediation: "Minimize safe_globals entries"
+
+  - id: DIFF-SAFETY-003
+    name: ssl_verify_false
+    pattern: 'verify\s*=\s*False'
+    severity: MEDIUM
+    cwe: CWE-295
+    owasp: LLM05
+    description: "Disabling SSL/TLS verification for model downloads"
+    remediation: "Always use verify=True"
+
+code_execution:
+  - id: DIFF-EXEC-001
+    name: eval_call
+    pattern: '\beval\s*\('
+    severity: HIGH
+    cwe: CWE-95
+    owasp: LLM05
+    file_filter: '\.py$'
+    description: "eval() can execute arbitrary expressions from model configs"
+    remediation: "Use ast.literal_eval() or explicit parsing"
+
+  - id: DIFF-EXEC-002
+    name: exec_call
+    pattern: '\bexec\s*\('
+    severity: CRITICAL
+    cwe: CWE-95
+    owasp: LLM05
+    file_filter: '\.py$'
+    description: "exec() executes arbitrary Python code"
+    remediation: "Remove entirely — use safe alternatives"
+
+  - id: DIFF-EXEC-003
+    name: subprocess_call
+    pattern: 'subprocess\.\w+\s*\('
+    severity: HIGH
+    cwe: CWE-78
+    owasp: LLM05
+    file_filter: '\.py$'
+    description: "subprocess calls in ML code can be exploited via injection"
+    remediation: "Avoid subprocess in ML paths"
+
+  - id: DIFF-EXEC-004
+    name: os_command_execution
+    pattern: 'os\.(?:system|popen|exec\w*)\s*\('
+    severity: CRITICAL
+    cwe: CWE-78
+    owasp: LLM05
+    file_filter: '\.py$'
+    description: "Direct OS command execution in ML pipeline code"
+    remediation: "Remove os.system/popen calls"
+
+supply_chain:
+  - id: DIFF-SUPPLY-001
+    name: unsafe_serialization_package
+    pattern: '(?:pickle|dill|cloudpickle|shelve|marshal|rpyc|pyro)\b'
+    severity: MEDIUM
+    cwe: CWE-502
+    owasp: LLM05
+    file_filter: 'requirements.*\.txt$|Pipfile$|pyproject\.toml$|setup\.(py|cfg)$'
+    description: "Package addition enabling unsafe deserialization"
+    remediation: "Evaluate whether the package is strictly necessary"
+
+  - id: DIFF-SUPPLY-002
+    name: unpinned_ml_dependency
+    pattern: '(?:transformers|torch|tensorflow|keras|onnx|safetensors|huggingface.hub)\s*$'
+    severity: LOW
+    cwe: CWE-829
+    owasp: LLM05
+    file_filter: 'requirements.*\.txt$'
+    description: "ML dependency added without version pinning"
+    remediation: "Pin versions with exact hashes"
+
+credential_exposure:
+  - id: DIFF-CRED-001
+    name: hardcoded_api_key
+    pattern: '(?:api_key|apikey|api_token|secret_key|auth_token|access_token)\s*[=:]\s*[''"][A-Za-z0-9_\-]{16,}[''"]'
+    severity: CRITICAL
+    cwe: CWE-798
+    owasp: LLM05
+    description: "Hardcoded API key or secret in ML configuration"
+    remediation: "Use environment variables or secrets manager"
+
+  - id: DIFF-CRED-002
+    name: huggingface_token
+    pattern: 'hf_[A-Za-z0-9]{34,}'
+    severity: CRITICAL
+    cwe: CWE-798
+    owasp: LLM05
+    description: "Hardcoded HuggingFace API token"
+    remediation: "Use HF_TOKEN environment variable"
+
+  - id: DIFF-CRED-003
+    name: aws_access_key
+    pattern: 'AKIA[0-9A-Z]{16}'
+    severity: CRITICAL
+    cwe: CWE-798
+    owasp: LLM05
+    description: "Hardcoded AWS access key"
+    remediation: "Use IAM roles or environment variables"
+
+  - id: DIFF-CRED-004
+    name: gcp_service_account
+    pattern: '"type"\s*:\s*"service_account"'
+    severity: HIGH
+    cwe: CWE-798
+    owasp: LLM05
+    file_filter: '\.json$'
+    description: "GCP service account key file committed to repository"
+    remediation: "Use workload identity or environment variables"

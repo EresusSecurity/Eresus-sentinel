@@ -1,0 +1,61 @@
+Eresus Sentinel Proprietary License
+
+Copyright (c) 2026 Eresus Security. All rights reserved.
+
+1. GRANT OF LICENSE
+
+   This software and associated documentation files (the "Software") are the
+   proprietary property of Eresus Security ("Licensor"). The Licensor grants
+   you a limited, non-exclusive, non-transferable, revocable license to use
+   the Software solely for your internal security testing and evaluation
+   purposes, subject to the terms of this license.
+
+2. RESTRICTIONS
+
+   You may NOT:
+   a) Modify, adapt, translate, reverse engineer, decompile, or disassemble
+      the Software, except to the extent permitted by applicable law;
+   b) Redistribute, sublicense, rent, lease, sell, or otherwise transfer
+      the Software to any third party;
+   c) Remove or alter any proprietary notices, labels, or marks on the
+      Software;
+   d) Use the Software to develop a competing product or service;
+   e) Use the Software in any manner that violates applicable laws or
+      regulations.
+
+3. COMMERCIAL USE
+
+   Commercial use, enterprise deployment, and redistribution require a
+   separate commercial license agreement. Contact: licensing@eresussec.com
+
+4. INTELLECTUAL PROPERTY
+
+   The Software, including all copies, modifications, and derivative works,
+   is and shall remain the sole and exclusive property of Eresus Security.
+   This license does not convey any ownership interest in the Software.
+
+5. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+   IN NO EVENT SHALL ERESUS SECURITY BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+   OTHER DEALINGS IN THE SOFTWARE.
+
+6. TERMINATION
+
+   This license is effective until terminated. It will terminate
+   automatically without notice if you fail to comply with any provision
+   of this license. Upon termination, you must destroy all copies of the
+   Software in your possession.
+
+7. GOVERNING LAW
+
+   This license shall be governed by and construed in accordance with
+   applicable international intellectual property laws.
+
+For licensing inquiries: licensing@eresussec.com
+For security reports: security@eresussec.com
+Website: https://eresussec.com

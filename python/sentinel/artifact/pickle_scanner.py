@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import BinaryIO, Optional
 
 from ..finding import Finding, Severity, Location
+from ..scan_safety import check_file_size, safe_read_bytes, FileTooLargeError, MAX_SCAN_FILE_SIZE
 
 from ._pickle_ops import (
     GLOBAL_OPS, REDUCE_OPS, STRING_OPS, TUPLE_OPS,
@@ -331,6 +332,25 @@ class PickleScanner:
                 cwe_ids=["CWE-502"],
             ))
 
+        # Unused variable detection (side-effect-only operations)
+        if analysis.has_unused_assignments:
+            findings.append(Finding.artifact(
+                rule_id="ARTIFACT-034",
+                title="Unused variable after REDUCE (side-effect-only operation)",
+                description=(
+                    "The pickle executes callables (REDUCE) and stores results "
+                    "in memo slots that are never referenced afterward. This is "
+                    "characteristic of malicious pickles that execute code purely "
+                    "for side effects (e.g., os.system, eval) rather than to "
+                    "reconstruct data."
+                ),
+                severity=Severity.HIGH,
+                confidence=0.85,
+                target=source,
+                evidence="REDUCE results stored in memo but never read via GET",
+                cwe_ids=["CWE-502"],
+            ))
+
         return findings
 
     def scan_file(self, file_path: str | Path) -> list[Finding]:
@@ -338,7 +358,18 @@ class PickleScanner:
         if not path.exists():
             logger.warning("File not found: %s", path)
             return []
-        data = path.read_bytes()
+        try:
+            data = safe_read_bytes(path)
+        except FileTooLargeError as e:
+            logger.warning("File too large to scan: %s", e)
+            return [Finding.artifact(
+                rule_id="PICKLE-SIZE",
+                title="File too large to scan safely",
+                description=str(e),
+                severity=Severity.HIGH,
+                target=str(path),
+                cwe_ids=["CWE-400"],
+            )]
         return self.scan_bytes(data, source=str(path))
 
     def scan_stream(self, stream: BinaryIO, source: str = "<stream>") -> list[Finding]:
@@ -622,6 +653,28 @@ class PickleScanner:
         analysis.dangerous_imports = pending_globals + [
             imp for imp in analysis.dangerous_imports if imp not in pending_globals
         ]
+
+        # ── Fickling-inspired: unused variable detection ─────────
+        # Variables stored in memo after REDUCE but never read via GET
+        # indicate side-effect-only operations (e.g., os.system("cmd"))
+        _memo_referenced = set()
+        for opcode, arg, pos in ops:
+            if opcode.name in MEMO_READ_OPS and isinstance(arg, int):
+                _memo_referenced.add(arg)
+        _memo_written_after_reduce = set()
+        _last_was_reduce = False
+        for opcode, arg, pos in ops:
+            if opcode.name in REDUCE_OPS:
+                _last_was_reduce = True
+            elif opcode.name in MEMO_WRITE_OPS:
+                if _last_was_reduce and isinstance(arg, int):
+                    _memo_written_after_reduce.add(arg)
+                _last_was_reduce = False
+            else:
+                _last_was_reduce = False
+        _unused = _memo_written_after_reduce - _memo_referenced
+        if _unused:
+            analysis.has_unused_assignments = True
 
         if analysis.dangerous_imports:
             max_confidence = max(imp.confidence for imp in analysis.dangerous_imports)

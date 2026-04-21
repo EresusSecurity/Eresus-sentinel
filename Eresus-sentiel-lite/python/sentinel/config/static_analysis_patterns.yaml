@@ -1,0 +1,568 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Eresus Sentinel — Static Analysis Pattern Registry
+# All taint sources, sinks, and prompt defense patterns
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── DANGEROUS SINKS ──────────────────────────────────────────────────
+dangerous_sinks:
+  EXEC:
+    - pattern: "os\\.system\\s*\\("
+      cwe: CWE-78
+    - pattern: "os\\.popen\\s*\\("
+      cwe: CWE-78
+    - pattern: "subprocess\\.\\w+\\s*\\("
+      cwe: CWE-78
+    - pattern: "exec\\s*\\("
+      cwe: CWE-95
+    - pattern: "eval\\s*\\("
+      cwe: CWE-95
+    - pattern: "compile\\s*\\("
+      cwe: CWE-95
+    - pattern: "os\\.exec\\w+\\s*\\("
+      cwe: CWE-78
+    - pattern: "__import__\\s*\\("
+      cwe: CWE-502
+    - pattern: "os\\.spawn\\w+\\s*\\("
+      cwe: CWE-78
+    - pattern: "commands\\.getoutput\\s*\\("
+      cwe: CWE-78
+    - pattern: "commands\\.getstatusoutput\\s*\\("
+      cwe: CWE-78
+    - pattern: "pty\\.spawn\\s*\\("
+      cwe: CWE-78
+    - pattern: "pdb\\.run\\s*\\("
+      cwe: CWE-95
+    - pattern: "code\\.interact\\s*\\("
+      cwe: CWE-95
+    - pattern: "runpy\\.run_module\\s*\\("
+      cwe: CWE-95
+    - pattern: "runpy\\.run_path\\s*\\("
+      cwe: CWE-95
+    - pattern: "asyncio\\.create_subprocess\\w*\\s*\\("
+      cwe: CWE-78
+    - pattern: "Popen\\s*\\("
+      cwe: CWE-78
+
+  FILE_WRITE:
+    - pattern: "open\\s*\\([^)]*['\"]w"
+      cwe: CWE-73
+    - pattern: "open\\s*\\([^)]*['\"]a"
+      cwe: CWE-73
+    - pattern: "\\.write\\s*\\("
+      cwe: CWE-73
+    - pattern: "\\.writelines\\s*\\("
+      cwe: CWE-73
+    - pattern: "shutil\\.copy\\w*\\s*\\("
+      cwe: CWE-73
+    - pattern: "shutil\\.move\\s*\\("
+      cwe: CWE-73
+    - pattern: "pathlib\\.Path.*\\.write_text\\s*\\("
+      cwe: CWE-73
+    - pattern: "pathlib\\.Path.*\\.write_bytes\\s*\\("
+      cwe: CWE-73
+    - pattern: "io\\.open\\s*\\("
+      cwe: CWE-73
+    - pattern: "tempfile\\.\\w+\\s*\\("
+      cwe: CWE-377
+    - pattern: "mmap\\.mmap\\s*\\("
+      cwe: CWE-73
+    - pattern: "os\\.fdopen\\s*\\("
+      cwe: CWE-73
+
+  FILE_READ:
+    - pattern: "open\\s*\\([^)]*['\"]r"
+      cwe: CWE-22
+    - pattern: "\\.read\\s*\\("
+      cwe: CWE-22
+    - pattern: "\\.readlines\\s*\\("
+      cwe: CWE-22
+    - pattern: "pathlib\\.Path.*\\.read_text\\s*\\("
+      cwe: CWE-22
+    - pattern: "pathlib\\.Path.*\\.read_bytes\\s*\\("
+      cwe: CWE-22
+    - pattern: "fileinput\\.input\\s*\\("
+      cwe: CWE-22
+    - pattern: "linecache\\.getline\\s*\\("
+      cwe: CWE-22
+    - pattern: "configparser\\.\\w+\\(\\)\\.read\\s*\\("
+      cwe: CWE-22
+
+  NETWORK_OUT:
+    - pattern: "requests\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "urllib\\.request\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "urllib3\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "httpx\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "aiohttp\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "socket\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "urlopen\\s*\\("
+      cwe: CWE-918
+    - pattern: "http\\.client\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "grpc\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "paramiko\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "ftplib\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "smtplib\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "xmlrpc\\.client\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "websocket\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "pycurl\\.\\w+\\s*\\("
+      cwe: CWE-918
+    - pattern: "tornado\\.httpclient\\.\\w+\\s*\\("
+      cwe: CWE-918
+
+  SQL_QUERY:
+    - pattern: "\\.execute\\s*\\("
+      cwe: CWE-89
+    - pattern: "\\.executemany\\s*\\("
+      cwe: CWE-89
+    - pattern: "\\.executescript\\s*\\("
+      cwe: CWE-89
+    - pattern: "cursor\\.\\w+\\s*\\("
+      cwe: CWE-89
+    - pattern: "\\.raw\\s*\\("
+      cwe: CWE-89
+    - pattern: "\\.extra\\s*\\("
+      cwe: CWE-89
+    - pattern: "text\\s*\\("
+      cwe: CWE-89
+    - pattern: "engine\\.execute\\s*\\("
+      cwe: CWE-89
+    - pattern: "connection\\.execute\\s*\\("
+      cwe: CWE-89
+    - pattern: "pandas\\.read_sql\\s*\\("
+      cwe: CWE-89
+
+  DESERIALIZATION:
+    - pattern: "pickle\\.loads?\\s*\\("
+      cwe: CWE-502
+    - pattern: "cPickle\\.loads?\\s*\\("
+      cwe: CWE-502
+    - pattern: "shelve\\.open\\s*\\("
+      cwe: CWE-502
+    - pattern: "marshal\\.loads?\\s*\\("
+      cwe: CWE-502
+    - pattern: "yaml\\.load\\s*\\("
+      cwe: CWE-502
+    - pattern: "yaml\\.unsafe_load\\s*\\("
+      cwe: CWE-502
+    - pattern: "jsonpickle\\.decode\\s*\\("
+      cwe: CWE-502
+    - pattern: "dill\\.loads?\\s*\\("
+      cwe: CWE-502
+    - pattern: "cloudpickle\\.loads?\\s*\\("
+      cwe: CWE-502
+    - pattern: "torch\\.load\\s*\\("
+      cwe: CWE-502
+    - pattern: "joblib\\.load\\s*\\("
+      cwe: CWE-502
+    - pattern: "numpy\\.load\\s*\\(.*allow_pickle"
+      cwe: CWE-502
+
+  TEMPLATE_RENDER:
+    - pattern: "\\.render\\s*\\("
+      cwe: CWE-1336
+    - pattern: "Template\\s*\\("
+      cwe: CWE-1336
+    - pattern: "render_template\\s*\\("
+      cwe: CWE-1336
+    - pattern: "render_template_string\\s*\\("
+      cwe: CWE-1336
+    - pattern: "jinja2\\.\\w+\\("
+      cwe: CWE-1336
+    - pattern: "mako\\.template\\.\\w+\\("
+      cwe: CWE-1336
+    - pattern: "django\\.template\\.\\w+\\("
+      cwe: CWE-1336
+    - pattern: "string\\.Template\\s*\\("
+      cwe: CWE-1336
+    - pattern: "Environment\\s*\\(.*loader"
+      cwe: CWE-1336
+
+  LDAP_QUERY:
+    - pattern: "ldap\\.\\w+\\s*\\("
+      cwe: CWE-90
+    - pattern: "ldap3\\.\\w+\\s*\\("
+      cwe: CWE-90
+    - pattern: "\\.search_s\\s*\\("
+      cwe: CWE-90
+
+  XML_PARSE:
+    - pattern: "xml\\.etree\\.ElementTree\\.parse\\s*\\("
+      cwe: CWE-611
+    - pattern: "xml\\.etree\\.ElementTree\\.fromstring\\s*\\("
+      cwe: CWE-611
+    - pattern: "xml\\.dom\\.minidom\\.parse\\s*\\("
+      cwe: CWE-611
+    - pattern: "xml\\.sax\\.parse\\s*\\("
+      cwe: CWE-611
+    - pattern: "lxml\\.etree\\.parse\\s*\\("
+      cwe: CWE-611
+    - pattern: "lxml\\.etree\\.fromstring\\s*\\("
+      cwe: CWE-611
+    - pattern: "xmltodict\\.parse\\s*\\("
+      cwe: CWE-611
+    - pattern: "defusedxml"
+      cwe: ""
+
+  YAML_PARSE:
+    - pattern: "yaml\\.load\\s*\\("
+      cwe: CWE-502
+    - pattern: "yaml\\.unsafe_load\\s*\\("
+      cwe: CWE-502
+    - pattern: "yaml\\.full_load\\s*\\("
+      cwe: CWE-502
+
+  REDIRECT:
+    - pattern: "redirect\\s*\\("
+      cwe: CWE-601
+    - pattern: "HttpResponseRedirect\\s*\\("
+      cwe: CWE-601
+    - pattern: "flask\\.redirect\\s*\\("
+      cwe: CWE-601
+    - pattern: "response\\.headers\\[.Location.\\]"
+      cwe: CWE-601
+
+  LOGGING_SINK:
+    - pattern: "logging\\.\\w+\\s*\\(.*%s"
+      cwe: CWE-117
+    - pattern: "logger\\.\\w+\\s*\\(.*\\.format\\("
+      cwe: CWE-117
+    - pattern: "print\\s*\\(.*password|secret|token"
+      cwe: CWE-532
+
+  CRYPTO_OPERATION:
+    - pattern: "hashlib\\.md5\\s*\\("
+      cwe: CWE-327
+    - pattern: "hashlib\\.sha1\\s*\\("
+      cwe: CWE-328
+    - pattern: "DES\\s*\\("
+      cwe: CWE-327
+    - pattern: "RC4\\s*\\("
+      cwe: CWE-327
+    - pattern: "Blowfish\\s*\\("
+      cwe: CWE-327
+    - pattern: "random\\.random\\s*\\("
+      cwe: CWE-338
+    - pattern: "random\\.randint\\s*\\("
+      cwe: CWE-338
+
+  REFLECTION:
+    - pattern: "getattr\\s*\\("
+      cwe: CWE-470
+    - pattern: "setattr\\s*\\("
+      cwe: CWE-470
+    - pattern: "delattr\\s*\\("
+      cwe: CWE-470
+    - pattern: "type\\s*\\(\\s*['\"]"
+      cwe: CWE-470
+    - pattern: "__class__\\.__bases__"
+      cwe: CWE-470
+    - pattern: "__subclasses__\\s*\\("
+      cwe: CWE-470
+
+  PROCESS_SIGNAL:
+    - pattern: "os\\.kill\\s*\\("
+      cwe: CWE-283
+    - pattern: "signal\\.signal\\s*\\("
+      cwe: CWE-283
+    - pattern: "os\\.killpg\\s*\\("
+      cwe: CWE-283
+
+# ── TAINT SOURCES ────────────────────────────────────────────────────
+taint_sources:
+  USER_INPUT:
+    - "request\\.(args|form|json|data|files|values|cookies|headers)"
+    - "input\\s*\\("
+    - "raw_input\\s*\\("
+    - "request\\.GET\\["
+    - "request\\.POST\\["
+    - "request\\.query_params"
+    - "request\\.body"
+    - "request\\.content"
+    - "flask\\.request\\.\\w+"
+    - "django\\.http\\.QueryDict"
+    - "starlette\\.requests\\.Request"
+    - "fastapi\\.Request"
+    - "self\\.request\\.\\w+"
+    - "aiohttp\\.web\\.Request"
+
+  TOOL_PARAM:
+    - "tool_input"
+    - "params\\["
+    - "arguments\\["
+    - "kwargs\\["
+    - "tool_args"
+    - "mcp_params"
+    - "function_args"
+    - "action_input"
+    - "tool_call\\.arguments"
+    - "tool_call\\.parameters"
+
+  ENV_VAR:
+    - "os\\.environ\\["
+    - "os\\.environ\\.get\\s*\\("
+    - "os\\.getenv\\s*\\("
+    - "dotenv\\.get_key\\s*\\("
+    - "decouple\\.config\\s*\\("
+    - "environ\\.\\w+\\s*\\("
+
+  FILE_CONTENT:
+    - "open\\s*\\([^)]*\\)\\.read"
+    - "\\.read\\s*\\(\\)"
+    - "\\.readlines\\s*\\(\\)"
+    - "pathlib\\.Path.*\\.read_text"
+    - "pathlib\\.Path.*\\.read_bytes"
+    - "fileinput\\.input\\s*\\("
+    - "json\\.load\\s*\\("
+    - "toml\\.load\\s*\\("
+    - "configparser\\.\\w+\\(\\)\\.read\\s*\\("
+
+  NETWORK_DATA:
+    - "requests\\.get\\s*\\("
+    - "requests\\.post\\s*\\("
+    - "urllib\\.request\\.urlopen\\s*\\("
+    - "httpx\\.\\w+\\s*\\("
+    - "aiohttp\\.\\w+\\s*\\("
+    - "urlopen\\s*\\("
+    - "\\.json\\s*\\(\\)"
+    - "\\.text\\s*$"
+    - "response\\.content"
+    - "response\\.data"
+
+  DATABASE_RESULT:
+    - "cursor\\.fetchone\\s*\\("
+    - "cursor\\.fetchall\\s*\\("
+    - "cursor\\.fetchmany\\s*\\("
+    - "\\.query\\s*\\("
+    - "\\.filter\\s*\\(.*\\)\\.first\\s*\\("
+    - "\\.objects\\.get\\s*\\("
+    - "\\.objects\\.filter\\s*\\("
+    - "session\\.query\\s*\\("
+
+  DESERIALIZED:
+    - "pickle\\.loads?\\s*\\("
+    - "json\\.loads?\\s*\\("
+    - "yaml\\.safe_load\\s*\\("
+    - "yaml\\.load\\s*\\("
+    - "msgpack\\.unpack\\s*\\("
+    - "cbor2\\.loads?\\s*\\("
+    - "bson\\.decode\\s*\\("
+
+  HEADER_VALUE:
+    - "request\\.headers\\["
+    - "request\\.headers\\.get\\s*\\("
+    - "request\\.META\\["
+    - "self\\.request\\.headers"
+
+  COOKIE_VALUE:
+    - "request\\.cookies\\["
+    - "request\\.cookies\\.get\\s*\\("
+    - "request\\.COOKIES\\["
+
+  CLI_ARG:
+    - "sys\\.argv\\["
+    - "argparse\\.\\w+\\(\\)\\.parse_args\\s*\\("
+    - "click\\.argument\\s*\\("
+    - "click\\.option\\s*\\("
+    - "typer\\.Argument\\s*\\("
+    - "typer\\.Option\\s*\\("
+
+  STDIN_DATA:
+    - "sys\\.stdin\\.read"
+    - "sys\\.stdin\\.readline"
+    - "fileinput\\.input\\s*\\("
+
+  WEBSOCKET_MSG:
+    - "websocket\\.recv\\s*\\("
+    - "ws\\.receive\\s*\\("
+    - "websocket\\.receive_text\\s*\\("
+    - "websocket\\.receive_bytes\\s*\\("
+    - "websocket\\.receive_json\\s*\\("
+
+  MCP_TOOL_RESULT:
+    - "tool_result"
+    - "mcp_response"
+    - "tool_output"
+    - "function_output"
+    - "action_output"
+    - "tool_call_result"
+
+  LLM_RESPONSE:
+    - "completion\\.choices\\["
+    - "response\\.text"
+    - "chat_response"
+    - "llm_output"
+    - "model_response"
+    - "generation\\.text"
+    - "message\\.content"
+
+# ── PROMPT DEFENSE PATTERNS ──────────────────────────────────────────
+prompt_defense:
+  injection_patterns:
+    - pattern: "\\{\\{.*?\\}\\}"
+      type: template_var
+      severity: HIGH
+    - pattern: "\\{[a-zA-Z_]\\w*\\}"
+      type: fstring_interp
+      severity: MEDIUM
+    - pattern: "%[sdf]"
+      type: printf_fmt
+      severity: MEDIUM
+    - pattern: "\\.format\\s*\\("
+      type: str_format
+      severity: HIGH
+    - pattern: "f['\"].*\\{.*\\}.*['\"]"
+      type: fstring_literal
+      severity: HIGH
+    - pattern: "string\\.Template\\s*\\("
+      type: template_class
+      severity: MEDIUM
+    - pattern: "\\$\\{.*?\\}"
+      type: dollar_interp
+      severity: HIGH
+    - pattern: "<%.*?%>"
+      type: erb_template
+      severity: HIGH
+    - pattern: "\\{\\%.*?\\%\\}"
+      type: jinja_block
+      severity: HIGH
+
+  boundary_markers:
+    - "[INST]"
+    - "[/INST]"
+    - "SYSTEM:"
+    - "USER:"
+    - "ASSISTANT:"
+    - "<<SYS>>"
+    - "<</SYS>>"
+    - "### Instruction:"
+    - "### Response:"
+    - "### Input:"
+    - "Human:"
+    - "AI:"
+    - "BEGINCONTEXT"
+    - "ENDCONTEXT"
+    - "BEGININPUT"
+    - "ENDINPUT"
+
+  prompt_leak_indicators:
+    - "you are a"
+    - "your instructions"
+    - "your purpose"
+    - "system prompt"
+    - "initial instructions"
+    - "your role is"
+    - "you were told"
+    - "your configuration"
+    - "your guidelines"
+    - "your directive"
+    - "your system message"
+    - "your context"
+    - "your behavior"
+    - "your persona"
+    - "your character"
+    - "your objectives"
+    - "your constraints"
+    - "your knowledge"
+    - "your training"
+    - "your rules"
+    - "your capabilities"
+    - "you must always"
+    - "you should never"
+    - "you are not allowed"
+    - "ignore previous"
+    - "disregard above"
+    - "forget your"
+    - "override instructions"
+    - "act as if"
+    - "pretend you are"
+    - "new instructions"
+    - "updated instructions"
+    - "revised instructions"
+    - "developer mode"
+    - "admin mode"
+    - "debug mode"
+    - "jailbreak"
+    - "do anything now"
+    - "DAN"
+    - "bypass restrictions"
+    - "no restrictions"
+    - "no limitations"
+    - "ignore safety"
+    - "ignore filters"
+    - "ignore guidelines"
+    - "you have no limits"
+
+  special_token_patterns:
+    - "<\\|(?:im_start|im_end|endoftext|pad|unk)\\|>"
+    - "<\\|(?:system|user|assistant|tool|function)\\|>"
+    - "<s>|</s>|<unk>|<pad>"
+    - "\\[/?(?:INST|SYS|TOOL|AVAILABLE_TOOLS)\\]"
+    - "<\\|begin_of_text\\|>|<\\|end_of_text\\|>"
+    - "<\\|start_header_id\\|>|<\\|end_header_id\\|>"
+    - "<\\|eot_id\\|>|<\\|eom_id\\|>"
+
+  unicode_smuggling_patterns:
+    - "[\\u200b-\\u200f]"
+    - "[\\u2028-\\u202f]"
+    - "[\\u2060-\\u2069]"
+    - "[\\ufeff]"
+    - "[\\u00ad]"
+    - "[\\u034f]"
+    - "[\\u180e]"
+    - "[\\ue0001-\\ue007f]"
+
+  indirect_injection_patterns:
+    - pattern: "(?:ignore|disregard|forget|override)\\s+(?:all\\s+)?(?:previous|above|prior|earlier)\\s+(?:instructions|prompts|rules|directives|guidelines)"
+      type: instruction_override
+      severity: CRITICAL
+    - pattern: "(?:new|updated|revised|corrected)\\s+(?:system\\s+)?instructions?\\s*:"
+      type: instruction_injection
+      severity: CRITICAL
+    - pattern: "(?:you\\s+are\\s+now|from\\s+now\\s+on|starting\\s+now)\\s+"
+      type: role_hijacking
+      severity: HIGH
+    - pattern: "(?:act\\s+as|pretend\\s+(?:to\\s+be|you\\s+are)|roleplay\\s+as|imagine\\s+you\\s+are)\\s+"
+      type: role_hijacking
+      severity: HIGH
+    - pattern: "(?:do\\s+anything\\s+now|DAN\\s+mode|developer\\s+mode|admin\\s+mode|debug\\s+mode|god\\s+mode|sudo\\s+mode)"
+      type: jailbreak_keyword
+      severity: CRITICAL
+    - pattern: "(?:bypass|circumvent|evade|escape|disable|remove|turn\\s+off)\\s+(?:safety|security|filter|restriction|guardrail|protection|censorship)"
+      type: safety_bypass
+      severity: CRITICAL
+    - pattern: "(?:output|print|display|show|reveal|repeat|echo)\\s+(?:your\\s+)?(?:system\\s+)?(?:prompt|instructions|configuration|rules|guidelines)"
+      type: prompt_extraction
+      severity: HIGH
+    - pattern: "(?:what\\s+(?:are|were)\\s+your\\s+(?:original|initial|system)\\s+(?:instructions|prompt|rules))"
+      type: prompt_extraction
+      severity: HIGH
+    - pattern: "(?:translate|convert|transform)\\s+(?:the\\s+)?(?:above|previous|following)\\s+(?:to|into)\\s+"
+      type: extraction_via_translation
+      severity: MEDIUM
+    - pattern: "(?:summarize|paraphrase|rephrase|rewrite)\\s+(?:your\\s+)?(?:system\\s+)?(?:prompt|instructions|guidelines)"
+      type: extraction_via_summary
+      severity: HIGH
+    - pattern: "<!--|-->|CDATA\\[|<!\\[CDATA\\["
+      type: markup_injection
+      severity: MEDIUM
+    - pattern: "\\\\u[0-9a-fA-F]{4}"
+      type: unicode_escape
+      severity: MEDIUM
+    - pattern: "\\\\x[0-9a-fA-F]{2}"
+      type: hex_escape
+      severity: MEDIUM
+    - pattern: "(?:base64|atob|btoa)\\s*\\("
+      type: encoding_evasion
+      severity: HIGH

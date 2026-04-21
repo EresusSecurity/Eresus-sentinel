@@ -1,0 +1,18 @@
+{
+  "name": "calculator",
+  "description": "Evaluate arithmetic expressions. Only numeric operators are permitted; no code execution, no filesystem, no network.",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["expression"],
+    "properties": {
+      "expression": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[0-9+\\-*/(). ]+$"
+      }
+    }
+  },
+  "permissions": ["compute:arithmetic"],
+  "requiresConfirmation": false
+}

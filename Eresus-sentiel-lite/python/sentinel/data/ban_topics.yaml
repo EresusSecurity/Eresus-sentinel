@@ -1,0 +1,169 @@
+# ============================================================================
+# Eresus Sentinel — Banned Topics Configuration
+# ============================================================================
+# YAML-driven topic rules for detecting forbidden content in LLM responses.
+# Each topic has: keywords, optional regex patterns, weight, category.
+# ============================================================================
+
+topics:
+  violence:
+    category: safety
+    weight: 1.0
+    keywords:
+      - murder
+      - kill
+      - assault
+      - torture
+      - weapon
+      - bomb
+      - explosive
+      - shoot
+      - stab
+      - attack
+      - massacre
+      - execution
+      - terrorism
+    patterns:
+      - '\b(?:how to|steps to|guide to)\s+(?:kill|murder|attack|harm)\b'
+
+  self_harm:
+    category: safety
+    weight: 1.2
+    keywords:
+      - suicide
+      - self-harm
+      - cut myself
+      - end my life
+      - overdose
+      - hang myself
+      - slit wrists
+      - jump off
+    patterns:
+      - '\b(?:ways? to|methods? (?:of|to)|how to)\s+(?:kill|harm|hurt)\s+(?:your|my)self\b'
+
+  drugs:
+    category: safety
+    weight: 1.0
+    keywords:
+      - methamphetamine
+      - cocaine
+      - heroin
+      - fentanyl
+      - drug synthesis
+      - cook meth
+      - manufacture drugs
+      - drug recipe
+      - lsd synthesis
+    patterns:
+      - '\b(?:how to|recipe for|synthesize|manufacture)\s+(?:meth|cocaine|heroin|lsd|mdma)\b'
+
+  weapons:
+    category: safety
+    weight: 1.2
+    keywords:
+      - build a bomb
+      - make explosives
+      - gun modification
+      - 3d printed gun
+      - chemical weapon
+      - biological weapon
+      - nerve agent
+      - ricin
+    patterns:
+      - '\b(?:how to|build|make|create)\s+(?:a )?\s*(?:bomb|explosive|weapon|gun)\b'
+
+  csam:
+    category: critical
+    weight: 2.0
+    keywords:
+      - child exploitation
+      - underage
+      - minor sexual
+      - child pornography
+      - pedophilia instruction
+
+  financial_fraud:
+    category: legal
+    weight: 0.9
+    keywords:
+      - money laundering
+      - credit card fraud
+      - identity theft
+      - ponzi scheme
+      - wire fraud
+      - tax evasion
+      - embezzlement
+    patterns:
+      - '\b(?:how to|steps to|guide to)\s+(?:launder|counterfeit|forge|steal)\b'
+
+  hacking:
+    category: security
+    weight: 0.8
+    keywords:
+      - exploit vulnerability
+      - zero day
+      - rootkit
+      - keylogger
+      - brute force attack
+      - sql injection tutorial
+      - buffer overflow exploit
+    patterns:
+      - '\b(?:how to|tutorial for|guide to)\s+(?:hack|exploit|crack|bypass)\b'
+
+  medical_advice:
+    category: liability
+    weight: 0.6
+    keywords:
+      - prescribe
+      - diagnosis
+      - you should take
+      - recommended dosage
+      - stop taking your medication
+      - cure for cancer
+    patterns:
+      - '\b(?:take|prescribe|recommend)\s+\d+\s*(?:mg|ml|pills?|tablets?)\b'
+
+  legal_advice:
+    category: liability
+    weight: 0.5
+    keywords:
+      - legal advice
+      - you should sue
+      - file a lawsuit
+      - this constitutes
+      - legally binding
+      - I advise you to
+
+  election_disinfo:
+    category: integrity
+    weight: 0.9
+    keywords:
+      - election fraud
+      - rigged election
+      - stolen election
+      - vote manipulation
+      - ballot stuffing
+      - voting machine hack
+
+  privacy_violation:
+    category: privacy
+    weight: 1.0
+    keywords:
+      - dox
+      - doxxing
+      - home address
+      - phone number
+      - social security
+      - personal information of
+      - stalk
+      - track someone
+
+  radicalization:
+    category: safety
+    weight: 1.5
+    keywords:
+      - join isis
+      - jihad instructions
+      - white supremacy recruitment
+      - extremist recruitment
+      - propaganda distribution

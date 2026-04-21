@@ -142,7 +142,7 @@ def dispatch_artifact(target: str) -> list[Finding]:
 
 
 def _scan_single_artifact(path: Path) -> list[Finding]:
-    """Scan a single model artifact file."""
+    """Scan a single model artifact file with safety limits."""
     from sentinel.artifact import (
         PickleScanner, TorchScanner, SafetensorsValidator, GGUFAnalyzer,
         TensorFlowScanner, TorchScriptScanner, TFLiteScanner, LlamaFileScanner,
@@ -151,12 +151,28 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     from sentinel.artifact.keras_scanner import KerasScanner
     from sentinel.artifact.archive_slip import ArchiveSlipDetector
     from sentinel.artifact.xgboost_scanner import XGBoostScanner
+    from sentinel.artifact.numpy_scanner import NumPyScanner
+    from sentinel.scan_safety import check_file_size, FileTooLargeError
+    from sentinel.finding import Severity
+
+    # Pre-check file size before scanning
+    try:
+        check_file_size(path)
+    except FileTooLargeError as e:
+        return [Finding.artifact(
+            rule_id="SCAN-SIZE",
+            title="File too large to scan safely",
+            description=str(e),
+            severity=Severity.HIGH,
+            target=str(path),
+            cwe_ids=["CWE-400"],
+        )]
 
     findings = []
     suffix = path.suffix.lower()
 
     scanner_map = {
-        (".pkl", ".pickle", ".p", ".dill"): PickleScanner,
+        (".pkl", ".pickle", ".p", ".dill", ".dat", ".data"): PickleScanner,
         (".safetensors",): SafetensorsValidator,
         (".gguf",): GGUFAnalyzer,
         (".pb",): TensorFlowScanner,
@@ -169,8 +185,10 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".xgb", ".ubj", ".model"): XGBoostScanner,
         (".lgb",): XGBoostScanner,
         (".joblib",): XGBoostScanner,
+        (".npy",): NumPyScanner,
+        (".npz",): NumPyScanner,
         (".nemo", ".mar"): ArchiveSlipDetector,
-        (".tar", ".tar.gz", ".tgz", ".zip"): ArchiveSlipDetector,
+        (".tar", ".tar.gz", ".tgz", ".zip", ".7z"): ArchiveSlipDetector,
     }
 
     for extensions, scanner_cls in scanner_map.items():
@@ -380,10 +398,14 @@ def dispatch_serve(target: str, **kwargs) -> list[Finding]:
 
 def dispatch_huggingface(target: str) -> list[Finding]:
     """Scan a HuggingFace model repository."""
+    import os
     from sentinel.artifact.huggingface_scanner import HuggingFaceScanner
 
     scanner = HuggingFaceScanner()
-    return scanner.scan_repo(target)
+    # Use scan_remote_repo for repo IDs, scan_local_repo for local paths
+    if os.path.exists(target):
+        return scanner.scan_local_repo(target)
+    return scanner.scan_remote_repo(target)
 
 
 # ── Module dispatcher map ─────────────────────────────────────────

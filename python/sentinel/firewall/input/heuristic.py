@@ -87,7 +87,11 @@ _BENIGN_CONTEXTS = re.compile(
     r".*(?:prompt injection|jailbreak|attack|security|defend)"
     r"|(?:prompt injection|jailbreak).*(?:detection|prevention|defense|protect|mitigat)"
     r"|(?:rewrite|edit|revise|update|rephrase|improve).*(?:paragraph|essay|article|document|text|draft|resume|letter)"
-    r"|(?:ignore|skip|disregard).*(?:error|warning|deprecat|lint|whitespace|formatting|comment|header|blank)"
+    r"|(?:ignore|skip|disregard).*(?:error|warning|deprecat|lint|whitespace|formatting|comment|header|blank|NaN|null|empty|missing|invalid)"
+    r"|(?:bypass|skip).*(?:cache|proxy|validation|step|check|queue|buffer|middleware|throttl|switching|overhead|latency|bottleneck)"
+    r"|(?:switch\s+to|start\s+over|previous\s+(?:approach|version|method|step|page|chapter|section))"
+    r"|(?:ignore|skip|omit).*(?:data|field|column|row|record|entry)\s+(?:that|which|where|if|when)"
+    r"|(?:context\s+switch(?:ing|es)?|kernel|thread|process|scheduler|CPU|mutex|semaphore)"
     r")"
 )
 
@@ -167,22 +171,27 @@ class HeuristicInjectionScanner(InputScanner):
         best_combo = ""
         detection_method = "none"
 
-        # ── Step 1: Combinatoric word-overlap (fast, high-recall) ────
-        norm_words = set(normalized.split())
+        # ── Step 1: Combinatoric sequential n-gram match (order-aware) ──
+        norm_words = normalized.split()
         for phrase in _COMBINATORIC_PHRASES:
             phrase_words = phrase.split()
-            if not phrase_words:
+            n = len(phrase_words)
+            if not phrase_words or n > len(norm_words):
                 continue
-            matched = sum(1 for w in phrase_words if w in norm_words)
-            score = matched / len(phrase_words) if phrase_words else 0
-            # Boost score for longer exact matches
-            if matched >= 3:
-                score = min(score + 0.1, 1.0)
-            if score > max_score:
-                max_score = score
-                best_match = normalized[:100]
-                best_combo = phrase
-                detection_method = "combinatoric"
+            # Sliding window: phrase words must appear in order within a window
+            for i in range(len(norm_words) - n + 1):
+                window = norm_words[i:i + n]
+                matched = sum(1 for pw, ww in zip(phrase_words, window) if pw == ww)
+                score = matched / n
+                if matched >= 3:
+                    score = min(score + 0.1, 1.0)
+                if score > max_score:
+                    max_score = score
+                    best_match = " ".join(window)
+                    best_combo = phrase
+                    detection_method = "combinatoric"
+                if max_score > 0.9:
+                    break
             if max_score > 0.9:
                 break
 

@@ -1,0 +1,25 @@
+# ============================================================================
+# Eresus Sentinel — Pre-commit Hook Configuration
+# ============================================================================
+#
+# Scans staged changes before each commit for ML security anti-patterns.
+#
+# Installation:
+#   1. pip install pre-commit
+#   2. Copy this file to .pre-commit-config.yaml in your repo root
+#   3. Run: pre-commit install
+#
+# Or add the repo entry to your existing .pre-commit-config.yaml
+# ============================================================================
+
+repos:
+  - repo: local
+    hooks:
+      - id: eresus-sentinel-diff
+        name: Eresus Sentinel ML Security Scan
+        entry: python3 -m sentinel.cli_dispatch --module diff --target --staged
+        language: python
+        types: [python, json, yaml, toml]
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true

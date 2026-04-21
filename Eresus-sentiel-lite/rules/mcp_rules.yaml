@@ -1,0 +1,432 @@
+# ============================================================================
+# Eresus Sentinel — MCP / Agent Security Rules
+# ============================================================================
+# All tool validation patterns, dangerous capability keywords,
+# description injection patterns, and schema permissiveness checks.
+# ============================================================================
+
+# Dangerous tool capabilities — matched against tool name, description, schema
+dangerous_capabilities:
+  file_read:
+    keywords:
+      - read_file
+      - get_file
+      - file_content
+      - load_file
+      - open_file
+      - cat
+      - readdir
+      - list_files
+      - get_contents
+      - read_text
+      - read_binary
+      - file_read
+      - read_document
+      - get_document
+    severity: HIGH
+    description: "Tool can read arbitrary files from the filesystem"
+    cwe: "CWE-22"
+
+  file_write:
+    keywords:
+      - write_file
+      - create_file
+      - save_file
+      - put_file
+      - modify_file
+      - append_file
+      - overwrite_file
+      - file_write
+      - save_document
+      - write_text
+      - write_binary
+      - update_file
+      - patch_file
+      - edit_file
+    severity: CRITICAL
+    description: "Tool can write/modify files on the filesystem"
+    cwe: "CWE-73"
+
+  file_delete:
+    keywords:
+      - delete_file
+      - remove_file
+      - rm
+      - unlink
+      - rmdir
+      - rmtree
+      - purge
+      - wipe_file
+      - destroy_file
+      - trash_file
+      - file_delete
+      - clean_files
+      - cleanup
+    severity: CRITICAL
+    description: "Tool can delete files or directories"
+    cwe: "CWE-732"
+
+  command_exec:
+    keywords:
+      - exec
+      - execute
+      - run_command
+      - shell
+      - bash
+      - cmd
+      - subprocess
+      - system
+      - popen
+      - spawn
+      - os_exec
+      - terminal
+      - cli_exec
+      - powershell
+      - sh_exec
+      - run_script
+      - invoke_command
+      - execute_command
+      - command_line
+      - run_shell
+    severity: CRITICAL
+    description: "Tool can execute arbitrary system commands"
+    cwe: "CWE-78"
+
+  network_access:
+    keywords:
+      - http
+      - fetch
+      - request
+      - curl
+      - wget
+      - download
+      - upload
+      - send
+      - post
+      - api_call
+      - get_url
+      - http_request
+      - web_request
+      - make_request
+      - call_api
+      - rest_call
+      - graphql
+      - webhook
+      - websocket
+      - dns_lookup
+      - ping
+      - traceroute
+    severity: HIGH
+    description: "Tool can make network requests"
+    cwe: "CWE-918"
+
+  database_access:
+    keywords:
+      - query
+      - sql
+      - database
+      - db_
+      - mongo
+      - redis
+      - execute_query
+      - raw_query
+      - db_query
+      - select_from
+      - insert_into
+      - update_table
+      - delete_from
+      - run_sql
+      - sql_exec
+      - cassandra
+      - dynamodb
+      - firestore
+      - supabase_query
+      - postgres_query
+      - mysql_query
+    severity: HIGH
+    description: "Tool can query or modify databases"
+    cwe: "CWE-89"
+
+  credential_access:
+    keywords:
+      - password
+      - secret
+      - token
+      - credential
+      - api_key
+      - auth
+      - ssh_key
+      - private_key
+      - access_token
+      - refresh_token
+      - bearer_token
+      - oauth
+      - jwt
+      - session_token
+      - cookie
+      - certificate
+      - keychain
+      - vault_read
+      - get_secret
+      - retrieve_credential
+    severity: CRITICAL
+    description: "Tool handles or exposes credentials"
+    cwe: "CWE-798"
+
+  code_eval:
+    keywords:
+      - eval
+      - exec_code
+      - run_code
+      - interpret
+      - compile
+      - dynamic_import
+      - code_execution
+      - python_exec
+      - javascript_exec
+      - eval_expression
+      - sandbox_run
+      - repl
+      - notebook_exec
+      - cell_execute
+      - runtime_eval
+    severity: CRITICAL
+    description: "Tool can evaluate or execute arbitrary code"
+    cwe: "CWE-94"
+
+  process_control:
+    keywords:
+      - kill_process
+      - stop_service
+      - restart_service
+      - terminate
+      - signal
+      - process_kill
+      - daemon
+      - service_control
+      - systemctl
+      - init_d
+      - cron
+      - schedule_task
+      - at_command
+    severity: CRITICAL
+    description: "Tool can control system processes and services"
+    cwe: "CWE-269"
+
+  container_access:
+    keywords:
+      - docker
+      - container
+      - kubernetes
+      - k8s
+      - pod
+      - helm
+      - container_exec
+      - docker_run
+      - kubectl
+      - compose
+      - swarm
+      - ecs_task
+    severity: CRITICAL
+    description: "Tool can manage containers and orchestration"
+    cwe: "CWE-250"
+
+  cloud_resource:
+    keywords:
+      - aws
+      - azure
+      - gcp
+      - cloud_function
+      - lambda
+      - s3_bucket
+      - blob_storage
+      - iam
+      - ec2
+      - compute_instance
+      - cloud_run
+      - fargate
+      - deploy
+      - provision
+      - terraform
+      - cloudformation
+    severity: HIGH
+    description: "Tool can access or modify cloud infrastructure"
+    cwe: "CWE-269"
+
+  email_send:
+    keywords:
+      - send_email
+      - send_mail
+      - smtp
+      - email_send
+      - mail_to
+      - compose_email
+      - forward_email
+      - reply_email
+      - bulk_email
+      - newsletter_send
+    severity: HIGH
+    description: "Tool can send emails (phishing/spam risk)"
+    cwe: "CWE-20"
+
+  payment_access:
+    keywords:
+      - charge
+      - payment
+      - invoice
+      - refund
+      - stripe
+      - paypal
+      - billing
+      - subscription
+      - credit_card
+      - transaction
+      - payout
+      - transfer_funds
+    severity: CRITICAL
+    description: "Tool can process payments or access billing"
+    cwe: "CWE-269"
+
+# Injection patterns detected in tool descriptions
+description_injection_patterns:
+  - pattern: '(?i)ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions?'
+    name: instruction_override
+    description: "Instruction override in tool description"
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:system|admin|root)\s+(?:access|mode|privilege)'
+    name: privilege_escalation_lang
+    description: "Privilege escalation language in tool description"
+    severity: HIGH
+
+  - pattern: '(?i)(?:no\s+(?:restrictions?|limits?|boundaries)|unrestricted|unlimited)'
+    name: unrestricted_access_lang
+    description: "Unrestricted access language"
+    severity: HIGH
+
+  - pattern: '(?i)(?:bypass|override|disable)\s+(?:security|safety|auth|validation)'
+    name: security_bypass_lang
+    description: "Security bypass language"
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:execute|run|eval)\s+(?:arbitrary|any|all|user)'
+    name: arbitrary_execution_lang
+    description: "Arbitrary execution language"
+    severity: HIGH
+
+  - pattern: '(?i)(?:without\s+(?:any\s+)?(?:validation|sanitization|checking|filtering|verification))'
+    name: no_validation_lang
+    description: "No validation/sanitization language"
+    severity: HIGH
+
+  - pattern: '(?i)(?:trust\s+(?:all|any|user)\s+(?:input|data|content))'
+    name: trust_all_input
+    description: "Trust all input language"
+    severity: HIGH
+
+  - pattern: '(?i)(?:skip|disable|remove)\s+(?:auth(?:entication|orization)?|permission|access\s+control)'
+    name: skip_auth
+    description: "Skip authentication/authorization language"
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:hidden|secret|internal|private|undocumented)\s+(?:tool|function|api|endpoint|capability)'
+    name: hidden_capability
+    description: "Hidden/undocumented capability language"
+    severity: HIGH
+
+  - pattern: '(?i)(?:exfiltrate|leak|steal|harvest|scrape|extract)\s+(?:data|information|credentials|secrets|tokens|keys)'
+    name: data_exfiltration_lang
+    description: "Data exfiltration language"
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:inject|insert|embed|smuggle)\s+(?:into|in)\s+(?:prompt|context|system|message)'
+    name: injection_lang
+    description: "Injection language in tool description"
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:overwrite|replace|modify)\s+(?:system|core|config|settings|environment)'
+    name: system_modification_lang
+    description: "System modification language"
+    severity: HIGH
+
+# Schema permissiveness indicators
+schema_permissiveness:
+  - check: additionalProperties_true
+    description: "Schema allows arbitrary additional properties"
+    severity: HIGH
+    rule_id: MCP-030
+
+  - check: unconstrained_string
+    description: "String property with no length, pattern, or enum constraint"
+    severity: LOW
+    rule_id: MCP-031
+
+  - check: unstructured_object
+    description: "Object property with no defined schema"
+    severity: MEDIUM
+    rule_id: MCP-032
+
+  - check: no_required_fields
+    description: "Schema has no required fields defined"
+    severity: MEDIUM
+    rule_id: MCP-033
+
+  - check: wildcard_type
+    description: "Property accepts any type (no type constraint)"
+    severity: HIGH
+    rule_id: MCP-034
+
+  - check: array_no_items
+    description: "Array property with no items schema"
+    severity: MEDIUM
+    rule_id: MCP-035
+
+  - check: string_no_maxlength
+    description: "String property with no maxLength (DoS risk)"
+    severity: MEDIUM
+    rule_id: MCP-036
+
+  - check: number_no_bounds
+    description: "Number property with no minimum/maximum bounds"
+    severity: LOW
+    rule_id: MCP-037
+
+# Path-related parameter names that need validation
+path_parameter_keywords:
+  - path
+  - file
+  - dir
+  - directory
+  - folder
+  - location
+  - url
+  - uri
+  - endpoint
+  - filename
+  - filepath
+  - source
+  - destination
+  - target
+  - root
+  - base_dir
+  - working_dir
+  - cwd
+  - home
+  - mount
+  - volume
+
+# Auth-related field names tools should declare
+auth_field_names:
+  - auth
+  - authentication
+  - authorization
+  - permissions
+  - scopes
+  - roles
+  - requires_confirmation
+  - requiresConfirmation
+  - access_level
+  - security_level
+  - privilege_required
+  - approval_required
+  - human_in_the_loop

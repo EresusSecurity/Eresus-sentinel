@@ -1,0 +1,4 @@
+cbuiltins
+print
+(S'hello from proto 0'
+tR.

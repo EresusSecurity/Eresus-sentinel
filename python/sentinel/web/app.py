@@ -159,7 +159,10 @@ def create_dashboard_app(
             response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
 
             # Remove server header
-            response.headers.pop("server", None)
+            try:
+                del response.headers["server"]
+            except KeyError:
+                pass
 
             return response
 
@@ -219,6 +222,36 @@ def create_dashboard_app(
     artifact_history: list[dict] = []
     _start_time = time.time()
     _instance_id = secrets.token_hex(8)
+    _valid_tokens: set[str] = set()
+
+    # ── API: Auth ────────────────────────────────────────────────
+
+    async def _api_login(request: Request):
+        try:
+            data = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        username = str(data.get("username", ""))
+        password = str(data.get("password", ""))
+        expected_user = os.environ.get("SENTINEL_USER", "admin")
+        expected_pass = os.environ.get("SENTINEL_PASSWORD", "admin")
+        if not secrets.compare_digest(username, expected_user) or \
+           not secrets.compare_digest(password, expected_pass):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        token = secrets.token_hex(32)
+        _valid_tokens.add(token)
+        return {"token": token, "user": username, "role": "admin"}
+    # Force runtime annotation so from __future__ annotations doesn't break FastAPI
+    _api_login.__annotations__ = {"request": Request, "return": dict}
+    app.post("/api/auth/login")(_api_login)
+
+    async def _api_logout(request: Request):
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            _valid_tokens.discard(auth[7:])
+        return {"ok": True}
+    _api_logout.__annotations__ = {"request": Request, "return": dict}
+    app.post("/api/auth/logout")(_api_logout)
 
     # ── Helpers ──────────────────────────────────────────────────
 

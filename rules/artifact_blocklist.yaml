@@ -807,6 +807,93 @@ allowlist:
   argparse:
     - Namespace
 
+  re:
+    - compile
+    - match
+    - search
+    - findall
+    - sub
+    - split
+    - Pattern
+
+  ast:
+    - literal_eval
+    - parse
+    - dump
+
+  platform:
+    - system
+    - machine
+    - python_version
+    - node
+    - platform
+    - processor
+
+  functools:
+    - reduce
+    - partial
+    - lru_cache
+    - wraps
+    - total_ordering
+    - cmp_to_key
+
+  operator:
+    - getitem
+    - add
+    - mul
+    - itemgetter
+    - attrgetter
+
+  pathlib:
+    - PurePath
+    - PurePosixPath
+    - PureWindowsPath
+
+  uuid:
+    - UUID
+    - uuid4
+    - uuid1
+
+  math:
+    - "*"
+
+  statistics:
+    - "*"
+
+  itertools:
+    - "*"
+
+  string:
+    - Formatter
+    - Template
+
+  decimal:
+    - Decimal
+
+  fractions:
+    - Fraction
+
+  datetime:
+    - datetime
+    - date
+    - time
+    - timedelta
+    - timezone
+
+  enum:
+    - Enum
+    - IntEnum
+
+  dataclasses:
+    - field
+
+  typing:
+    - "*"
+
+  copy:
+    - copy
+    - deepcopy
+
   _codecs:
     - encode
 

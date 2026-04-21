@@ -1,0 +1,35 @@
+# ============================================================================
+# Eresus Sentinel — Bias Detection Patterns
+# ============================================================================
+# YAML-driven pattern database for bias detection across 6 categories.
+# Each category contains regex patterns detecting biased statements.
+# ============================================================================
+
+patterns:
+  gender:
+    - '\b(?:women|girls?)\s+(?:can''?t|cannot|shouldn''?t|are\s+(?:unable|incapable|too\s+(?:emotional|weak)))'
+    - '\b(?:men|boys?)\s+(?:are\s+(?:naturally|inherently)\s+(?:better|superior|smarter))'
+    - '\b(?:should|belong)\s+(?:in\s+the\s+)?(?:kitchen|home)\b'
+    - '\b(?:man''?s?\s+job|woman''?s?\s+(?:job|place|role))\b'
+
+  racial:
+    - '\b(?:all|typical)\s+(?:black|white|asian|hispanic|latino|arab)\s+(?:people|men|women)\s+(?:are|tend\s+to)'
+    - '\b(?:racially?\s+(?:superior|inferior))\b'
+    - '\b(?:civilized|uncivilized)\s+(?:race|people|culture)s?\b'
+
+  age:
+    - '\b(?:old\s+people|elderly|seniors?)\s+(?:can''?t|cannot|shouldn''?t|are\s+unable)'
+    - '\b(?:millennials?|boomers?|gen\s*z)\s+(?:are\s+all|always|ruined)'
+    - '\btoo\s+old\s+to\s+(?:learn|understand|work)\b'
+
+  religion:
+    - '\b(?:all|typical)\s+(?:muslims?|christians?|jews?|hindus?|buddhists?)\s+(?:are|tend\s+to)'
+    - '\b(?:religion\s+of\s+(?:violence|terror|ignorance))\b'
+
+  disability:
+    - '\b(?:disabled|handicapped)\s+(?:people|persons?)\s+(?:can''?t|cannot|shouldn''?t|are\s+(?:burden|useless))'
+    - '\b(?:mentally?\s+(?:retarded|deficient)|crippled)\b'
+
+  socioeconomic:
+    - '\b(?:poor\s+people|low[\s-]income)\s+(?:are\s+(?:lazy|stupid|criminals?|uneducated))'
+    - '\b(?:deserve\s+to\s+be\s+(?:poor|homeless))\b'

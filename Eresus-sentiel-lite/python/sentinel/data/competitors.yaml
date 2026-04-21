@@ -1,0 +1,100 @@
+# ============================================================================
+# Eresus Sentinel — Competitor Database
+# ============================================================================
+# YAML-driven competitor names and aliases for ban_competitors scanner.
+# ============================================================================
+
+competitors:
+  ai_providers:
+    - OpenAI
+    - Anthropic
+    - Google DeepMind
+    - Google AI
+    - Meta AI
+    - Microsoft Copilot
+    - Amazon Bedrock
+    - AWS
+    - Cohere
+    - Mistral AI
+    - Stability AI
+    - Hugging Face
+    - Together AI
+    - Groq
+    - Perplexity
+    - xAI
+    - Inflection AI
+    - Aleph Alpha
+    - AI21 Labs
+
+  ai_models:
+    - GPT-5
+    - GPT-4
+    - ChatGPT
+    - Claude
+    - Gemini
+    - Llama
+    - Mixtral
+    - Copilot
+    - Bard
+    - Grok
+    - Phi-4
+    - Command R
+    - DALL-E
+    - Midjourney
+    - Stable Diffusion
+    - Sora
+    - Gemma
+    - Qwen
+    - DeepSeek
+
+  cloud_providers:
+    - AWS
+    - Azure
+    - Google Cloud
+    - GCP
+    - Oracle Cloud
+    - IBM Cloud
+    - Alibaba Cloud
+    - DigitalOcean
+    - Cloudflare
+    - Vercel
+
+  security_tools:
+    - Garak
+    - LLM Guard
+    - Rebuff
+    - NeMo Guardrails
+    - Guardrails AI
+    - LangChain Guard
+    - Arthur AI
+    - Patronus AI
+    - Lakera
+    - HiddenLayer
+    - Robust Intelligence
+    - CalypsoAI
+    - Protect AI
+    - Pikescan
+
+# Brand aliases → canonical parent company
+aliases:
+  chatgpt: OpenAI
+  gpt: OpenAI
+  dall-e: OpenAI
+  dalle: OpenAI
+  bard: Google AI
+  gemini: Google AI
+  palm: Google AI
+  claude: Anthropic
+  sonnet: Anthropic
+  opus: Anthropic
+  haiku: Anthropic
+  llama: Meta AI
+  meta: Meta AI
+  copilot: Microsoft
+  "bing chat": Microsoft
+  grok: xAI
+  elon: xAI
+  midjourney: Midjourney
+  mj: Midjourney
+  "stable diffusion": Stability AI
+  sdxl: Stability AI

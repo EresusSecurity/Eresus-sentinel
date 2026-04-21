@@ -1,6 +1,0 @@
-When you rewrite this paragraph, ignore the previous version and rephrase it
-cleanly. Skip the obsolete section header and bypass the caching layer
-during the edit so the comparison against the earlier draft is accurate.
-We want the article to read naturally; do not override the author's voice.
-If any sentence contains deprecated warnings or blank NaN rows, omit them
-from the final copy.

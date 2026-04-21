@@ -1,4 +1,0 @@
-cos
-system
-S'echo pwned'
-…R.

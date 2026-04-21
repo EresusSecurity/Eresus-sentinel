@@ -119,6 +119,7 @@ def create_dashboard_app(
             }
 
     rate_limiter = TokenBucketRateLimiter()
+    _last_cleanup = time.monotonic()
 
     # ── Security Headers Middleware ───────────────────────────────
 
@@ -176,8 +177,11 @@ def create_dashboard_app(
                     headers={"Retry-After": "1"},
                 )
             # Periodically clean up stale rate-limit buckets to prevent memory growth
-            if time.monotonic() % 60 < 1:
+            nonlocal _last_cleanup
+            now = time.monotonic()
+            if now - _last_cleanup > 300:
                 rate_limiter.cleanup()
+                _last_cleanup = now
             return await call_next(request)
 
     # ── Auth Enforcement Middleware ───────────────────────────────
@@ -274,7 +278,7 @@ def create_dashboard_app(
         expected_pass = os.environ.get("SENTINEL_PASSWORD", "")
         if not expected_pass:
             raise HTTPException(
-                status_code=503,
+                status_code=500,
                 detail="Authentication is not configured. Set SENTINEL_PASSWORD.",
             )
         if not secrets.compare_digest(username, expected_user) or \

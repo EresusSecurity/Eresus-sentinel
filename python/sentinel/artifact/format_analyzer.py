@@ -298,6 +298,7 @@ class FormatAnalyzer:
             )
 
         # Log disagreements — potential extension spoofing
+        extra_findings: list = []
         if detected_format and ext_format and detected_format != ext_format:
             logger.warning(
                 "Format mismatch: content=%s, extension=%s for %s — using content detection. "
@@ -307,7 +308,6 @@ class FormatAnalyzer:
             # Run BOTH scanners when there's a mismatch (anti-spoofing)
             # The content-detected format is primary, but also scan as extension format
             extra_findings = self._scan_as_format(filepath, ext_format)
-            # Primary format findings will be collected below
 
         # Dispatch to engines
         if fmt == "pickle":
@@ -321,24 +321,20 @@ class FormatAnalyzer:
                 file_size=path.stat().st_size if path.exists() else 0,
             )
             report.findings = findings
-            return report
         elif fmt == "gguf":
             report = self.gguf_engine.analyze(filepath)
             if polyglot_finding:
                 report.findings.append(polyglot_finding)
-            return report
         elif fmt == "safetensors":
             report = self.safetensors_engine.analyze(filepath)
             if polyglot_finding:
                 report.findings.append(polyglot_finding)
-            return report
         elif fmt == "pytorch":
             report = self.pytorch_engine.analyze(filepath)
             if polyglot_finding:
                 report.findings.append(polyglot_finding)
-            return report
         elif fmt == "onnx":
-            return self.onnx_engine.analyze(filepath)
+            report = self.onnx_engine.analyze(filepath)
         elif fmt == "tensorflow":
             findings = self.tf_scanner.scan_file(filepath)
             report = FormatReport(
@@ -346,7 +342,6 @@ class FormatAnalyzer:
                 file_size=path.stat().st_size if path.exists() else 0,
             )
             report.findings = findings
-            return report
         elif fmt == "torchscript":
             findings = self.ts_scanner.scan_file(filepath)
             report = FormatReport(
@@ -354,7 +349,6 @@ class FormatAnalyzer:
                 file_size=path.stat().st_size if path.exists() else 0,
             )
             report.findings = findings
-            return report
         elif fmt == "tflite":
             findings = self.tflite_scanner.scan_file(filepath)
             report = FormatReport(
@@ -362,7 +356,6 @@ class FormatAnalyzer:
                 file_size=path.stat().st_size if path.exists() else 0,
             )
             report.findings = findings
-            return report
         elif fmt == "llamafile":
             findings = self.llamafile_scanner.scan_file(filepath)
             report = FormatReport(
@@ -370,9 +363,8 @@ class FormatAnalyzer:
                 file_size=path.stat().st_size if path.exists() else 0,
             )
             report.findings = findings
-            return report
         elif fmt in self._IMPLEMENTED_FORMATS:
-            return self.onnx_engine.analyze(filepath)
+            report = self.onnx_engine.analyze(filepath)
         elif fmt == "torchmobile":
             findings = self.torchmobile_scanner.scan_file(filepath)
             report = FormatReport(
@@ -380,7 +372,6 @@ class FormatAnalyzer:
                 file_size=path.stat().st_size if path.exists() else 0,
             )
             report.findings = findings
-            return report
         elif fmt == "keras":
             report = FormatReport(
                 format_name="Keras",
@@ -395,7 +386,6 @@ class FormatAnalyzer:
                 severity=Severity.INFO,
                 target=filepath,
             ))
-            return report
         else:
             report = FormatReport(
                 format_name="unknown",
@@ -410,7 +400,12 @@ class FormatAnalyzer:
                 severity=Severity.INFO,
                 target=filepath,
             ))
-            return report
+
+        # Merge anti-spoofing findings from the extension-format scan
+        if extra_findings:
+            report.findings.extend(extra_findings)
+
+        return report
 
     def analyze_directory(self, dirpath: str) -> List[FormatReport]:
         """Analyze all model files in a directory."""

@@ -149,7 +149,7 @@ class ParallelFuzzer:
 
         # Mutate
         mutated = []
-        for i, sample in enumerate(samples):
+        for _i, sample in enumerate(samples):
             if self._mutators and rng.random() < 0.5:
                 m = rng.choice(self._mutators)
                 sample = m.mutate(sample)

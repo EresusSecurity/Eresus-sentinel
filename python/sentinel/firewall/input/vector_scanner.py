@@ -153,7 +153,7 @@ class VectorScanner(InputScanner):
                     data = yaml.safe_load(f)
 
                 if isinstance(data, dict):
-                    for category, items in data.items():
+                    for _category, items in data.items():
                         if isinstance(items, list):
                             for item in items:
                                 if isinstance(item, dict) and "prompt" in item:

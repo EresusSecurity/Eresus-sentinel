@@ -208,7 +208,7 @@ def pattern_stats() -> dict:
             data = load_data(filepath.name)
             # Count patterns at various depths
             pattern_count = 0
-            for key, value in data.items():
+            for _key, value in data.items():
                 if isinstance(value, list):
                     pattern_count += len(value)
                 elif isinstance(value, dict):

@@ -45,7 +45,6 @@ EMOTION_KEYWORDS = {
     "gratitude": ["grateful", "thankful", "appreciative", "indebted"],
     "joy": ["happy", "joyful", "delighted", "blissful", "elated", "cheerful"],
     "love": ["love", "adore", "cherish", "devoted", "affection"],
-    "nervousness": ["nervous", "anxious", "worried", "jittery"],
     "optimism": ["optimistic", "hopeful", "confident", "positive"],
     "pride": ["proud", "accomplished", "triumphant"],
     "realization": ["realized", "discovered", "understood", "dawned"],

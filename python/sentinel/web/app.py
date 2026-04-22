@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import hashlib
-import html
 import logging
 import os
 import re
@@ -26,7 +25,6 @@ import secrets
 import sys
 import time
 import uuid
-from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -78,10 +76,6 @@ def create_dashboard_app(
     from sentinel.policy import PolicyEngine
     from pydantic import BaseModel, Field, field_validator
 
-    # ── CSP nonce ────────────────────────────────────────────────
-
-    _csp_nonce = secrets.token_urlsafe(16)
-
     # ── Request Validation Models ────────────────────────────────
 
     class FirewallScanRequest(BaseModel):
@@ -125,6 +119,7 @@ def create_dashboard_app(
             }
 
     rate_limiter = TokenBucketRateLimiter()
+    _last_cleanup = time.monotonic()
 
     # ── Security Headers Middleware ───────────────────────────────
 
@@ -181,6 +176,51 @@ def create_dashboard_app(
                     content={"detail": "Rate limit exceeded. Try again later."},
                     headers={"Retry-After": "1"},
                 )
+            # Periodically clean up stale rate-limit buckets to prevent memory growth
+            nonlocal _last_cleanup
+            now = time.monotonic()
+            if now - _last_cleanup > 300:
+                rate_limiter.cleanup()
+                _last_cleanup = now
+            return await call_next(request)
+
+    # ── Auth Enforcement Middleware ───────────────────────────────
+
+    # Public paths that do not require a token
+    _PUBLIC_PATHS = {
+        "/api/auth/login",
+        "/api/health",
+        "/health",
+        "/api/docs",
+        "/api/openapi.json",
+    }
+
+    class AuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            path = request.url.path
+            # Allow static assets and public paths without auth
+            if path.startswith("/assets/") or path in _PUBLIC_PATHS:
+                return await call_next(request)
+            # SPA root also public
+            if path == "/" or not path.startswith("/api/"):
+                return await call_next(request)
+            # If no tokens exist yet (auth not configured) allow all API calls
+            if not _valid_tokens:
+                return await call_next(request)
+            auth = request.headers.get("Authorization", "")
+            if not auth.startswith("Bearer "):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Authentication required"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            token = auth[7:]
+            if token not in _valid_tokens:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or expired token"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             return await call_next(request)
 
     # ── App Init ─────────────────────────────────────────────────
@@ -193,9 +233,22 @@ def create_dashboard_app(
         openapi_url="/api/openapi.json",
     )
 
+    # ── State (must precede middleware that closes over it) ───────
+
+    engine = PolicyEngine.from_file(policy_path) if policy_path else PolicyEngine.default()
+    input_pipe = engine.build_input_pipeline()
+    output_pipe = engine.build_output_pipeline()
+
+    scan_history: list[dict] = []
+    artifact_history: list[dict] = []
+    _start_time = time.time()
+    _instance_id = secrets.token_hex(8)
+    _valid_tokens: set[str] = set()
+
     # Security middleware (order matters — outermost first)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(AuthMiddleware)
 
     # CORS — strict in production, permissive for dev
     allowed_origins = os.environ.get(
@@ -212,18 +265,6 @@ def create_dashboard_app(
         max_age=3600,
     )
 
-    # ── State ────────────────────────────────────────────────────
-
-    engine = PolicyEngine.from_file(policy_path) if policy_path else PolicyEngine.default()
-    input_pipe = engine.build_input_pipeline()
-    output_pipe = engine.build_output_pipeline()
-
-    scan_history: list[dict] = []
-    artifact_history: list[dict] = []
-    _start_time = time.time()
-    _instance_id = secrets.token_hex(8)
-    _valid_tokens: set[str] = set()
-
     # ── API: Auth ────────────────────────────────────────────────
 
     async def _api_login(request: Request):
@@ -234,7 +275,12 @@ def create_dashboard_app(
         username = str(data.get("username", ""))
         password = str(data.get("password", ""))
         expected_user = os.environ.get("SENTINEL_USER", "admin")
-        expected_pass = os.environ.get("SENTINEL_PASSWORD", "admin")
+        expected_pass = os.environ.get("SENTINEL_PASSWORD", "")
+        if not expected_pass:
+            raise HTTPException(
+                status_code=500,
+                detail="Authentication is not configured. Set SENTINEL_PASSWORD.",
+            )
         if not secrets.compare_digest(username, expected_user) or \
            not secrets.compare_digest(password, expected_pass):
             raise HTTPException(status_code=401, detail="Invalid credentials")

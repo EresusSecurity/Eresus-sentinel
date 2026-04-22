@@ -156,7 +156,7 @@ def _html_report(findings) -> str:
             summary_html += f'<span class="badge" style="background:{color}">{sev}: {c}</span>\n'
 
     findings_html = ""
-    for i, f in enumerate(findings, 1):
+    for _i, f in enumerate(findings, 1):
         v, emoji, _ = _sev(f)
         rid = getattr(f, "rule_id", "")
         title = getattr(f, "title", "")

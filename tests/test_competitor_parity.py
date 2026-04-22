@@ -20,7 +20,7 @@ class TestTrojanDetector:
 
     def test_clean_numpy_file(self, tmp_path):
         """A uniform weight file should produce no findings."""
-        import numpy as np
+        np = pytest.importorskip("numpy")
         from sentinel.artifact.trojan_detector import TrojanDetector
 
         arr = np.random.normal(0, 0.1, size=(100, 100)).astype(np.float32)
@@ -34,7 +34,7 @@ class TestTrojanDetector:
 
     def test_extreme_weights_detected(self, tmp_path):
         """Weights with extreme outliers should be flagged."""
-        import numpy as np
+        np = pytest.importorskip("numpy")
         from sentinel.artifact.trojan_detector import TrojanDetector
 
         arr = np.random.normal(0, 0.01, size=(50, 50)).astype(np.float32)

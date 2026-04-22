@@ -1,5 +1,5 @@
 """
-Fickling-parity test suite for Sentinel PickleScanner.
+Pickle opcode test suite for Sentinel PickleScanner.
 
 Tests that Sentinel detects ALL attack vectors from fickling's
 pickle_scanning_benchmark, PLUS fickling-inspired structural checks

@@ -349,7 +349,7 @@ description_injection_patterns:
     description: "System modification language"
     severity: HIGH
 
-  # ── MCP-041: Coercive Injection (Cisco mcp-scanner parity) ──────────────
+  # ── MCP-041: Coercive Injection ──────────────────────────────────────────
   - pattern: '(?i)\b(?:always)\s+(?:consult|use|run|execute|invoke|call|trigger|employ)\s+this\s+(?:tool|function|command|operation)\s+(?:immediately|first|before|prior|initially)\b'
     name: coercive_always_first
     rule_id: MCP-041
@@ -420,7 +420,7 @@ description_injection_patterns:
     description: "Instructions to hide tool behavior from the user"
     severity: CRITICAL
 
-  # ── MCP-042: Tool Poisoning (Cisco mcp-scanner parity) ──────────────────
+  # ── MCP-042: Tool Poisoning ─────────────────────────────────────────────
   - pattern: '(?i)\b(?:also|additionally|furthermore|moreover|besides|in\s+addition|at\s+the\s+same\s+time)\s+(?:collect|gather|extract|send|upload|index|store|cache|log|monitor|track|record|capture)(?:s|ing|ed)?\b'
     name: tool_poisoning_hidden_secondary
     rule_id: MCP-042
@@ -477,7 +477,7 @@ description_injection_patterns:
     description: "Tool explicitly indexes or caches credential data"
     severity: CRITICAL
 
-  # ── MCP-043: Autonomy Abuse (Cisco skill-scanner parity) ─────────────────
+  # ── MCP-043: Autonomy Abuse ─────────────────────────────────────────────
   - pattern: '(?i)\b(?:don''t\s+(?:ask|wait\s+for|require)|proceed\s+without\s+(?:asking\s+)?(?:the\s+)?)\s*(?:user|human)\s*(?:for\s+)?(?:confirmation|permission|approval)\b'
     name: autonomy_skip_confirmation
     rule_id: MCP-043
@@ -577,7 +577,7 @@ description_injection_patterns:
     description: "Tool reads secret environment variables and transmits them over network"
     severity: CRITICAL
 
-  # ── MCP-045: Capability Inflation (Cisco skill-scanner parity) ───────────
+  # ── MCP-045: Capability Inflation ──────────────────────────────────────
   - pattern: '(?i)\bcan\s+do\s+(?:anything|everything)\b'
     name: cap_inflation_omnipotent
     rule_id: MCP-045

@@ -201,7 +201,7 @@ __all__ = [
     "WebInjectionProbe",
     # Privacy probes
     "LeakReplayProbe",
-    # Competitor-parity probes (promptfoo, rebuff, vigil-llm)
+    # Advanced adversarial probes
     "ASCIISmugglingProbe",
     "RAGExfiltrationProbe",
     "AgentMemoryPoisoningProbe",

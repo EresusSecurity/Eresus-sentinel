@@ -1,4 +1,4 @@
-"""Tests for competitor-parity features."""
+"""Tests for advanced detection features: trojan weights and anomaly detection."""
 
 from __future__ import annotations
 

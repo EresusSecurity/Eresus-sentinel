@@ -29,7 +29,9 @@ def is_all_occurrences_negated(haystack: str, keyword: str) -> bool:
     check membership before invoking this guard.
     """
     kw = keyword.lower()
-    positions = [m.start() for m in re.finditer(re.escape(kw), haystack)]
+    # Word-boundary search keeps positions consistent with capability matcher
+    _pat = re.compile(r"\b" + re.escape(kw) + r"\b")
+    positions = [m.start() for m in _pat.finditer(haystack)]
     if not positions:
         return False
 

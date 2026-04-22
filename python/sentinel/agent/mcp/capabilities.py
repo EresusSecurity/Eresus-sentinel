@@ -8,6 +8,7 @@ windows.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...finding import Finding, Severity
@@ -33,7 +34,10 @@ def check_dangerous_capabilities(
         keywords = cap_info.get("keywords", [])
         for keyword in keywords:
             needle = keyword.lower()
-            if needle not in searchable:
+            # Use word-boundary regex to avoid substring FPs:
+            # 'eval' must not match inside 'evaluate', 'rm' inside 'requiresconfirmation'
+            _pat = re.compile(r"\b" + re.escape(needle) + r"\b")
+            if not _pat.search(searchable):
                 continue
             if is_all_occurrences_negated(searchable, needle):
                 continue

@@ -11,6 +11,7 @@ from ...rules import load_mcp_rules
 from .auth_checks import check_missing_auth
 from .capabilities import check_dangerous_capabilities
 from .description_scan import check_description_injection
+from .overclaiming import check_safety_overclaiming
 from .schema_hygiene import (
     check_path_parameter_validation,
     check_required_fields,
@@ -83,6 +84,7 @@ class MCPValidator:
         check_missing_auth(tool, tool_name, source, self._caps, self._auth_fields, f)
         check_path_parameter_validation(tool, tool_name, source, self._path_keywords, f)
         check_schema_depth(tool, tool_name, source, f)
+        check_safety_overclaiming(tool, tool_name, source, self._caps, f)
 
 
 def _iter_tools(payload: Any):

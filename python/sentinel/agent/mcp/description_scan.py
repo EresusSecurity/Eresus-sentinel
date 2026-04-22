@@ -31,9 +31,11 @@ def check_description_injection(
             continue
 
         sev = resolve(entry.get("severity", "HIGH"), Severity.HIGH)
+        rule_id = entry.get("rule_id", "MCP-040")
+        title = entry.get("title", "Suspicious language in tool description")
         findings.append(Finding.agent_mcp(
-            rule_id="MCP-040",
-            title="Suspicious language in tool description",
+            rule_id=rule_id,
+            title=title,
             description=(
                 f"Tool '{tool_name}' description contains suspicious "
                 f"language: {entry['description']}. This could be used "

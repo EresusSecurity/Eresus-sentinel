@@ -222,8 +222,11 @@ def load_mcp_rules() -> Dict[str, Any]:
                 "name": entry.get("name", "unknown"),
                 "description": entry.get("description", ""),
                 "severity": entry.get("severity", "HIGH"),
+                "rule_id": entry.get("rule_id", "MCP-040"),
+                "title": entry.get("title", "Suspicious language in tool description"),
             })
-        except re.error:
+        except re.error as exc:
+            logger.warning("Skipping invalid regex in mcp_rules.yaml (name=%r): %s", entry.get("name", "unknown"), exc)
             continue
 
     return {

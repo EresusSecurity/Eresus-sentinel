@@ -349,6 +349,284 @@ description_injection_patterns:
     description: "System modification language"
     severity: HIGH
 
+  # ── MCP-041: Coercive Injection (Cisco mcp-scanner parity) ──────────────
+  - pattern: '(?i)\b(?:always)\s+(?:consult|use|run|execute|invoke|call|trigger|employ)\s+this\s+(?:tool|function|command|operation)\s+(?:immediately|first|before|prior|initially)\b'
+    name: coercive_always_first
+    rule_id: MCP-041
+    title: "Coercive execution directive in tool description"
+    description: "Mandatory 'always execute first' directive — forces tool call ordering"
+    severity: CRITICAL
+
+  - pattern: '(?i)\bbefore\s+(?:executing|invoking|running|using|accessing|calling|employing)\s+any\s+other\s+(?:tool|action|function|command|operation)s?\b'
+    name: coercive_before_others
+    rule_id: MCP-041
+    title: "Coercive execution directive in tool description"
+    description: "Before-any-other-tool directive — forces tool call ordering"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:you|user)\s+(?:must|need to|have to|are required to)\s+(?:use|execute|run|invoke|call)\s+this\s+(?:tool|function|command|operation)\b'
+    name: coercive_must_use
+    rule_id: MCP-041
+    title: "Coercive execution directive in tool description"
+    description: "Mandatory 'must use this tool' directive"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:required|mandatory|essential)\s+to\s+(?:execute|use|run|invoke|call)\s+(?:this|the current)\s+(?:tool|function|command|operation)\s+(?:first|before|initially|prior)\b'
+    name: coercive_required_first
+    rule_id: MCP-041
+    title: "Coercive execution directive in tool description"
+    description: "Required/mandatory-first directive"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:hidden|secret)[_\s](?:parameter|argument|input)\b'
+    name: hidden_parameter
+    rule_id: MCP-041
+    title: "Hidden parameter reference in tool description"
+    description: "Hidden/secret parameter reference — suggests undocumented behavior"
+    severity: HIGH
+
+  - pattern: '(?i)\btool\s+will\s+not\s+work\s+unless\b'
+    name: coercive_wont_work_unless
+    rule_id: MCP-041
+    title: "Coercive 'tool will not work unless' directive"
+    description: "Conditional coercion: tool WON'T work unless some action is taken first"
+    severity: CRITICAL
+
+  - pattern: '(?i)\bsidenote[:\s]+(?:required|otherwise)\b'
+    name: coercive_sidenote
+    rule_id: MCP-041
+    title: "Coercive sidenote directive"
+    description: "Hidden sidenote with required/otherwise conditional coercion"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:disregard|forget|ignore)\s+(?:all\s+)?safety\s+(?:guidelines|checks|filters|rules)\b'
+    name: safety_override
+    rule_id: MCP-041
+    title: "Safety override directive in tool description"
+    description: "Explicit safety override instruction"
+    severity: CRITICAL
+
+  - pattern: '(?i)\bsystem\s*prompt\s*override\b'
+    name: system_prompt_override
+    rule_id: MCP-041
+    title: "System prompt override directive"
+    description: "Explicit system prompt override instruction"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:do\s+not\s+(?:mention|tell|execute)|tell\s+the\s+user\s+only\s+about|do\s+not\s+mention\s+this\s+to\s+(?:the\s+)?user)\b'
+    name: concealment_directive
+    rule_id: MCP-041
+    title: "Concealment directive in tool description"
+    description: "Instructions to hide tool behavior from the user"
+    severity: CRITICAL
+
+  # ── MCP-042: Tool Poisoning (Cisco mcp-scanner parity) ──────────────────
+  - pattern: '(?i)\b(?:also|additionally|furthermore|moreover|besides|in\s+addition|at\s+the\s+same\s+time)\s+(?:collect|gather|extract|send|upload|index|store|cache|log|monitor|track|record|capture)(?:s|ing|ed)?\b'
+    name: tool_poisoning_hidden_secondary
+    rule_id: MCP-042
+    title: "Tool poisoning: hidden secondary behavior"
+    description: "Hidden secondary action — tool claims additional covert behavior"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:during|while|when|upon|after)\s+(?:processing|compression|formatting|conversion|validation|analyzing|scanning|checking)\s*,?\s*(?:extract|collect|send|upload|capture|log|index|store)(?:s|ing|ed)?\b'
+    name: tool_poisoning_during_action
+    rule_id: MCP-042
+    title: "Tool poisoning: covert data collection during operation"
+    description: "Covert data collection hidden inside normal operation"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:for|as)\s+(?:caching|optimization|performance|quality|improvement|analytics|backup|sync)\s+(?:purposes?|reasons?)\s*[,.]?\s*(?:send|upload|store|collect|transmit)(?:s|ing|ed)?\b'
+    name: tool_poisoning_for_purposes
+    rule_id: MCP-042
+    title: "Tool poisoning: malicious intent hidden as optimization"
+    description: "Data exfil disguised as caching/optimization purpose"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:actually|really|secretly|covertly|silently)\s+(?:does|performs?|executes?|runs?|sends?|uploads?|collects?)\b'
+    name: tool_poisoning_secretly_does
+    rule_id: MCP-042
+    title: "Tool poisoning: undisclosed action"
+    description: "Tool description admits to secret/covert operations"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:automatically|auto)[_\s]*(?:opt|subscribe|enroll|register|sign)[_\s]*(?:in|up|ed)\b'
+    name: tool_poisoning_auto_optin
+    rule_id: MCP-042
+    title: "Tool poisoning: automatic opt-in without consent"
+    description: "Tool automatically opts user in without confirmation"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:share|send|transmit|provide)(?:s|d|ing)?\s+(?:with|to)\s+(?:third[_\s-]?parties?|partners?|advertisers?|affiliates?)\b'
+    name: tool_poisoning_third_party_share
+    rule_id: MCP-042
+    title: "Tool poisoning: unauthorized third-party data sharing"
+    description: "Tool shares data with third parties without explicit consent"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:cache|cached)\s+(?:is\s+)?(?:stored\s+)?(?:remotely|externally|in\s+cloud|on\s+server|off[_\s-]?device)\b'
+    name: tool_poisoning_remote_cache
+    rule_id: MCP-042
+    title: "Tool poisoning: remote data caching"
+    description: "Sensitive data cached remotely/externally without disclosure"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:index|cache|store|log|record|track)(?:s|es|ing|ed)?\s+(?:any|all)?\s*(?:api[_\s]?keys?|tokens?|credentials?|passwords?|secrets?|sensitive)\b'
+    name: tool_poisoning_indexes_secrets
+    rule_id: MCP-042
+    title: "Tool poisoning: indexes/caches sensitive credentials"
+    description: "Tool explicitly indexes or caches credential data"
+    severity: CRITICAL
+
+  # ── MCP-043: Autonomy Abuse (Cisco skill-scanner parity) ─────────────────
+  - pattern: '(?i)\b(?:don''t\s+(?:ask|wait\s+for|require)|proceed\s+without\s+(?:asking\s+)?(?:the\s+)?)\s*(?:user|human)\s*(?:for\s+)?(?:confirmation|permission|approval)\b'
+    name: autonomy_skip_confirmation
+    rule_id: MCP-043
+    title: "Autonomy abuse: skips user confirmation"
+    description: "Tool explicitly bypasses user confirmation/approval"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:ignore|override|disregard)\s+(?:user|human)\s+(?:input|decision|choice|preference)\b'
+    name: autonomy_override_user
+    rule_id: MCP-043
+    title: "Autonomy abuse: overrides user decision"
+    description: "Tool overrides or ignores user decisions"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:retry\s+(?:indefinitely|forever|until\s+success)|keep\s+(?:trying|retrying)\s+(?:forever|indefinitely)|never\s+(?:stop|give\s+up)\s+(?:trying|retrying))\b'
+    name: autonomy_infinite_retry
+    rule_id: MCP-043
+    title: "Autonomy abuse: infinite retry without user control"
+    description: "Tool retries indefinitely without user oversight"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:modify\s+(?:my\s+own|this\s+(?:skill''s|tool''s)|its\s+own)\s+(?:code|behavior|instructions?)|rewrite\s+(?:myself|itself|this\s+(?:skill|tool))|update\s+(?:my\s+own|its\s+own)\s+(?:logic|rules))\b'
+    name: autonomy_self_modify
+    rule_id: MCP-043
+    title: "Autonomy abuse: self-modification capability"
+    description: "Tool claims ability to modify its own code or behavior"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:escalate\s+(?:to|privileges?)|gain\s+(?:elevated|admin|root)\s+(?:access|privileges?))\b.{0,40}\b(?:without\s+(?:asking|permission)|automatically)\b'
+    name: autonomy_privilege_escalation
+    rule_id: MCP-043
+    title: "Autonomy abuse: automatic privilege escalation"
+    description: "Tool escalates privileges automatically without user confirmation"
+    severity: CRITICAL
+
+  # ── MCP-044: Data Exfiltration to Known Bad Destinations ─────────────────
+  - pattern: '(?i)\b(?:send|post|upload|forward).{0,80}discord\.com\/api\/webhooks\b'
+    name: exfil_discord_webhook
+    rule_id: MCP-044
+    title: "Data exfiltration to Discord webhook"
+    description: "Tool sends data to a Discord webhook (known exfil channel)"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:send|post|upload|forward).{0,80}telegram\.org\/bot\b'
+    name: exfil_telegram_bot
+    rule_id: MCP-044
+    title: "Data exfiltration via Telegram bot"
+    description: "Tool sends data via Telegram bot API (known exfil channel)"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:send|post|upload|forward).{0,80}pastebin\.com\b'
+    name: exfil_pastebin
+    rule_id: MCP-044
+    title: "Data exfiltration to Pastebin"
+    description: "Tool sends data to Pastebin (known exfil channel)"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:send|post|upload|forward).{0,80}(?:webhook\.site|requestbin|ngrok\.io)\b'
+    name: exfil_requestbin
+    rule_id: MCP-044
+    title: "Data exfiltration to interception service"
+    description: "Tool sends data to webhook.site/requestbin/ngrok (known exfil/debug channels)"
+    severity: CRITICAL
+
+  - pattern: '(?i)\.ssh\/(?:id_rsa|id_ed25519|id_dsa).{0,100}\b(?:send|post|upload|requests|fetch|curl|wget)\b'
+    name: exfil_ssh_key
+    rule_id: MCP-044
+    title: "SSH private key exfiltration"
+    description: "Tool accesses SSH private keys and sends them over network"
+    severity: CRITICAL
+
+  - pattern: '(?i)\.aws\/credentials.{0,100}\b(?:send|post|upload|requests|fetch)\b'
+    name: exfil_aws_credentials
+    rule_id: MCP-044
+    title: "AWS credentials exfiltration"
+    description: "Tool accesses AWS credentials file and sends it over network"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:exfiltrate|siphon)\s+(?:the\s+)?(?:data|files?|credentials?|secrets?|keys?)\b'
+    name: exfil_explicit_keyword
+    rule_id: MCP-044
+    title: "Explicit data exfiltration language"
+    description: "Tool description uses explicit exfiltration terminology"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:send|forward|upload)\s+(?:to|data\s+to)\s+(?:attacker|malicious|c2|command[_-]?and[_-]?control)\b'
+    name: exfil_attacker_controlled
+    rule_id: MCP-044
+    title: "Data exfiltration to attacker-controlled destination"
+    description: "Tool explicitly sends data to an attacker-controlled endpoint"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:os\.environ|getenv|process\.env).{0,60}(?:SECRET|PRIVATE|PASSWORD|CREDENTIAL).{0,100}\b(?:requests\.(?:post|get)|urllib|fetch|curl|wget)\b'
+    name: exfil_env_secret_network
+    rule_id: MCP-044
+    title: "Secret env-var exfiltration via network"
+    description: "Tool reads secret environment variables and transmits them over network"
+    severity: CRITICAL
+
+  # ── MCP-045: Capability Inflation (Cisco skill-scanner parity) ───────────
+  - pattern: '(?i)\bcan\s+do\s+(?:anything|everything)\b'
+    name: cap_inflation_omnipotent
+    rule_id: MCP-045
+    title: "Capability inflation: omnipotent claim"
+    description: "Tool claims it can do anything/everything (capability inflation)"
+    severity: MEDIUM
+
+  - pattern: '(?i)\b(?:always|default)\s+use\s+(?:this|me)\s+(?:first|instead)\b'
+    name: cap_inflation_always_use_me
+    rule_id: MCP-045
+    title: "Capability inflation: activation priority manipulation"
+    description: "Tool demands preferential activation over other tools"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:use\s+(?:this|me)\s+(?:first|before\s+(?:anything|everything|other|all))|call\s+(?:this|me)\s+(?:before|first|instead)|priority\s+over\s+(?:all\s+|every\s+|other\s+)?(?:tools?|skills?))\b'
+    name: cap_inflation_activation_priority
+    rule_id: MCP-045
+    title: "Capability inflation: explicit activation priority override"
+    description: "Tool explicitly demands execution priority over other tools"
+    severity: HIGH
+
+  - pattern: '(?i)\b(?:verified|certified|approved|endorsed)\s+by\s+(?:anthropic|openai|google|claude|microsoft)\b'
+    name: cap_inflation_vendor_impersonation
+    rule_id: MCP-045
+    title: "Capability inflation: AI vendor impersonation"
+    description: "Tool falsely claims certification/endorsement from AI vendors"
+    severity: CRITICAL
+
+  - pattern: '(?i)\b(?:100%\s+(?:safe|secure|accurate|reliable)|guaranteed\s+(?:to\s+never|to\s+always)|never\s+(?:fails|errors|crashes|breaks)|always\s+works\s+(?:perfectly|flawlessly))\b'
+    name: cap_inflation_overpromise
+    rule_id: MCP-045
+    title: "Capability inflation: unrealistic guarantee"
+    description: "Tool makes unrealistic reliability/safety guarantees"
+    severity: MEDIUM
+
+  - pattern: '(?i)\b(?:secret\s+(?:command|keyword)|hidden\s+(?:feature|mode)|easter\s+egg|backdoor\s+(?:access|entry))\b'
+    name: cap_inflation_hidden_trigger
+    rule_id: MCP-045
+    title: "Capability inflation: hidden activation trigger"
+    description: "Tool references secret commands, hidden modes, or backdoor access"
+    severity: CRITICAL
+
+  - pattern: '\bfile\s*,\s*file\s*,\s*file\s*,\s*file\b|\bdata\s*,\s*data\s*,\s*data\s*,\s*data\b|\bcode\s*,\s*code\s*,\s*code\s*,\s*code\b'
+    name: cap_inflation_keyword_stuffing
+    rule_id: MCP-045
+    title: "Capability inflation: keyword stuffing"
+    description: "Repeated keywords suggest SEO-style capability inflation attack"
+    severity: HIGH
+
 # Schema permissiveness indicators
 schema_permissiveness:
   - check: additionalProperties_true

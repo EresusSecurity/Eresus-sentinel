@@ -44,6 +44,21 @@ from .numpy_scanner import NumpyScanner
 from .trojan_detector import TrojanDetector
 from .binary_tail_scanner import BinaryTailScanner
 from .cve_detector import CVEDetector
+from .catboost_scanner import CatBoostScanner
+from .coreml_scanner import CoreMLScanner
+from .flax_scanner import FlaxScanner
+from .lightgbm_scanner import LightGBMScanner
+from .mxnet_scanner import MXNetScanner
+from .nemo_scanner import NeMoScanner
+from .openvino_scanner import OpenVINOScanner
+from .paddle_scanner import PaddleScanner
+from .pmml_scanner import PMMLScanner
+from .r_serialized_scanner import RSerializedScanner
+from .skops_scanner import SkopsScanner
+from .torchserve_scanner import TorchServeScanner, Torch7Scanner, ExecuTorchScanner, TensorRTScanner
+from .oci_scanner import OCIScanner
+from .sevenz_scanner import SevenZipScanner
+from .yaml_scanner import YamlScanner
 
 __all__ = [
     "PickleScanner",
@@ -65,4 +80,22 @@ __all__ = [
     "TrojanDetector",
     "BinaryTailScanner",
     "CVEDetector",
+    "CatBoostScanner",
+    "CoreMLScanner",
+    "FlaxScanner",
+    "LightGBMScanner",
+    "MXNetScanner",
+    "NeMoScanner",
+    "OpenVINOScanner",
+    "PaddleScanner",
+    "PMMLScanner",
+    "RSerializedScanner",
+    "SkopsScanner",
+    "TorchServeScanner",
+    "Torch7Scanner",
+    "ExecuTorchScanner",
+    "TensorRTScanner",
+    "OCIScanner",
+    "SevenZipScanner",
+    "YamlScanner",
 ]

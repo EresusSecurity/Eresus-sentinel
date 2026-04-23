@@ -153,6 +153,20 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     from sentinel.artifact.xgboost_scanner import XGBoostScanner
     from sentinel.artifact.numpy_scanner import NumpyScanner
     from sentinel.artifact.yaml_scanner import YamlScanner
+    from sentinel.artifact.catboost_scanner import CatBoostScanner
+    from sentinel.artifact.coreml_scanner import CoreMLScanner
+    from sentinel.artifact.flax_scanner import FlaxScanner
+    from sentinel.artifact.lightgbm_scanner import LightGBMScanner
+    from sentinel.artifact.mxnet_scanner import MXNetScanner
+    from sentinel.artifact.nemo_scanner import NeMoScanner
+    from sentinel.artifact.openvino_scanner import OpenVINOScanner
+    from sentinel.artifact.paddle_scanner import PaddleScanner
+    from sentinel.artifact.pmml_scanner import PMMLScanner
+    from sentinel.artifact.r_serialized_scanner import RSerializedScanner
+    from sentinel.artifact.skops_scanner import SkopsScanner
+    from sentinel.artifact.torchserve_scanner import TorchServeScanner, Torch7Scanner, ExecuTorchScanner, TensorRTScanner
+    from sentinel.artifact.oci_scanner import OCIScanner
+    from sentinel.artifact.sevenz_scanner import SevenZipScanner
     from sentinel.scan_safety import check_file_size, FileTooLargeError
     from sentinel.finding import Severity
 
@@ -184,13 +198,28 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".keras",): KerasScanner,
         (".h5", ".hdf5"): KerasScanner,
         (".xgb", ".ubj", ".model"): XGBoostScanner,
-        (".lgb",): XGBoostScanner,
         (".joblib",): XGBoostScanner,
         (".npy",): NumpyScanner,
         (".npz",): NumpyScanner,
         (".yaml", ".yml"): YamlScanner,
-        (".nemo", ".mar"): ArchiveSlipDetector,
-        (".tar", ".tar.gz", ".tgz", ".zip", ".7z"): ArchiveSlipDetector,
+        (".nemo",): NeMoScanner,
+        (".mar",): TorchServeScanner,
+        (".tar", ".tar.gz", ".tgz", ".zip"): ArchiveSlipDetector,
+        (".7z",): SevenZipScanner,
+        # New format scanners
+        (".cbm",): CatBoostScanner,
+        (".mlmodel", ".mlpackage"): CoreMLScanner,
+        (".msgpack", ".orbax", ".flax"): FlaxScanner,
+        (".lgb", ".lightgbm"): LightGBMScanner,
+        (".params",): MXNetScanner,
+        (".pdmodel", ".pdiparams", ".pdparams"): PaddleScanner,
+        (".pmml",): PMMLScanner,
+        (".rds", ".rda", ".rdata"): RSerializedScanner,
+        (".skops",): SkopsScanner,
+        (".t7", ".th"): Torch7Scanner,
+        (".pte", ".ptl"): ExecuTorchScanner,
+        (".engine", ".plan", ".trt"): TensorRTScanner,
+        (".xml",): OpenVINOScanner,
     }
 
     for extensions, scanner_cls in scanner_map.items():
@@ -410,6 +439,55 @@ def dispatch_huggingface(target: str) -> list[Finding]:
     return scanner.scan_remote_repo(target)
 
 
+def dispatch_sbom(target: str) -> list[Finding]:
+    """Generate SBOM for scanned model artifacts."""
+    from sentinel.integrations import SBOMGenerator, LicenseChecker
+    findings: list[Finding] = []
+    sbom_gen = SBOMGenerator()
+    license_checker = LicenseChecker()
+    path = Path(target)
+    if path.is_file():
+        sbom = sbom_gen.generate_from_file(str(path))
+        for comp in sbom.get("components", []):
+            lic = comp.get("license")
+            if lic:
+                cat = license_checker.categorize(lic)
+                if cat.name in ("BLOCKED", "COPYLEFT"):
+                    findings.append(Finding.artifact(
+                        rule_id="LICENSE-001", title=f"License issue: {lic}",
+                        description=f"Component {comp.get('name', '?')} uses {cat.name} license",
+                        severity=Severity.HIGH if cat.name == "BLOCKED" else Severity.MEDIUM,
+                        target=str(path),
+                    ))
+        import json
+        print(json.dumps(sbom, default=str, indent=2))
+    elif path.is_dir():
+        sbom = sbom_gen.generate_from_directory(str(path))
+        import json
+        print(json.dumps(sbom, default=str, indent=2))
+    return findings
+
+
+def dispatch_doctor(target: str) -> list[Finding]:
+    """Run health check diagnostics."""
+    from sentinel.scanner_selection import DoctorCheck
+    import json
+    doctor = DoctorCheck()
+    results = doctor.run()
+    print(json.dumps(results, default=str, indent=2))
+    return []
+
+
+def dispatch_metadata(target: str) -> list[Finding]:
+    """Extract metadata from model file without deserialization."""
+    from sentinel.scanner_selection import MetadataExtractor
+    import json
+    extractor = MetadataExtractor()
+    meta = extractor.extract(target)
+    print(json.dumps(meta, default=str, indent=2))
+    return []
+
+
 # ── Module dispatcher map ─────────────────────────────────────────
 
 DISPATCHERS = {
@@ -425,6 +503,9 @@ DISPATCHERS = {
     "huggingface": dispatch_huggingface,
     "validate_rules": dispatch_validate_rules,
     "serve": dispatch_serve,
+    "sbom": dispatch_sbom,
+    "doctor": dispatch_doctor,
+    "metadata": dispatch_metadata,
 }
 
 
@@ -445,6 +526,9 @@ Available modules:
   redteam          Run red team probes
   validate_rules   Validate YAML pattern databases
   serve            Start REST API server
+  sbom             Generate SBOM for model artifacts
+  doctor           Run health check diagnostics
+  metadata         Extract model metadata without deserialization
         """,
     )
     parser.add_argument("--module", required=True, choices=DISPATCHERS.keys(),
@@ -455,12 +539,35 @@ Available modules:
                         help="Enable debug logging")
     parser.add_argument("--policy", default="",
                         help="Path to YAML policy file (for serve module)")
+    parser.add_argument("--output-sarif", default="",
+                        help="Write SARIF output to file")
+    parser.add_argument("--scanners", default="",
+                        help="Comma-separated scanner IDs to enable (include filter)")
+    parser.add_argument("--exclude-scanner", default="",
+                        help="Comma-separated scanner IDs to exclude")
+    parser.add_argument("--list-scanners", action="store_true",
+                        help="List all available scanners and exit")
+    parser.add_argument("--stream", action="store_true",
+                        help="Stream mode: scan files one at a time")
+    parser.add_argument("--max-size", type=int, default=0,
+                        help="Max file size in bytes for streaming mode")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show what would be scanned without scanning")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Disable scan result caching")
     args = parser.parse_args()
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
     else:
         logging.basicConfig(level=logging.WARNING)
+
+    # List scanners mode
+    if args.list_scanners:
+        from sentinel.scanner_selection import ScannerSelection
+        scanners = ScannerSelection.list_all()
+        print(json.dumps(scanners, default=str, indent=2))
+        return
 
     dispatcher = DISPATCHERS[args.module]
 
@@ -475,8 +582,22 @@ Available modules:
         sys.exit(1)
 
     # Post-process: suppression, severity filter, shadow mode, AI FP reduction
-    if args.module not in ("serve", "validate_rules"):
+    if args.module not in ("serve", "validate_rules", "doctor", "metadata"):
         findings = _post_process(findings)
+
+    # Scanner selection filter
+    if args.scanners or args.exclude_scanner:
+        from sentinel.scanner_selection import ScannerSelection
+        include = args.scanners.split(",") if args.scanners else None
+        exclude = args.exclude_scanner.split(",") if args.exclude_scanner else None
+        selection = ScannerSelection(include=include, exclude=exclude)
+        findings = [f for f in findings if selection.is_enabled(f.rule_id or "")]
+
+    # SARIF output
+    if args.output_sarif and findings:
+        from sentinel.sarif_output import write_sarif
+        write_sarif(findings, args.output_sarif)
+        logger.info("SARIF written to %s", args.output_sarif)
 
     # Output as JSON to stdout for Rust CLI consumption
     if findings:

@@ -1,0 +1,24 @@
+[package]
+name = "sentinel-pickle"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance pickle opcode scanner for Eresus Sentinel"
+license = "Apache-2.0"
+authors = ["Eresus Security <security@eresussec.com>"]
+readme = "README.md"
+
+[lib]
+name = "sentinel_pickle"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

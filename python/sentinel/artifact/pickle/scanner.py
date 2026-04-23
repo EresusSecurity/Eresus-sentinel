@@ -5,6 +5,8 @@ Delegates to:
   findings.py  — finding generation
   raw_scan.py  — crash-resilient fallback
   formats.py   — format detection helpers
+
+Falls back to Rust engine (sentinel_pickle) when available for faster scanning.
 """
 
 from __future__ import annotations
@@ -23,6 +25,13 @@ from .findings import build_findings
 
 logger = logging.getLogger(__name__)
 
+try:
+    from sentinel_pickle import PickleScanner as RustPickleScanner
+    HAS_RUST_ENGINE = True
+    logger.debug("Rust pickle engine available")
+except ImportError:
+    HAS_RUST_ENGINE = False
+
 
 class PickleScanner:
     """Pickle byte-stream scanner with crash-resilient opcode analysis."""
@@ -31,12 +40,15 @@ class PickleScanner:
         self,
         blocklist: Optional[dict[str, list[str]]] = None,
         allowlist: Optional[dict[str, list[str]]] = None,
+        prefer_rust: bool = True,
     ):
         if blocklist:
             self._blocklist = blocklist
             self._allowlist = allowlist or {}
         else:
             self._blocklist, self._allowlist = load_default_rules()
+        self._prefer_rust = prefer_rust and HAS_RUST_ENGINE
+        self._rust_scanner = RustPickleScanner() if self._prefer_rust else None
 
     # ─── Public API ───────────────────────────────────────────
 
@@ -46,6 +58,11 @@ class PickleScanner:
         source: str = "<bytes>",
     ) -> list[Finding]:
         """Scan a pickle byte stream and return findings."""
+        if self._rust_scanner:
+            try:
+                return self._scan_with_rust(data, source)
+            except Exception as e:
+                logger.debug("Rust engine failed, falling back to Python: %s", e)
         analysis = self._deep_analyze(data, source)
         return build_findings(analysis, source)
 
@@ -88,7 +105,28 @@ class PickleScanner:
         """Return raw PickleAnalysis without converting to findings."""
         return self._deep_analyze(data, source)
 
+    @property
+    def engine(self) -> str:
+        return "rust" if self._rust_scanner else "python"
+
     # ─── Internal ─────────────────────────────────────────────
 
     def _deep_analyze(self, data: bytes, source: str) -> PickleAnalysis:
         return deep_analyze(data, source, self._blocklist, self._allowlist)
+
+    def _scan_with_rust(self, data: bytes, source: str) -> list[Finding]:
+        rust_findings = self._rust_scanner.scan_data(data)
+        findings: list[Finding] = []
+        for rf in rust_findings:
+            severity_str = getattr(rf, "severity", "HIGH").upper()
+            sev = getattr(Severity, severity_str, Severity.HIGH)
+            findings.append(Finding.artifact(
+                rule_id=getattr(rf, "rule_id", "PICKLE-RUST"),
+                title=getattr(rf, "title", "Pickle finding (Rust)"),
+                description=getattr(rf, "description", ""),
+                severity=sev,
+                target=source,
+                evidence=getattr(rf, "evidence", ""),
+                cwe_ids=getattr(rf, "cwe_ids", []),
+            ))
+        return findings

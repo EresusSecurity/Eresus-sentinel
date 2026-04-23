@@ -1,0 +1,106 @@
+# Rules for new model formats, weight anomalies, licenses, Jinja2, and manifests
+catboost:
+  extensions: [".cbm"]
+  magic_bytes: "a0b1c2d3"
+  risks: [pickle_inside, metadata_tampering, embedded_executables]
+
+coreml:
+  extensions: [".mlmodel", ".mlpackage"]
+  format: protobuf
+  risks: [custom_layers, pickle_inside, path_traversal, embedded_scripts]
+
+flax:
+  extensions: [".msgpack", ".orbax", ".flax"]
+  format: msgpack
+  risks: [pickle_inside, numpy_deserialization, sharding_tampering]
+
+lightgbm:
+  extensions: [".lgb", ".lightgbm"]
+  format: text_or_binary
+  risks: [text_injection, feature_name_xss, parameter_overflow]
+
+mxnet:
+  extensions: [".params", ".json"]
+  format: binary_and_json
+  risks: [pickle_in_params, custom_op_registration, symbol_injection]
+
+nemo:
+  extensions: [".nemo"]
+  format: tar_archive
+  risks: [path_traversal, pickle_inside, config_injection, symlinks]
+
+openvino:
+  extensions: [".xml", ".bin"]
+  format: xml_and_binary
+  risks: [xxe_attack, custom_extension, topology_tampering]
+
+paddle:
+  extensions: [".pdmodel", ".pdiparams", ".pdparams"]
+  format: protobuf
+  risks: [custom_op_injection, pickle_in_combined, param_integrity]
+
+pmml:
+  extensions: [".pmml"]
+  format: xml
+  risks: [xxe_attack, javascript_in_pmml, sql_in_predicates, extension_code]
+
+r_serialized:
+  extensions: [".rds", ".rda", ".rdata"]
+  format: binary_gzip
+  risks: [system_calls, eval_parse, external_pointers, native_routines]
+
+skops:
+  extensions: [".skops"]
+  format: zip_with_schema
+  risks: [untrusted_types, pickle_fallback, version_mismatch]
+
+torchserve:
+  extensions: [".mar"]
+  format: zip_archive
+  risks: [path_traversal, arbitrary_handler, malicious_requirements, pickle]
+
+torch7:
+  extensions: [".t7", ".th"]
+  format: lua_serialization
+  risks: [lua_code_execution, custom_class, binary_injection]
+
+executorch:
+  extensions: [".pte", ".ptl"]
+  format: flatbuffer
+  risks: [custom_operators, data_overflow, embedded_blobs]
+
+tensorrt:
+  extensions: [".engine", ".plan", ".trt"]
+  format: binary_engine
+  risks: [plugin_system_libs, embedded_code, version_mismatch]
+
+# Weight anomaly thresholds
+weight_anomaly:
+  kurtosis_threshold: 50.0
+  zero_ratio_threshold: 0.99
+  outlier_sigma: 5.0
+  entropy_sigma: 3.0
+  min_layer_size: 100
+
+# License rules
+license:
+  allowed: [MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense, CC0-1.0]
+  warn: [GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0, MPL-2.0, CC-BY-SA-4.0]
+  blocked: [CC-BY-NC-4.0, CC-BY-NC-SA-4.0, CC-BY-NC-ND-4.0, AGPL-3.0]
+  require_license: true
+
+# Jinja2 SSTI patterns
+jinja2:
+  block_patterns:
+    - "__class__"
+    - "__mro__"
+    - "__subclasses__"
+    - "__globals__"
+    - "__builtins__"
+  unsafe_filters: [attr, format, map, select, reject, groupby]
+
+# Manifest rules
+manifest:
+  block_trust_remote_code: true
+  check_auto_map: true
+  check_model_card_xss: true

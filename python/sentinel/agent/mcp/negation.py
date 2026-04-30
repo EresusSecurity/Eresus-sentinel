@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import re
 
-
 NEGATION_PATTERN = re.compile(
-    r"(?:\b(?:does|do|will|shall|can|may|must)\s+not\b"
-    r"|\b(?:never|no|without|refus\w*|forbid\w*|disallow\w*"
+    r"(?:\b(?:does|do|will|shall|can|may|must|should|could|would)\s+not\b"
+    r"|\bnot\s+to\b"
+    r"|\b(?:cannot|never|no|without|refus\w*|forbid\w*|disallow\w*"
     r"|prohibit\w*|block\w*|deny|denied|denies)\b)"
     r"[^.\n]{0,60}?\b"
 )

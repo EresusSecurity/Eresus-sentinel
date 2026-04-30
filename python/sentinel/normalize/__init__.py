@@ -1,9 +1,9 @@
 """Unicode + encoding normalization utilities."""
 
-from .invisible import strip_invisible
 from .confusables import fold_confusables
+from .core import expand_for_matching, normalize
 from .decoders import decode_common
-from .core import normalize, expand_for_matching
+from .invisible import strip_invisible
 
 __all__ = [
     "strip_invisible",

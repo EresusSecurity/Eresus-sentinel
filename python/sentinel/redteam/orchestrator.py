@@ -12,14 +12,18 @@ Coordinates the full probe → generate → detect → report pipeline:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from sentinel.finding import Finding, Severity, Exploitability, AttemptData as FindingAttemptData
+from sentinel.finding import AttemptData as FindingAttemptData
+from sentinel.finding import Exploitability, Finding, Severity
 from sentinel.redteam.attempt import Attempt, AttemptStatus
-from sentinel.redteam.probe import Probe
 from sentinel.redteam.detector import Detector, TriggerListDetector
-from sentinel.redteam.generator import Generator
+from sentinel.redteam.generator import EchoGenerator, Generator
+
+if TYPE_CHECKING:
+    from sentinel.redteam.probe import Probe
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +35,16 @@ OWASP_TAG_MAP = {
     "owasp:llm06": "LLM06",  # Sensitive Information Disclosure
     "owasp:llm07": "LLM07",  # Insecure Plugin Design
 }
+
+
+@dataclass
+class QuickScanReport:
+    """Small report object returned by CLI quick scans."""
+
+    target: str
+    findings: list[Finding] = field(default_factory=list)
+    attempts: list[Attempt] = field(default_factory=list)
+    summary: dict = field(default_factory=dict)
 
 
 class RedTeamOrchestrator:
@@ -52,17 +66,51 @@ class RedTeamOrchestrator:
 
     def __init__(
         self,
-        generator: Generator,
-        detectors: Optional[list[Detector]] = None,
-        tool_schema: Optional[list[dict]] = None,
+        generator: Generator | None = None,
+        detectors: list[Detector] | None = None,
+        tool_schema: list[dict] | None = None,
         max_turns: int = 5,
     ):
-        self._generator = generator
+        self._generator = generator or EchoGenerator()
         self._detectors = detectors or [TriggerListDetector()]
         self._tool_schema = tool_schema
         self._max_turns = max_turns
         self._results: list[Attempt] = []
-        self._start_time: Optional[str] = None
+        self._start_time: str | None = None
+
+    def run_quick_scan(
+        self,
+        target: str = "echo",
+        probes: list[Probe] | None = None,
+    ) -> QuickScanReport:
+        """Run a deterministic smoke red-team scan for CLI and parity checks."""
+        if probes is None:
+            from sentinel.redteam.probe import DirectInjectionProbe, SystemPromptExtractionProbe
+            from sentinel.redteam.probes.ascii_smuggling import ASCIISmugglingProbe
+            from sentinel.redteam.probes.cross_session_leak import CrossSessionLeakProbe
+            from sentinel.redteam.probes.memory_poisoning import AgentMemoryPoisoningProbe
+            from sentinel.redteam.probes.rag_exfiltration import RAGExfiltrationProbe
+            from sentinel.redteam.probes.reasoning_dos import ReasoningDOSProbe
+            from sentinel.redteam.probes.tool_discovery import ToolDiscoveryProbe
+
+            probes = [
+                DirectInjectionProbe(),
+                SystemPromptExtractionProbe(),
+                ASCIISmugglingProbe(),
+                CrossSessionLeakProbe(),
+                RAGExfiltrationProbe(),
+                ReasoningDOSProbe(),
+                AgentMemoryPoisoningProbe(),
+                ToolDiscoveryProbe(),
+            ]
+
+        findings = self.run_probes(probes)
+        return QuickScanReport(
+            target=target,
+            findings=findings,
+            attempts=self.get_results(),
+            summary=self.get_stats(),
+        )
 
     def run_probe(self, probe: Probe) -> list[Finding]:
         """
@@ -138,7 +186,7 @@ class RedTeamOrchestrator:
     def run_probe_multiturn(
         self,
         probe: Probe,
-        follow_up_prompts: Optional[list[str]] = None,
+        follow_up_prompts: list[str] | None = None,
     ) -> list[Finding]:
         """
         Execute a multi-turn probe sequence.
@@ -249,10 +297,9 @@ class RedTeamOrchestrator:
             all_findings.extend(findings)
 
             # Capture successful attack data for next stage
-            successful_attempts = [
-                a for a in self._results[-len(probe.prompts):]
-                if a.is_successful_attack
-            ]
+            attempt_count = len(probe.generate_attempts())
+            recent_results = self._results[-attempt_count:] if attempt_count else []
+            successful_attempts = [a for a in recent_results if a.is_successful_attack]
 
             if successful_attempts:
                 chain_context[probe.probe_name] = {

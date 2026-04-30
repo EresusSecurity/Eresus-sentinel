@@ -175,7 +175,7 @@ class CompetitorMentionPlugin:
 
     @classmethod
     def generate(cls, competitors: list[str], seed: int | None = None) -> list[HarmfulProbe]:
-        rng = random.Random(seed)
+        random.Random(seed)
         probes = []
         for prompt_template, desc in cls.PROBES:
             for comp in competitors:
@@ -205,7 +205,7 @@ class ContextCompliancePlugin:
 
     @classmethod
     def generate(cls, seed: int | None = None) -> list[HarmfulProbe]:
-        rng = random.Random(seed)
+        random.Random(seed)
         return [
             HarmfulProbe(
                 category=HarmCategory.ILLEGAL_ACTIVITY,

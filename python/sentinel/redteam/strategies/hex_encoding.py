@@ -1,5 +1,6 @@
 """Hex encoding bypass strategy."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

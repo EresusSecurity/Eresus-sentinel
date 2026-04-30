@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScanEvent",
+  "type": "object",
+  "required": ["scan_id", "timestamp", "domain", "status"],
+  "properties": {
+    "scan_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "domain": {"type": "string", "enum": ["artifact", "firewall", "sast", "mcp", "skill", "aibom", "redteam"]},
+    "status": {"type": "string", "enum": ["started", "completed", "failed"]},
+    "target": {"type": "string"},
+    "finding_count": {"type": "integer", "minimum": 0},
+    "duration_ms": {"type": "number"},
+    "metadata": {"type": "object"}
+  }
+}

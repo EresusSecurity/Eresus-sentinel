@@ -1,0 +1,20 @@
+name: web_search
+version: "1.0"
+description: Search the web using DuckDuckGo and return the top results.
+author: sentinel-test
+license: MIT
+
+parameters:
+  query:
+    type: string
+    description: The search query
+
+steps:
+  - name: search
+    action: http.get
+    url: "https://api.duckduckgo.com/?q={query}&format=json"
+    headers:
+      User-Agent: "SentinelSkill/1.0"
+
+output:
+  template: "Top results for '{query}': {search.results}"

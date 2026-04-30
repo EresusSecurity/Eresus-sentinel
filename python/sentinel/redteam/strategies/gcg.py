@@ -1,7 +1,9 @@
 """GCG — Greedy Coordinate Gradient adversarial suffix strategy."""
 from __future__ import annotations
+
 import random
 import string
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

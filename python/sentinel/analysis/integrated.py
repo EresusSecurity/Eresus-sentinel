@@ -1,10 +1,11 @@
 """Analysis pipeline — opcode sequence, semantic, ML context, entropy, pattern detection."""
 from __future__ import annotations
+
 import logging
 import math
-import os
 import re
 from pathlib import Path
+
 from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)

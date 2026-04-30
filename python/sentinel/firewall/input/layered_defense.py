@@ -22,7 +22,7 @@ import logging
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +314,7 @@ class LayeredDefense(InputScanner):
             all_findings = list(input_result.findings) + canary_result.findings
 
             # Re-aggregate with canary score
-            input_scores = [
+            [
                 (name, score) for name, score in [
                     ("input_layers", input_result.risk_score),
                     ("canary", canary_result.risk_score),

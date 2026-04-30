@@ -1,0 +1,168 @@
+# ============================================================================
+# Eresus Sentinel — Pickle Protocol 0-5 Specific Gadget Rules
+# ============================================================================
+# Tracks protocol-specific attack patterns that the generic opcode scanner
+# may miss when handling older (proto 0/1) or newer (proto 4/5) streams.
+#
+# Rule schema:
+#   protocol: 0-5 (or "any")
+#   id: PICKLE-PROTO-NNN
+#   description: Human-readable description
+#   severity: critical | high | medium | low
+#   gadget_type: global | reduce | ext | memo | nested | string
+#   indicators: list of binary or text patterns that signal this gadget
+# ============================================================================
+
+version: "1.0"
+
+protocol_gadgets:
+
+  # ── Protocol 0 (text-based, oldest) ─────────────────────────────────
+  - id: PICKLE-PROTO-001
+    protocol: 0
+    description: "Protocol-0 GLOBAL opcode encoding dangerous import as ASCII text"
+    severity: critical
+    gadget_type: global
+    indicators:
+      - "cos\nsystem\n"          # os.system via protocol-0 text encoding
+      - "csubprocess\nPopen\n"
+      - "cbuiltins\nexec\n"
+      - "cbuiltins\neval\n"
+      - "c__builtin__\nexec\n"
+      - "c__builtin__\napply\n"
+      - "cposix\nsystem\n"
+      - "cnt\nsystem\n"
+    note: "Protocol-0 streams are text-based; attackers use them to evade binary magic-byte scanners"
+
+  - id: PICKLE-PROTO-002
+    protocol: 0
+    description: "Protocol-0 INST opcode (i<module> LF <callable> LF) for RCE"
+    severity: critical
+    gadget_type: global
+    indicators:
+      - "ios\nsystem\n"
+      - "isubprocess\nPopen\n"
+      - "ibuiltins\nexec\n"
+    note: "INST opcode is protocol-0 only; functionally equivalent to GLOBAL+REDUCE"
+
+  # ── Protocol 1 (binary, legacy) ──────────────────────────────────────
+  - id: PICKLE-PROTO-003
+    protocol: 1
+    description: "Protocol-1 SHORT_BINSTRING used to smuggle eval/exec arguments"
+    severity: high
+    gadget_type: string
+    indicators:
+      # SHORT_BINSTRING is opcode 0x55; check if followed by eval-style content
+      - opcode: "SHORT_BINSTRING"
+        value_contains: ["exec(", "eval(", "__import__", "os.system"]
+    note: "Protocol 1 uses SHORT_BINSTRING (0x55) for small strings; commonly used to pass shell commands"
+
+  - id: PICKLE-PROTO-004
+    protocol: 1
+    description: "Protocol-1 BINPERSID (0x51) with dangerous persistent id"
+    severity: high
+    gadget_type: reduce
+    indicators:
+      - opcode: "BINPERSID"
+    note: "Persistent IDs can invoke arbitrary callables during unpickling in custom Unpickler subclasses"
+
+  # ── Protocol 2 (most common, PyTorch default) ────────────────────────
+  - id: PICKLE-PROTO-005
+    protocol: 2
+    description: "Protocol-2 NEWOBJ with dangerous __reduce_ex__ chain"
+    severity: critical
+    gadget_type: reduce
+    indicators:
+      - opcode_sequence: ["GLOBAL", "EMPTY_TUPLE", "NEWOBJ"]
+        followed_by_module: ["os", "subprocess", "builtins", "nt", "posix"]
+    note: "Classic NEWOBJ exploit chain using __reduce_ex__; most common in wild pickle exploits"
+
+  - id: PICKLE-PROTO-006
+    protocol: 2
+    description: "Protocol-2 EXT1/EXT2/EXT4 opcodes resolving via copyreg extension registry"
+    severity: high
+    gadget_type: ext
+    indicators:
+      - opcode: "EXT4"
+      - opcode: "EXT2"
+    note: "EXT opcodes resolve callables via copyreg._extension_registry; registry can be poisoned"
+
+  # ── Protocol 4 (Python 3.8+, supports large objects) ─────────────────
+  - id: PICKLE-PROTO-007
+    protocol: 4
+    description: "Protocol-4 STACK_GLOBAL with split module/name allowing obfuscation"
+    severity: critical
+    gadget_type: global
+    indicators:
+      - opcode: "STACK_GLOBAL"
+        module_contains: ["os", "subprocess", "builtins", "importlib", "_winapi"]
+    note: "STACK_GLOBAL pops module and name from stack separately, enabling split-string obfuscation"
+
+  - id: PICKLE-PROTO-008
+    protocol: 4
+    description: "Protocol-4 BYTEARRAY8 used to deliver shellcode payloads"
+    severity: high
+    gadget_type: string
+    indicators:
+      - opcode: "BYTEARRAY8"
+        min_length: 64
+    note: "Large BYTEARRAY8 blobs in protocol-4 streams may carry encoded shellcode"
+
+  - id: PICKLE-PROTO-009
+    protocol: 4
+    description: "Protocol-4 FRAME boundary manipulation for parser confusion"
+    severity: medium
+    gadget_type: structure
+    indicators:
+      - multiple_frames: true
+        frame_count_gt: 100
+    note: "Excessive FRAME opcodes can trigger parser confusion in older Python versions"
+
+  # ── Protocol 5 (Python 3.8+, out-of-band data) ────────────────────────
+  - id: PICKLE-PROTO-010
+    protocol: 5
+    description: "Protocol-5 NEXT_BUFFER/READONLY_BUFFER with large out-of-band payload"
+    severity: high
+    gadget_type: reduce
+    indicators:
+      - opcode: "NEXT_BUFFER"
+      - opcode: "READONLY_BUFFER"
+    note: "Protocol-5 out-of-band buffers can bypass in-band content scanners; scrutinize payload size"
+
+  - id: PICKLE-PROTO-011
+    protocol: 5
+    description: "Protocol-5 out-of-band buffer count exceeds reasonable model checkpoint usage"
+    severity: medium
+    gadget_type: structure
+    indicators:
+      - oob_buffer_count_gt: 10
+    note: "Legitimate model checkpoints rarely use more than a few out-of-band buffers"
+
+  # ── Cross-protocol patterns ────────────────────────────────────────────
+  - id: PICKLE-PROTO-012
+    protocol: any
+    description: "Nested pickle stream detected after STOP opcode (pickle-in-pickle chaining)"
+    severity: critical
+    gadget_type: nested
+    indicators:
+      - nested_pickle: true
+    note: "Two STOP bytes in a stream indicate an embedded second pickle; used for two-stage RCE delivery"
+
+  - id: PICKLE-PROTO-013
+    protocol: any
+    description: "Memo GET/PUT ratio anomaly — possible Billion Laughs amplification attack"
+    severity: high
+    gadget_type: memo
+    indicators:
+      - get_put_ratio_gt: 50
+    note: "High GET/PUT ratio can exponentially expand object graphs during unpickling (OOM/DoS)"
+
+  - id: PICKLE-PROTO-014
+    protocol: any
+    description: "Protocol downgrade in nested stream — outer proto 4/5, inner proto 0/1"
+    severity: high
+    gadget_type: nested
+    indicators:
+      - outer_protocol_gte: 4
+        inner_protocol_lte: 1
+    note: "Downgraded inner stream evades scanners that only inspect the outermost protocol header"

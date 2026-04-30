@@ -41,7 +41,7 @@ pub fn extract_strings(state: &PVMState) -> Vec<ExtractedString> {
         }
     }
 
-    for (idx, val) in state.memo.iter() {
+    for (_idx, val) in state.memo.iter() {
         if let StackValue::String(s) = val {
             if s.len() >= 3 && seen.insert(s.clone()) {
                 result.push(ExtractedString {

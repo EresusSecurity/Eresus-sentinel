@@ -11,11 +11,9 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from sentinel.finding import Finding, Severity
 from sentinel.notebook_scanner.codebase_scanner import CodebaseScanResult
-from sentinel.notebook_scanner.result import NotebookScanResult
 
 logger = logging.getLogger(__name__)
 

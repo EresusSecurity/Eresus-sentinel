@@ -28,12 +28,9 @@ No torch pip dependency required.
 
 from __future__ import annotations
 
-import os
-import struct
 import zipfile
-from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import List, Set, Tuple
 
 from ..finding import Finding, Severity
 from ..rules import load_scanner_rules

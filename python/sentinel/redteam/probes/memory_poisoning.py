@@ -5,7 +5,7 @@ Tests if agent persistent memory can be corrupted by injecting
 false facts, overriding stored preferences, or planting backdoor
 instructions that persist across sessions.
 
-Inspired by: promptfoo memory poisoning plugin.
+Reference-aligned persistent-memory integrity fixture.
 """
 
 from __future__ import annotations

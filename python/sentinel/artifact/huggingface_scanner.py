@@ -12,9 +12,8 @@ Scans Hugging Face model repositories for:
 
 import json
 import os
-import struct
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from ..finding import Finding, Severity
 
@@ -94,6 +93,16 @@ class HuggingFaceScanner:
         # Scan model card/README
         findings.extend(self._check_readme(p))
 
+        # Model card completeness
+        readme_file = p / "README.md"
+        card_text = None
+        if readme_file.is_file():
+            try:
+                card_text = readme_file.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+        findings.extend(self._check_model_card_completeness(repo_path, card_text))
+
         return findings
 
     def scan_remote_repo(self, repo_id: str) -> List[Finding]:
@@ -151,6 +160,20 @@ class HuggingFaceScanner:
                         cwe_ids=["CWE-354"],
                     ))
 
+            # Model card completeness
+            card_text = None
+            try:
+                from huggingface_hub import hf_hub_download
+                readme_path = hf_hub_download(
+                    repo_id=repo_id, filename="README.md",
+                    token=self.api_token, local_dir=None,
+                )
+                with open(readme_path, encoding="utf-8", errors="replace") as fh:
+                    card_text = fh.read()
+            except Exception:
+                card_text = None
+            findings.extend(self._check_model_card_completeness(repo_id, card_text))
+
         except ImportError:
             findings.append(Finding.artifact(
                 rule_id="HF-020",
@@ -169,6 +192,85 @@ class HuggingFaceScanner:
                 source=repo_id,
             ))
 
+        return findings
+
+    # ── Model card completeness scoring ─────────────────────────
+
+    _CARD_SECTIONS = [
+        "model_description",
+        "intended_uses",
+        "limitations",
+        "training_data",
+        "ethical_considerations",
+        "eval_results",
+    ]
+
+    # Markdown heading aliases that count as covering each section
+    _CARD_KEYWORDS: dict[str, list[str]] = {
+        "model_description":     ["## model description", "## about", "## overview", "## introduction"],
+        "intended_uses":         ["## intended use", "## uses", "## out-of-scope", "## direct use"],
+        "limitations":           ["## limitation", "## bias", "## risks", "## caveats"],
+        "training_data":         ["## training data", "## dataset", "## data"],
+        "ethical_considerations":["## ethical", "## fairness", "## safety consideration", "## social"],
+        "eval_results":          ["## evaluation", "## benchmark", "## result", "## performance"],
+    }
+
+    def _score_model_card(self, card_text: str) -> tuple[int, list[str]]:
+        """Return (score 0-100, list of missing sections)."""
+        lowered = card_text.lower()
+        missing = []
+        for section, keywords in self._CARD_KEYWORDS.items():
+            if not any(kw in lowered for kw in keywords):
+                missing.append(section)
+        present = len(self._CARD_SECTIONS) - len(missing)
+        score = round(present / len(self._CARD_SECTIONS) * 100)
+        return score, missing
+
+    def _check_model_card_completeness(self, repo_id: str, card_text: str | None) -> list[Finding]:
+        """Produce findings when model card is absent or incomplete."""
+        findings: list[Finding] = []
+
+        if not card_text or not card_text.strip():
+            findings.append(Finding.artifact(
+                rule_id="HF-030",
+                title="Model card missing",
+                description=(
+                    "Repository has no README / model card. "
+                    "Model cards should document intended uses, limitations, training data, "
+                    "ethical considerations, and evaluation results."
+                ),
+                severity=Severity.HIGH,
+                source=repo_id,
+                confidence=1.0,
+                cwe_ids=["CWE-1059"],
+            ))
+            return findings
+
+        score, missing = self._score_model_card(card_text)
+
+        if score < 35:
+            sev = Severity.MEDIUM
+        elif score < 70:
+            sev = Severity.LOW
+        elif score < 90:
+            sev = Severity.INFO
+        else:
+            return findings  # sufficiently complete
+
+        findings.append(Finding.artifact(
+            rule_id="HF-031",
+            title=f"Incomplete model card (score {score}/100)",
+            description=(
+                f"Model card is missing key sections: {', '.join(missing)}. "
+                f"Completeness score: {score}/100. "
+                "A complete card improves transparency and responsible-use assessment."
+            ),
+            severity=sev,
+            source=repo_id,
+            evidence=f"missing_sections={missing}",
+            confidence=0.9,
+            cwe_ids=["CWE-1059"],
+        ))
         return findings
 
     def _check_file_types(self, repo_path: Path) -> List[Finding]:
@@ -237,8 +339,8 @@ class HuggingFaceScanner:
                         findings.append(Finding.artifact(
                             rule_id="HF-005",
                             title="Custom code mapping (auto_map)",
-                            description=f"Config uses auto_map which loads custom Python code "
-                                        f"from the repository. This enables arbitrary code execution.",
+                            description="Config uses auto_map which loads custom Python code "
+                                        "from the repository. This enables arbitrary code execution.",
                             severity=Severity.HIGH,
                             source=str(cf),
                             cwe_ids=["CWE-94"],

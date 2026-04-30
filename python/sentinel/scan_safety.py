@@ -7,11 +7,9 @@ or DoS-ing the scanner process.
 from __future__ import annotations
 
 import logging
-import os
 import multiprocessing
-import signal
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 

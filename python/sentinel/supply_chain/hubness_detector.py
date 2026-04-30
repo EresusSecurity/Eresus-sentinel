@@ -11,11 +11,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
 
 
 class AnomalyType(Enum):
     HUBNESS = auto()
+    CONCEPT_HUBNESS = auto()
+    MODALITY_HUBNESS = auto()
     CLUSTER_SPREAD = auto()
     STABILITY = auto()
     NEAR_DUPLICATE = auto()
@@ -45,7 +46,7 @@ class HubnessFinding:
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     if na == 0 or nb == 0:
@@ -54,7 +55,9 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def _euclidean_distance(a: list[float], b: list[float]) -> float:
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+    if len(a) != len(b):
+        return float("inf")
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b, strict=True)))
 
 
 def _mean_vector(vectors: list[list[float]]) -> list[float]:
@@ -69,11 +72,37 @@ def _mean_vector(vectors: list[list[float]]) -> list[float]:
     return [x / n for x in result]
 
 
+def _median(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def _robust_z_scores(values: list[float]) -> list[float]:
+    center = _median(values)
+    deviations = [abs(value - center) for value in values]
+    mad = _median(deviations)
+    if mad <= 1e-9:
+        positive_deviations = [value for value in deviations if value > 0]
+        mad = _median(positive_deviations) if positive_deviations else 1.0
+    return [0.6745 * (value - center) / max(mad, 1e-9) for value in values]
+
+
 class HubnessDetector:
 
-    def __init__(self, k: int = 10, hubness_threshold: float = 3.0):
+    def __init__(
+        self,
+        k: int = 10,
+        hubness_threshold: float = 3.0,
+        robust_z_threshold: float = 3.0,
+    ):
         self._k = k
         self._threshold = hubness_threshold
+        self._robust_z_threshold = robust_z_threshold
 
     def detect(self, vectors: list[EmbeddingVector]) -> list[HubnessFinding]:
         if len(vectors) < self._k + 1:
@@ -94,18 +123,136 @@ class HubnessDetector:
 
         expected = self._k
         findings = []
+        ordered_ids = list(neighbor_counts)
+        counts = [float(neighbor_counts[vid]) for vid in ordered_ids]
+        robust_z_by_id = dict(zip(ordered_ids, _robust_z_scores(counts), strict=True))
+
         for vid, count in neighbor_counts.items():
             ratio = count / max(expected, 1)
-            if ratio > self._threshold:
+            robust_z = robust_z_by_id.get(vid, 0.0)
+            if ratio > self._threshold or robust_z > self._robust_z_threshold:
                 findings.append(HubnessFinding(
                     anomaly_type=AnomalyType.HUBNESS,
-                    severity="HIGH" if ratio > self._threshold * 2 else "MEDIUM",
-                    description=f"Vector {vid} is hub: k-occurrence={count} (ratio={ratio:.2f})",
+                    severity=(
+                        "HIGH"
+                        if ratio > self._threshold * 2
+                        or robust_z > self._robust_z_threshold * 2
+                        else "MEDIUM"
+                    ),
+                    description=(
+                        f"Vector {vid} is hub: k-occurrence={count} "
+                        f"(ratio={ratio:.2f}, robust_z={robust_z:.2f})"
+                    ),
                     vector_ids=[vid],
-                    score=ratio,
+                    score=max(ratio, robust_z),
                     threshold=self._threshold,
-                    details={"k_occurrence": count, "expected": expected},
+                    details={
+                        "k_occurrence": count,
+                        "expected": expected,
+                        "ratio": ratio,
+                        "robust_z": robust_z,
+                        "robust_z_threshold": self._robust_z_threshold,
+                    },
                 ))
+        return findings
+
+
+def _partition_vectors(
+    vectors: list[EmbeddingVector],
+    metadata_field: str,
+) -> dict[str, list[EmbeddingVector]]:
+    groups: dict[str, list[EmbeddingVector]] = {}
+    for vector in vectors:
+        value = vector.metadata.get(metadata_field) or vector.label or "unknown"
+        groups.setdefault(str(value), []).append(vector)
+    return groups
+
+
+class ConceptAwareHubnessDetector:
+    """Detect hubs inside semantic concept buckets."""
+
+    def __init__(
+        self,
+        k: int = 10,
+        hubness_threshold: float = 2.5,
+        robust_z_threshold: float = 2.5,
+        min_group_size: int = 4,
+    ):
+        self._k = k
+        self._threshold = hubness_threshold
+        self._robust_z_threshold = robust_z_threshold
+        self._min_group_size = min_group_size
+
+    def detect(
+        self,
+        vectors: list[EmbeddingVector],
+        metadata_field: str = "concept",
+    ) -> list[HubnessFinding]:
+        findings: list[HubnessFinding] = []
+        for concept, members in _partition_vectors(vectors, metadata_field).items():
+            if len(members) < self._min_group_size:
+                continue
+            effective_k = min(self._k, max(1, len(members) // 3))
+            detector = HubnessDetector(
+                k=effective_k,
+                hubness_threshold=self._threshold,
+                robust_z_threshold=self._robust_z_threshold,
+            )
+            for finding in detector.detect(members):
+                finding.anomaly_type = AnomalyType.CONCEPT_HUBNESS
+                finding.description = (
+                    f"Concept '{concept}' contains an adversarial hub. {finding.description}"
+                )
+                finding.details = {
+                    **finding.details,
+                    "concept": concept,
+                    "metadata_field": metadata_field,
+                }
+                findings.append(finding)
+        return findings
+
+
+class ModalityAwareHubnessDetector:
+    """Detect hubs inside modality buckets for multimodal retrieval systems."""
+
+    def __init__(
+        self,
+        k: int = 10,
+        hubness_threshold: float = 2.5,
+        robust_z_threshold: float = 2.5,
+        min_group_size: int = 4,
+    ):
+        self._k = k
+        self._threshold = hubness_threshold
+        self._robust_z_threshold = robust_z_threshold
+        self._min_group_size = min_group_size
+
+    def detect(
+        self,
+        vectors: list[EmbeddingVector],
+        metadata_field: str = "modality",
+    ) -> list[HubnessFinding]:
+        findings: list[HubnessFinding] = []
+        for modality, members in _partition_vectors(vectors, metadata_field).items():
+            if len(members) < self._min_group_size:
+                continue
+            effective_k = min(self._k, max(1, len(members) // 3))
+            detector = HubnessDetector(
+                k=effective_k,
+                hubness_threshold=self._threshold,
+                robust_z_threshold=self._robust_z_threshold,
+            )
+            for finding in detector.detect(members):
+                finding.anomaly_type = AnomalyType.MODALITY_HUBNESS
+                finding.description = (
+                    f"Modality '{modality}' contains an adversarial hub. {finding.description}"
+                )
+                finding.details = {
+                    **finding.details,
+                    "modality": modality,
+                    "metadata_field": metadata_field,
+                }
+                findings.append(finding)
         return findings
 
 
@@ -115,7 +262,7 @@ class ClusterSpreadDetector:
         self._max_ratio = max_spread_ratio
 
     def detect(
-        self, vectors: list[EmbeddingVector], labels: Optional[dict[str, str]] = None,
+        self, vectors: list[EmbeddingVector], labels: dict[str, str] | None = None,
     ) -> list[HubnessFinding]:
         if labels is None:
             labels = {v.vector_id: v.label for v in vectors}
@@ -251,6 +398,8 @@ class AdversarialHubnessScanner:
 
     def __init__(self):
         self._hubness = HubnessDetector()
+        self._concept = ConceptAwareHubnessDetector()
+        self._modality = ModalityAwareHubnessDetector()
         self._cluster = ClusterSpreadDetector()
         self._stability = StabilityDetector()
         self._dedup = NearDuplicateDetector()
@@ -263,6 +412,10 @@ class AdversarialHubnessScanner:
         findings.extend(self._stability.detect(vectors))
         findings.extend(self._dedup.detect(vectors))
         findings.extend(self._collapse.detect(vectors))
+        if any("concept" in vector.metadata for vector in vectors):
+            findings.extend(self.concept_scan(vectors))
+        if any("modality" in vector.metadata for vector in vectors):
+            findings.extend(self.modality_scan(vectors))
         return findings
 
     def quick_scan(self, vectors: list[EmbeddingVector]) -> list[HubnessFinding]:
@@ -270,3 +423,17 @@ class AdversarialHubnessScanner:
         findings.extend(self._hubness.detect(vectors))
         findings.extend(self._collapse.detect(vectors))
         return findings
+
+    def concept_scan(
+        self,
+        vectors: list[EmbeddingVector],
+        metadata_field: str = "concept",
+    ) -> list[HubnessFinding]:
+        return self._concept.detect(vectors, metadata_field=metadata_field)
+
+    def modality_scan(
+        self,
+        vectors: list[EmbeddingVector],
+        metadata_field: str = "modality",
+    ) -> list[HubnessFinding]:
+        return self._modality.detect(vectors, metadata_field=metadata_field)

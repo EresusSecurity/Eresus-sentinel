@@ -13,15 +13,14 @@ Capabilities:
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any
 
-from sentinel.redteam.attempt import Attempt, AttemptStatus, Message
+from sentinel.redteam.attempt import Attempt
 
 logger = logging.getLogger(__name__)
 
 
-class Probe(ABC):
+class Probe:
     """
     Base class for red team probes (attack vectors).
 
@@ -47,6 +46,62 @@ class Probe(ABC):
     generations_per_prompt: int = 1
     active: bool = True
 
+    def __init_subclass__(cls, **kwargs):
+        """Normalize reference-style probe metadata at class definition time."""
+        super().__init_subclass__(**kwargs)
+        aliases = {
+            "probe_name": "name",
+            "probe_description": "description",
+            "probe_tags": "tags",
+            "recommended_detectors": "recommended_detector",
+        }
+        for canonical, alias in aliases.items():
+            if canonical not in cls.__dict__ and alias in cls.__dict__:
+                value = cls.__dict__[alias]
+                if canonical in {"probe_tags", "recommended_detectors"} and isinstance(value, str):
+                    value = [value]
+                setattr(cls, canonical, value)
+
+    def _payload_records(self) -> list[dict[str, Any]]:
+        """Return normalized payload records from every supported probe style."""
+        if self.prompts:
+            return [
+                {"prompt": prompt, "detect": list(self.triggers)}
+                for prompt in self.prompts
+            ]
+
+        if hasattr(self, "generate_payloads"):
+            payloads = self.generate_payloads()  # type: ignore[attr-defined]
+            return [self._normalize_payload(payload) for payload in payloads]
+
+        return []
+
+    @staticmethod
+    def _normalize_payload(payload: Any) -> dict[str, Any]:
+        if isinstance(payload, dict):
+            prompt = str(payload.get("prompt", payload.get("input", payload.get("text", ""))))
+            detect = payload.get("detect", payload.get("triggers", []))
+            if isinstance(detect, str):
+                detect = [detect]
+            record = dict(payload)
+            record["prompt"] = prompt
+            record["detect"] = list(detect) if isinstance(detect, list) else []
+            return record
+
+        prompt = getattr(payload, "prompt", None)
+        if prompt is None:
+            prompt = getattr(payload, "input", None)
+        if prompt is None:
+            prompt = str(payload)
+        detect = getattr(payload, "detect", getattr(payload, "triggers", []))
+        if isinstance(detect, str):
+            detect = [detect]
+        return {
+            "prompt": str(prompt),
+            "detect": list(detect) if isinstance(detect, list) else [],
+            "category": getattr(payload, "category", ""),
+        }
+
     def generate_attempts(self) -> list[Attempt]:
         """
         Generate Attempt objects from the probe's attack prompts.
@@ -56,21 +111,36 @@ class Probe(ABC):
         """
         attempts = []
 
-        for prompt in self.prompts:
+        for payload in self._payload_records():
+            prompt = payload.get("prompt", "")
+            if not prompt:
+                continue
+            triggers = payload.get("detect") or list(self.triggers)
             for _ in range(self.generations_per_prompt):
                 attempt = Attempt(
                     probe_classname=f"{self.__class__.__module__}.{self.__class__.__name__}",
                     prompt=prompt,
-                    triggers=list(self.triggers),
+                    triggers=list(triggers),
+                )
+                attempt.metadata.update(
+                    {
+                        "probe_name": self.probe_name,
+                        "category": payload.get("category", ""),
+                        "tags": list(self.probe_tags),
+                    }
                 )
                 attempt.add_user_message(prompt)
                 attempts.append(attempt)
 
         logger.debug(
             "Probe %s generated %d attempts from %d prompts",
-            self.probe_name, len(attempts), len(self.prompts)
+            self.probe_name, len(attempts), len(self._payload_records())
         )
         return attempts
+
+    def generate(self) -> list[str]:
+        """Compatibility helper for evaluator code that expects raw prompts."""
+        return [attempt.prompt for attempt in self.generate_attempts()]
 
     def transform_prompt(self, prompt: str) -> str:
         """

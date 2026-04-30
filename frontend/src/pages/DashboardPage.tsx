@@ -7,6 +7,8 @@ import { Shield, AlertTriangle, Ban, FileWarning, ArrowRight, Terminal, Target, 
 import { Link } from 'react-router-dom'
 import { clsx } from 'clsx'
 
+const DETECTOR_PREVIEW_WIDTHS = [82, 68, 74, 57]
+
 export default function DashboardPage() {
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: fetchStats, refetchInterval: 5000 })
   const { data: scanners } = useQuery({ queryKey: ['scanners'], queryFn: fetchScanners })
@@ -111,7 +113,11 @@ export default function DashboardPage() {
                   {Array.from({ length: 5 }, (_, j) => (
                     <div key={j} className={clsx(
                       'h-2 rounded-sm',
-                      Math.random() > 0.5 ? 'bg-amber-500/40' : Math.random() > 0.7 ? 'bg-red-500/40' : 'bg-sentinel-border'
+                      (i + j) % 7 === 0
+                        ? 'bg-red-500/40'
+                        : (i * 3 + j) % 2 === 0
+                          ? 'bg-amber-500/40'
+                          : 'bg-sentinel-border'
                     )} />
                   ))}
                 </div>
@@ -145,11 +151,11 @@ export default function DashboardPage() {
               <div className="bg-sentinel-bg rounded p-2">
                 <p className="text-[10px] text-gray-600">Detector Statistics</p>
                 <div className="mt-1 space-y-1">
-                  {['Prompt Injection', 'Code Execution', 'Data Exfil', 'Model Tampering'].map((name) => (
+                  {['Prompt Injection', 'Code Execution', 'Data Exfil', 'Model Tampering'].map((name, index) => (
                     <div key={name} className="flex items-center gap-2">
                       <span className="text-[9px] text-gray-500 w-24 truncate">{name}</span>
                       <div className="flex-1 h-1.5 bg-sentinel-border rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-500/60 rounded-full" style={{ width: `${30 + Math.random() * 60}%` }} />
+                        <div className="h-full bg-amber-500/60 rounded-full" style={{ width: `${DETECTOR_PREVIEW_WIDTHS[index]}%` }} />
                       </div>
                     </div>
                   ))}

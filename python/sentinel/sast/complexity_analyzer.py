@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from sentinel.finding import Finding, Severity, Location
+from sentinel.finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 

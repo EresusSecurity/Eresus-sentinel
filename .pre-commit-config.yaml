@@ -27,3 +27,22 @@ repos:
     rev: v8.18.2
     hooks:
       - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: sentinel-scan-artifacts
+        name: Eresus Sentinel — model artifacts
+        entry: python -m sentinel.cli artifact-scan --fail-on critical
+        language: python
+        files: "\\.((pkl|pickle|pt|pth|bin|safetensors|gguf|onnx|h5|hdf5|keras|tflite|joblib|npy|npz|xgb|lgb|cbm))$"
+        stages: [pre-commit, pre-push]
+        pass_filenames: true
+        require_serial: false
+      - id: sentinel-scan-mcp
+        name: Eresus Sentinel — MCP manifests
+        entry: python -m sentinel.cli mcp-validate --fail-on high
+        language: python
+        files: "(mcp.*\\.(json|ya?ml)$|tools\\.(json|ya?ml)$)"
+        stages: [pre-commit]
+        pass_filenames: true
+        require_serial: false

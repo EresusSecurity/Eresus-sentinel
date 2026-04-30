@@ -23,18 +23,20 @@ Usage:
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 from typing import Optional
 
-from sentinel.finding import Finding, Severity
 from sentinel.diff_scanner.diff_parser import (
-    parse_unified_diff, FileDiff, DiffLine, LineType,
+    DiffLine,
+    FileDiff,
+    parse_unified_diff,
 )
 from sentinel.diff_scanner.ml_patterns import (
-    ALL_PATTERNS, MLPattern,
+    ALL_PATTERNS,
+    MLPattern,
 )
+from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,60 @@ SEVERITY_MAP = {
     "MEDIUM": Severity.MEDIUM,
     "LOW": Severity.LOW,
 }
+
+
+def _load_yaml_patterns() -> list[MLPattern]:
+    """Load supplementary patterns from rules/diff_patterns.yaml."""
+    try:
+        import yaml
+
+        from sentinel.rules import get_rules_dir
+    except ImportError:
+        return []
+
+    yaml_path = get_rules_dir() / "diff_patterns.yaml"
+    if not yaml_path.exists():
+        return []
+
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except Exception as exc:
+        logger.warning("Failed to load diff_patterns.yaml: %s", exc)
+        return []
+
+    if not isinstance(data, dict):
+        return []
+
+    existing_ids = {p.id for p in ALL_PATTERNS}
+    extra: list[MLPattern] = []
+
+    for _category, entries in data.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            pid = entry.get("id", "")
+            if pid in existing_ids:
+                continue
+            try:
+                extra.append(MLPattern(
+                    id=pid,
+                    name=entry.get("name", "unknown"),
+                    pattern=re.compile(entry["pattern"]),
+                    severity=entry.get("severity", "MEDIUM"),
+                    description=entry.get("description", ""),
+                    cwe_ids=[entry.get("cwe", "CWE-20")],
+                    owasp_llm=entry.get("owasp", "LLM05"),
+                    remediation=entry.get("remediation", ""),
+                    file_filter=entry.get("file_filter"),
+                    added_only=entry.get("added_only", True),
+                ))
+            except (KeyError, re.error) as exc:
+                logger.warning("Skipping invalid diff pattern %s: %s", pid, exc)
+
+    if extra:
+        logger.debug("Loaded %d supplementary diff patterns from YAML", len(extra))
+    return extra
 
 
 class DiffScanner:
@@ -71,7 +127,7 @@ class DiffScanner:
             scan_removed: Also scan removed lines (default: added only).
             git_dir: Git repository path for git operations.
         """
-        self._patterns = patterns or ALL_PATTERNS
+        self._patterns = patterns or (ALL_PATTERNS + _load_yaml_patterns())
         self._scan_removed = scan_removed
         self._git_dir = git_dir
 

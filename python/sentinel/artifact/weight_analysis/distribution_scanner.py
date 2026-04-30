@@ -1,8 +1,9 @@
 """Weight distribution anomaly detection for ML model backdoor/trojan detection."""
 from __future__ import annotations
+
 import logging
-import math
 from pathlib import Path
+
 from ...finding import Finding, Severity
 
 logger = logging.getLogger(__name__)

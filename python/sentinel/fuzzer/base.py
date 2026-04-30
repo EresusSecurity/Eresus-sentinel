@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import enum
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 class PayloadCategory(str, enum.Enum):
@@ -55,7 +54,7 @@ class FuzzConfig:
     """Configuration for a fuzzing session."""
     # Generation
     samples: int = 10000
-    seed: Optional[int] = None
+    seed: int | None = None
     min_opcodes: int = 10
     max_opcodes: int = 300
 
@@ -65,11 +64,11 @@ class FuzzConfig:
     unsafe_mutations: bool = False
 
     # Output
-    output_dir: Optional[str] = None
-    output_file: Optional[str] = None
+    output_dir: str | None = None
+    output_file: str | None = None
 
     # Protocol (pickle-specific, but generic enough)
-    protocol: Optional[int] = None  # None = random
+    protocol: int | None = None  # None = random
 
     # Pipeline
     scan_after_generate: bool = False
@@ -90,24 +89,24 @@ class FuzzResult:
     max_severity: str = "NONE"
     detection_time_ms: float = 0.0
     scanner_crashed: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def is_bypass(self) -> bool:
         """Malicious payload that was NOT detected — a scanner gap."""
-        return self.payload.is_malicious and not self.detected
+        return self.payload.is_malicious and not self.detected and not self.scanner_crashed
 
     @property
     def is_false_positive(self) -> bool:
         """Benign payload that WAS detected — noisy scanner."""
-        return not self.payload.is_malicious and self.detected
+        return not self.payload.is_malicious and self.detected and not self.scanner_crashed
 
 
 class Generator(ABC):
     """Abstract base for format-specific sample generators."""
 
     @abstractmethod
-    def generate(self, seed: Optional[int] = None) -> bytes:
+    def generate(self, seed: int | None = None) -> bytes:
         """Generate a single random valid sample."""
         ...
 
@@ -116,10 +115,10 @@ class Generator(ABC):
         """Deterministic generation from fuzzer input bytes."""
         ...
 
-    def generate_batch(self, count: int, seed: Optional[int] = None) -> list[bytes]:
+    def generate_batch(self, count: int, seed: int | None = None) -> list[bytes]:
         """Generate multiple samples. Override for parallelism."""
         import random as _random
-        rng = _random.Random(seed)
+        rng = _random.Random(seed)  # noqa: S311 - deterministic fuzzing, not crypto.
         results = []
         for _i in range(count):
             sample_seed = rng.randint(0, 2**64 - 1)

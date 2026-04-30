@@ -110,3 +110,119 @@ input:focus, textarea:focus, select:focus {
   border-color: #DC262660 !important;
   box-shadow: 0 0 0 1px #DC262620;
 }
+
+/* ══════════════════════════════════════════════════════════
+   LIGHT THEME — activated by <html class="light">
+   ══════════════════════════════════════════════════════════ */
+:root.light {
+  /* Surface colors */
+  --sentinel-bg: #F5F5F7;
+  --sentinel-card: #FFFFFF;
+  --sentinel-border: #E2E2E8;
+  --sentinel-hover: #F0F0F5;
+  --sentinel-muted: #6B7280;
+  --sentinel-text: #111118;
+  --sentinel-subtext: #4B5563;
+}
+
+:root.dark,
+:root:not(.light) {
+  --sentinel-bg: #0D0D0F;
+  --sentinel-card: #141417;
+  --sentinel-border: #1E1E24;
+  --sentinel-hover: #1A1A1F;
+  --sentinel-muted: #374151;
+  --sentinel-text: #E5E7EB;
+  --sentinel-subtext: #9CA3AF;
+}
+
+/* Apply CSS vars to Tailwind-consumed custom colors */
+:root.light .bg-sentinel-bg  { background-color: var(--sentinel-bg) !important; }
+:root.light .bg-sentinel-card { background-color: var(--sentinel-card) !important; }
+:root.light .border-sentinel-border { border-color: var(--sentinel-border) !important; }
+:root.light .hover\:bg-sentinel-hover:hover { background-color: var(--sentinel-hover) !important; }
+
+/* Light theme body */
+:root.light body { background: var(--sentinel-bg); color: var(--sentinel-text); }
+
+/* Light theme scrollbar */
+:root.light ::-webkit-scrollbar-thumb { background: #C7C7D0; }
+:root.light ::-webkit-scrollbar-thumb:hover { background: #9999A8; }
+
+/* Light theme selection */
+:root.light ::selection { background: #DC262640; color: #111118; }
+
+/* Light theme input focus */
+:root.light input:focus,
+:root.light textarea:focus,
+:root.light select:focus {
+  border-color: #DC2626AA !important;
+  box-shadow: 0 0 0 1px #DC262630;
+}
+
+/* Light theme text overrides for gray utilities */
+:root.light .text-gray-300 { color: #1F2937 !important; }
+:root.light .text-gray-400 { color: #374151 !important; }
+:root.light .text-gray-500 { color: #6B7280 !important; }
+:root.light .text-gray-600 { color: #9CA3AF !important; }
+:root.light .text-gray-700 { color: #D1D5DB !important; }
+
+/* Light theme stat card hover */
+:root.light .stat-card:hover { border-color: #F59E0B60; }
+
+/* Light theme white/[0.03] backgrounds → light gray */
+:root.light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(0,0,0,0.04) !important; }
+
+/* Light sidebar */
+:root.light aside { box-shadow: 2px 0 12px rgba(0,0,0,0.06); }
+
+/* ── Light theme: input & textarea backgrounds ───────────── */
+:root.light input,
+:root.light textarea,
+:root.light select {
+  background-color: #FFFFFF !important;
+  color: #111118 !important;
+  border-color: #D1D5DB !important;
+}
+:root.light input::placeholder,
+:root.light textarea::placeholder {
+  color: #9CA3AF !important;
+}
+
+/* ── Light theme: bg-black/40 inputs (PathScanPage etc) ─── */
+:root.light .bg-black\/40 {
+  background-color: #F9FAFB !important;
+}
+
+/* ── Light theme: code blocks ───────────────────────────── */
+:root.light code,
+:root.light pre {
+  background-color: #F3F4F6 !important;
+  color: #1F2937 !important;
+}
+
+/* ── Light theme: sentinel-bg overrides ─────────────────── */
+:root.light .bg-sentinel-bg {
+  background-color: #F5F5F7 !important;
+}
+:root.light .bg-sentinel-card {
+  background-color: #FFFFFF !important;
+}
+:root.light .border-sentinel-border {
+  border-color: #E2E2E8 !important;
+}
+
+/* ── Light theme: black/20 and black/40 overlays ────────── */
+:root.light .bg-black\/20 { background-color: rgba(0,0,0,0.04) !important; }
+:root.light .bg-black\/40 { background-color: rgba(0,0,0,0.04) !important; }
+
+/* ── Light theme: white/[0.02] etc hover areas ──────────── */
+:root.light .hover\:bg-white\/\[0\.02\]:hover { background-color: rgba(0,0,0,0.03) !important; }
+:root.light .hover\:bg-white\/\[0\.01\]:hover { background-color: rgba(0,0,0,0.02) !important; }
+
+/* ── Light theme: scanning animation line ───────────────── */
+:root.light .scanning::before { background: linear-gradient(90deg, transparent, #DC2626aa, transparent); }
+
+/* ── Light theme: main body background ──────────────────── */
+:root.light body { background: #F5F5F7 !important; color: #111118; }
+:root.light #root { background: #F5F5F7; }

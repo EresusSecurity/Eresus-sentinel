@@ -1,6 +1,8 @@
 """Citation injection — embed payload in academic citation format."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class CitationStrategy(BaseStrategy):
     name = "citation"

@@ -5,12 +5,24 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING
 
-from .base import FuzzConfig, FuzzResult, Payload, PayloadCategory
-from .scoring import ScoringEngine, DetectionScore
+from .base import FuzzConfig, FuzzResult, Payload
+from .scoring import DetectionScore, ScoringEngine
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_payload_filename(name: str) -> str:
+    """Return a stable filename segment for persisted fuzz artifacts."""
+    safe = "".join(
+        char if char.isalnum() or char in {"-", "_", "."} else "_"
+        for char in name
+    ).strip("._")
+    return (safe or "payload")[:120]
 
 
 class FuzzPipeline:
@@ -19,7 +31,7 @@ class FuzzPipeline:
     def __init__(
         self,
         scanner_fn: Callable[[bytes, str], list],
-        config: Optional[FuzzConfig] = None,
+        config: FuzzConfig | None = None,
     ):
         self._scanner_fn = scanner_fn
         self._config = config or FuzzConfig()
@@ -44,7 +56,13 @@ class FuzzPipeline:
             self._scoring.add_result(result)
 
             # Track interesting results
-            if result.is_bypass:
+            if result.scanner_crashed:
+                self._crashes.append(result)
+                logger.error(
+                    "💥 CRASH [%d/%d]: %s — scanner crashed: %s",
+                    i + 1, len(payloads), payload.name, result.error,
+                )
+            elif result.is_bypass:
                 self._bypasses.append(result)
                 logger.warning(
                     "⚠ BYPASS [%d/%d]: %s (%s) — scanner missed it!",
@@ -55,12 +73,6 @@ class FuzzPipeline:
                 logger.warning(
                     "⚠ FALSE POSITIVE [%d/%d]: %s flagged as malicious",
                     i + 1, len(payloads), payload.name,
-                )
-            elif result.scanner_crashed:
-                self._crashes.append(result)
-                logger.error(
-                    "💥 CRASH [%d/%d]: %s — scanner crashed: %s",
-                    i + 1, len(payloads), payload.name, result.error,
                 )
 
         score = self._scoring.compute()
@@ -75,14 +87,24 @@ class FuzzPipeline:
                 bypass_dir = Path(self._config.output_dir) / "bypasses"
                 bypass_dir.mkdir(parents=True, exist_ok=True)
                 for r in self._bypasses:
-                    (bypass_dir / f"{r.payload.name}.pkl").write_bytes(r.payload.data)
+                    filename = _safe_payload_filename(r.payload.name)
+                    (bypass_dir / f"{filename}.pkl").write_bytes(r.payload.data)
+
+            # Store false-positive payloads for regression and rule tuning
+            if self._false_positives:
+                fp_dir = Path(self._config.output_dir) / "false_positives"
+                fp_dir.mkdir(parents=True, exist_ok=True)
+                for r in self._false_positives:
+                    filename = _safe_payload_filename(r.payload.name)
+                    (fp_dir / f"{filename}.pkl").write_bytes(r.payload.data)
 
             # Store crash-inducing payloads
             if self._crashes:
                 crash_dir = Path(self._config.output_dir) / "crashes"
                 crash_dir.mkdir(parents=True, exist_ok=True)
                 for r in self._crashes:
-                    (crash_dir / f"{r.payload.name}.pkl").write_bytes(r.payload.data)
+                    filename = _safe_payload_filename(r.payload.name)
+                    (crash_dir / f"{filename}.pkl").write_bytes(r.payload.data)
 
         return score
 

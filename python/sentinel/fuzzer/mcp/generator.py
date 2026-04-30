@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import random
-import uuid
 from typing import Optional
 
 from ..base import Generator

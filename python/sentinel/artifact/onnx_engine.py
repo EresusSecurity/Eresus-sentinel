@@ -15,13 +15,12 @@ No onnx pip dependency required — uses raw protobuf varint/field parsing.
 
 from __future__ import annotations
 
-import struct
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ..finding import Finding, Severity
-from .format_common import TensorInfo, FormatReport
-from .protobuf_parser import ProtobufParser, VARINT, FIXED64, LENGTH_DELIMITED, FIXED32
+from .format_common import FormatReport, TensorInfo
+from .protobuf_parser import LENGTH_DELIMITED, VARINT, ProtobufParser
 
 # ONNX ModelProto field numbers
 FIELD_IR_VERSION = 1           # int64

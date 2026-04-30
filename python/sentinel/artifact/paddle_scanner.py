@@ -1,7 +1,9 @@
 """PaddlePaddle .pdmodel + .pdiparams scanner."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,8 @@ DANGEROUS_OPS = [
 
 
 class PaddleScanner:
+    """Scan PaddlePaddle .pdmodel/.pdiparams files for security issues."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

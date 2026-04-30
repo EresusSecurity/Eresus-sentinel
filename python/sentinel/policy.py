@@ -27,13 +27,10 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from sentinel.data_loader import load_data
 from sentinel.firewall.base import (
     FirewallPipeline,
-    InputScanner,
-    OutputScanner,
     ScanAction,
 )
 
@@ -95,6 +92,12 @@ class PolicyConfig:
 _INPUT_SCANNERS: dict[str, type] | None = None
 _OUTPUT_SCANNERS: dict[str, type] | None = None
 
+# Default pipelines must stay deterministic/offline. These scanners are still
+# available through explicit policy or SDK selection, but they should not be
+# loaded by ``PolicyEngine.default()`` because they may try to fetch remote
+# HuggingFace models when optional ML dependencies are installed.
+_DEFAULT_DISABLED_INPUT_SCANNERS = {"ban_code", "injection", "ml_classifier"}
+
 
 def _get_input_registry() -> dict[str, type]:
     global _INPUT_SCANNERS
@@ -112,24 +115,24 @@ def _get_input_registry() -> dict[str, type]:
         logger.warning("Auto-discovery failed for input scanners: %s", e)
 
     from sentinel.firewall.input import (
-        PromptInjectionScanner,
-        InvisibleTextScanner,
-        HeuristicInjectionScanner,
-        EncodingAttackScanner,
-        ToxicityScanner,
-        LanguageScanner,
-        BanSubstringsScanner,
-        GibberishScanner,
-        TokenLimitScanner,
-        CodeScanner,
-        RegexScanner,
-        SentimentScanner,
-        SecretScanner,
-        BanTopicsScanner,
-        EmotionScanner,
         AnonymizeScanner,
+        BanSubstringsScanner,
+        BanTopicsScanner,
+        CodeScanner,
+        EmotionScanner,
+        EncodingAttackScanner,
+        GibberishScanner,
+        HeuristicInjectionScanner,
+        InvisibleTextScanner,
+        LanguageScanner,
         LLMClassifierScanner,
+        PromptInjectionScanner,
         PromptLeakScanner,
+        RegexScanner,
+        SecretScanner,
+        SentimentScanner,
+        TokenLimitScanner,
+        ToxicityScanner,
     )
 
     _INPUT_SCANNERS = {
@@ -171,30 +174,30 @@ def _get_output_registry() -> dict[str, type]:
         logger.warning("Auto-discovery failed for output scanners: %s", e)
 
     from sentinel.firewall.output import (
-        SensitiveDataScanner,
-        MaliciousURLScanner,
-        FormatScanner,
-        BiasScanner,
-        NoRefusalScanner,
-        RelevanceScanner,
-        ToxicityOutputScanner,
-        GibberishOutputScanner,
-        URLReachabilityScanner,
-        ReadingTimeScanner,
-        JSONScanner,
-        LanguageSameScanner,
-        DeanonymizeScanner,
-        FactualConsistencyScanner,
-        SentimentOutputScanner,
-        RegexOutputScanner,
         BanCodeOutputScanner,
         BanCompetitorsOutputScanner,
         BanTopicsOutputScanner,
-        EmotionScanner,
-        CopyrightScanner,
-        WatermarkScanner,
-        ComplianceScanner,
+        BiasScanner,
         CitationScanner,
+        ComplianceScanner,
+        CopyrightScanner,
+        DeanonymizeScanner,
+        EmotionScanner,
+        FactualConsistencyScanner,
+        FormatScanner,
+        GibberishOutputScanner,
+        JSONScanner,
+        LanguageSameScanner,
+        MaliciousURLScanner,
+        NoRefusalScanner,
+        ReadingTimeScanner,
+        RegexOutputScanner,
+        RelevanceScanner,
+        SensitiveDataScanner,
+        SentimentOutputScanner,
+        ToxicityOutputScanner,
+        URLReachabilityScanner,
+        WatermarkScanner,
     )
 
     _OUTPUT_SCANNERS = {
@@ -270,10 +273,11 @@ class PolicyEngine:
 
     @classmethod
     def default(cls) -> PolicyEngine:
-        """Create a policy with sensible defaults — all scanners enabled."""
+        """Create a policy with sensible deterministic defaults."""
         input_rules = [
             ScannerRule(scanner=name, priority=i * 10)
             for i, name in enumerate(_get_input_registry().keys())
+            if name not in _DEFAULT_DISABLED_INPUT_SCANNERS
         ]
         output_rules = [
             ScannerRule(scanner=name, priority=i * 10)
@@ -404,4 +408,117 @@ class PolicyEngine:
             on_fail=raw.get("on_fail", "block"),
             priority=raw.get("priority", 100),
             tags=raw.get("tags", []),
+        )
+
+
+# ── Admission Controller ─────────────────────────────────────────────
+
+
+class AdmissionAction(str, Enum):
+    ALLOW = "allow"
+    WARN = "warn"
+    QUARANTINE = "quarantine"
+    BLOCK = "block"
+
+
+@dataclass
+class AdmissionDecision:
+    action: AdmissionAction
+    reason: str
+    severity_counts: dict = field(default_factory=dict)
+    risk_score: float = 0.0
+    quarantine_path: str = ""
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class AdmissionPolicy:
+    block_severities: frozenset = frozenset({"critical"})
+    quarantine_severities: frozenset = frozenset({"high"})
+    max_findings: int = 50
+    max_risk_score: float = 0.8
+    quarantine_dir: str = "/tmp/sentinel-quarantine"
+
+    @classmethod
+    def strict(cls) -> "AdmissionPolicy":
+        return cls(
+            block_severities=frozenset({"critical", "high"}),
+            quarantine_severities=frozenset({"medium"}),
+            max_findings=10,
+            max_risk_score=0.5,
+        )
+
+    @classmethod
+    def permissive(cls) -> "AdmissionPolicy":
+        return cls(
+            block_severities=frozenset({"critical"}),
+            quarantine_severities=frozenset(),
+            max_findings=200,
+            max_risk_score=0.95,
+        )
+
+    @classmethod
+    def from_preset(cls, name: str) -> "AdmissionPolicy":
+        presets = {"strict": cls.strict, "default": cls, "permissive": cls.permissive}
+        factory = presets.get(name.lower())
+        if factory is None:
+            raise ValueError(f"Unknown preset {name!r}")
+        return factory() if callable(factory) and factory != cls else cls()
+
+
+class AdmissionController:
+    """Evaluate scan findings against admission policy."""
+
+    def __init__(self, policy: str | AdmissionPolicy = "default") -> None:
+        if isinstance(policy, str):
+            self._policy = AdmissionPolicy.from_preset(policy)
+        else:
+            self._policy = policy
+
+    def evaluate(self, findings: list, source: str = "") -> AdmissionDecision:
+        sev_counts: dict[str, int] = {}
+        max_risk = 0.0
+        for f in findings:
+            sev = str(
+                getattr(getattr(f, "severity", None), "value", getattr(f, "severity", "info"))
+            ).lower()
+            sev_counts[sev] = sev_counts.get(sev, 0) + 1
+            conf = float(getattr(f, "confidence", 0.0))
+            if conf > max_risk:
+                max_risk = conf
+
+        reasons: list[str] = []
+        action = AdmissionAction.ALLOW
+
+        for sev in self._policy.block_severities:
+            if sev_counts.get(sev, 0) > 0:
+                reasons.append(f"{sev_counts[sev]} {sev} finding(s)")
+                action = AdmissionAction.BLOCK
+
+        if action != AdmissionAction.BLOCK:
+            for sev in self._policy.quarantine_severities:
+                if sev_counts.get(sev, 0) > 0:
+                    reasons.append(f"{sev_counts[sev]} {sev} finding(s)")
+                    action = AdmissionAction.QUARANTINE
+
+        if len(findings) > self._policy.max_findings:
+            reasons.append(f"Total findings ({len(findings)}) exceeds limit")
+            if action == AdmissionAction.ALLOW:
+                action = AdmissionAction.BLOCK
+
+        if max_risk > self._policy.max_risk_score:
+            reasons.append(f"Risk score {max_risk:.2f} exceeds limit")
+            if action == AdmissionAction.ALLOW:
+                action = AdmissionAction.QUARANTINE
+
+        if not reasons:
+            reasons.append("All checks passed")
+
+        return AdmissionDecision(
+            action=action,
+            reason="; ".join(reasons),
+            severity_counts=sev_counts,
+            risk_score=max_risk,
+            quarantine_path=self._policy.quarantine_dir if action == AdmissionAction.QUARANTINE else "",
+            metadata={"source": source, "total_findings": len(findings)},
         )

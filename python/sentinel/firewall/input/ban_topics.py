@@ -7,9 +7,9 @@ Configurable topic list with per-topic threshold support.
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
-from sentinel.finding import Finding, Severity
+from dataclasses import dataclass
+
+from sentinel.finding import Severity
 
 
 @dataclass

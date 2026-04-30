@@ -25,12 +25,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import List, Set
 
 from ..finding import Finding, Severity
-from .format_common import FormatReport
-from .protobuf_parser import ProtobufParser
 from ..rules import load_scanner_rules
+from .protobuf_parser import ProtobufParser
 
 _rules = load_scanner_rules()
 _tf_rules = _rules.get("tensorflow", {})

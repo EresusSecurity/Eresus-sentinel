@@ -11,10 +11,17 @@ import struct
 
 from .opcodes import OpcodeInfo
 from .pvm import (
-    PVMState, StackType,
-    none_obj, bool_obj, int_obj, float_obj, string_obj, bytes_obj,
-    bytearray_obj, list_obj, tuple_obj, dict_obj, set_obj, frozenset_obj,
-    callable_obj, instance_obj, any_obj, mark,
+    PVMState,
+    any_obj,
+    bytearray_obj,
+    bytes_obj,
+    callable_obj,
+    float_obj,
+    instance_obj,
+    int_obj,
+    none_obj,
+    string_obj,
+    tuple_obj,
 )
 from .stdlib_globals import get_random_global, get_random_safe_global
 

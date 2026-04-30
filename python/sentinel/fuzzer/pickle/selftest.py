@@ -5,14 +5,13 @@ from __future__ import annotations
 import logging
 import random
 import time
-from pathlib import Path
 from typing import Optional
 
 from ..base import FuzzConfig, Payload, PayloadCategory
 from ..pipeline import FuzzPipeline
 from ..scoring import DetectionScore
 from .generator import PickleGenerator
-from .mutators import PickleMutator, PayloadInjectMutator
+from .mutators import PayloadInjectMutator, PickleMutator
 from .payloads import PicklePayloadFactory
 
 logger = logging.getLogger(__name__)
@@ -62,15 +61,18 @@ class PickleSelfTest:
         all_payloads.extend(PicklePayloadFactory.all_payloads())
 
         # Phase 2: Generated benign pickles (false positive test)
+        # Use protocol 2-5 only — protocol 0/1 are legacy and legitimately
+        # flagged by ARTIFACT-015 as a security concern (not a false positive).
         n_benign = self._config.samples // 3
         logger.info("Phase 2: Generating %d random benign pickles...", n_benign)
-        for proto in range(6):
+        benign_protos = [2, 3, 4, 5]
+        for proto in benign_protos:
             gen = PickleGenerator(
                 protocol=proto,
                 min_opcodes=5,
                 max_opcodes=100,
             )
-            per_proto = max(1, n_benign // 6)
+            per_proto = max(1, n_benign // len(benign_protos))
             for i in range(per_proto):
                 seed = self._rng.randint(0, 2**64 - 1)
                 try:
@@ -104,7 +106,7 @@ class PickleSelfTest:
                     name=f"mutated_injected_{i}",
                     category=PayloadCategory.DESERIALIZATION,
                     data=injected,
-                    description=f"Benign pickle with injected malicious GLOBAL+REDUCE",
+                    description="Benign pickle with injected malicious GLOBAL+REDUCE",
                     severity_expected="CRITICAL",
                     metadata={"protocol": proto, "mutation": "payload_inject"},
                 ))

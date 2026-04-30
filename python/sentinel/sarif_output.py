@@ -1,14 +1,13 @@
 """SARIF v2.1.0 output — full compliance with code flows, related locations, GitHub integration."""
 from __future__ import annotations
+
 import hashlib
 import json
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
+
 from sentinel import __version__
 from sentinel.finding import Finding, Severity
-
 
 _SEVERITY_MAP = {
     Severity.CRITICAL: "error",
@@ -259,7 +258,7 @@ def findings_to_sarif(
     if include_invocation:
         run["invocations"] = [{
             "executionSuccessful": True,
-            "commandLine": f"eresus-sentinel scan",
+            "commandLine": "eresus-sentinel scan",
             "startTimeUtc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }]
 

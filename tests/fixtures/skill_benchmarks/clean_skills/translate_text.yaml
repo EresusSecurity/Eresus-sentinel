@@ -1,0 +1,29 @@
+name: translate_text
+version: "1.0"
+description: Translate text between languages using a public translation API.
+author: sentinel-test
+license: MIT
+
+parameters:
+  text:
+    type: string
+    description: Text to translate
+  source_lang:
+    type: string
+    default: auto
+  target_lang:
+    type: string
+    description: Target ISO 639-1 language code (e.g. "fr", "es")
+
+steps:
+  - name: translate
+    action: http.post
+    url: "https://libretranslate.com/translate"
+    body:
+      q: "{text}"
+      source: "{source_lang}"
+      target: "{target_lang}"
+      format: text
+
+output:
+  template: "{translate.translatedText}"

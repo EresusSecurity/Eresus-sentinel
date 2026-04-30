@@ -1,9 +1,10 @@
 """Apple CoreML .mlmodel / .mlpackage scanner."""
 from __future__ import annotations
+
 import logging
-import struct
 import zipfile
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,8 @@ DANGEROUS_CUSTOM_LAYER_NAMES = [
 
 
 class CoreMLScanner:
+    """Scan Apple CoreML .mlmodel and .mlpackage files for unsafe operations."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

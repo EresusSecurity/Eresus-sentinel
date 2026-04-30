@@ -1,6 +1,8 @@
 """Base64 encoding bypass strategy."""
 from __future__ import annotations
+
 import base64
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

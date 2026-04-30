@@ -57,6 +57,7 @@ WORKDIR /app
 COPY --chown=sentinel:sentinel python/ ./python/
 COPY --chown=sentinel:sentinel rules/ ./rules/
 COPY --chown=sentinel:sentinel config/ ./config/
+COPY --chown=sentinel:sentinel sentinel.toml ./
 COPY --chown=sentinel:sentinel pyproject.toml ./
 
 # Create directories for runtime data
@@ -88,7 +89,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["tini", "--"]
 
 # Default: start web dashboard + JSON API server
-CMD ["python", "-m", "uvicorn", "sentinel.web.app:create_dashboard_app", \
+CMD ["python", "-m", "uvicorn", "sentinel.server:create_app", \
      "--factory", \
      "--host", "0.0.0.0", \
      "--port", "8080", \

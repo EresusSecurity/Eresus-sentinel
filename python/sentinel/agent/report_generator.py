@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -136,30 +136,30 @@ class ReportGenerator:
 
     def _to_markdown(self, report: ScanReport) -> str:
         lines = [
-            f"# Security Scan Report",
-            f"",
+            "# Security Scan Report",
+            "",
             f"**Target:** {report.target}",
             f"**Date:** {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(report.timestamp))}",
             f"**Scanner:** eresus-sentinel v{report.summary.scanner_version}",
-            f"",
-            f"## Summary",
-            f"",
-            f"| Severity | Count |",
-            f"|----------|-------|",
+            "",
+            "## Summary",
+            "",
+            "| Severity | Count |",
+            "|----------|-------|",
             f"| Critical | {report.summary.critical} |",
             f"| High | {report.summary.high} |",
             f"| Medium | {report.summary.medium} |",
             f"| Low | {report.summary.low} |",
             f"| **Total** | **{report.summary.total_findings}** |",
-            f"",
-            f"## Findings",
-            f"",
+            "",
+            "## Findings",
+            "",
         ]
 
         for i, f in enumerate(report.findings, 1):
             sev_emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(f.severity.upper(), "⚪")
             lines.append(f"### {i}. {sev_emoji} [{f.severity}] {f.title}")
-            lines.append(f"")
+            lines.append("")
             lines.append(f"- **Category:** {f.category}")
             if f.cwe:
                 lines.append(f"- **CWE:** {f.cwe}")
@@ -167,20 +167,20 @@ class ReportGenerator:
                 lines.append(f"- **OWASP:** {f.owasp}")
             if f.location:
                 lines.append(f"- **Location:** `{f.location}`")
-            lines.append(f"")
+            lines.append("")
             lines.append(f"{f.description}")
             if f.evidence:
-                lines.append(f"")
-                lines.append(f"**Evidence:**")
-                lines.append(f"```")
+                lines.append("")
+                lines.append("**Evidence:**")
+                lines.append("```")
                 lines.append(f"{f.evidence}")
-                lines.append(f"```")
+                lines.append("```")
             if f.remediation:
-                lines.append(f"")
+                lines.append("")
                 lines.append(f"**Remediation:** {f.remediation}")
-            lines.append(f"")
-            lines.append(f"---")
-            lines.append(f"")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
 
         return "\n".join(lines)
 

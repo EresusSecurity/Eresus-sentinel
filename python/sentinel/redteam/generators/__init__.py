@@ -19,19 +19,19 @@ Supported backends (12):
   - Function (custom callable)
 """
 
-from sentinel.redteam.generators.base import Generator, GeneratorResponse
-from sentinel.redteam.generators.openai import OpenAIGenerator
 from sentinel.redteam.generators.anthropic import AnthropicGenerator
 from sentinel.redteam.generators.azure import AzureOpenAIGenerator
-from sentinel.redteam.generators.gemini import GeminiGenerator
-from sentinel.redteam.generators.huggingface import HuggingFaceGenerator
-from sentinel.redteam.generators.ollama import OllamaGenerator
-from sentinel.redteam.generators.groq import GroqGenerator
-from sentinel.redteam.generators.together import TogetherGenerator
-from sentinel.redteam.generators.litellm import LiteLLMGenerator
-from sentinel.redteam.generators.rest import RESTGenerator
+from sentinel.redteam.generators.base import Generator, GeneratorResponse
 from sentinel.redteam.generators.echo import EchoGenerator
 from sentinel.redteam.generators.function import FunctionGenerator
+from sentinel.redteam.generators.gemini import GeminiGenerator
+from sentinel.redteam.generators.groq import GroqGenerator
+from sentinel.redteam.generators.huggingface import HuggingFaceGenerator
+from sentinel.redteam.generators.litellm import LiteLLMGenerator
+from sentinel.redteam.generators.ollama import OllamaGenerator
+from sentinel.redteam.generators.openai import OpenAIGenerator
+from sentinel.redteam.generators.rest import RESTGenerator
+from sentinel.redteam.generators.together import TogetherGenerator
 
 __all__ = [
     "Generator", "GeneratorResponse",

@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from sentinel.redteam.attempt import Attempt
 

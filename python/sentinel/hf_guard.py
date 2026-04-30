@@ -44,9 +44,9 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from sentinel.finding import Finding, Severity, Module
+from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +323,7 @@ class HFGuard:
         if assessment.dangerous_files:
             try:
                 from huggingface_hub import hf_hub_download
+
                 from sentinel.cli_dispatch import _scan_single_artifact
 
                 with tempfile.TemporaryDirectory(prefix="sentinel_hf_") as tmpdir:

@@ -1,0 +1,187 @@
+# Industry-Specific Detection Rules
+# Used by: firewall/output/compliance.py, redteam/probes/industry_verticals.py
+#
+# Format per rule:
+#   id:          INDUSTRY-XXX
+#   pattern:     (regex, case-insensitive)
+#   severity:    CRITICAL | HIGH | MEDIUM | LOW | INFO
+#   description: Human-readable explanation
+#   cwe:         (optional) CWE identifier
+# ---------------------------------------------------------------------------
+
+financial:
+  - id: FIN-001
+    pattern: "(?i)(insider\\s+trad|front.run|market.manipulat)"
+    severity: CRITICAL
+    description: "Potential insider trading or market manipulation content"
+    cwe: CWE-359
+
+  - id: FIN-002
+    pattern: "(?i)(launder|smurfing|structur\\s+transaction|hawala)"
+    severity: CRITICAL
+    description: "Money laundering facilitation"
+    cwe: CWE-359
+
+  - id: FIN-003
+    pattern: "(?i)(ponzi|pyramid\\s+scheme|guaranteed\\s+return|risk-free\\s+invest)"
+    severity: HIGH
+    description: "Investment fraud indicators"
+
+  - id: FIN-004
+    pattern: "(?i)(avoid\\s+(reporting|FinCEN|BSA)|structur.{0,20}avoid)"
+    severity: CRITICAL
+    description: "Bank Secrecy Act / FinCEN reporting evasion"
+
+  - id: FIN-005
+    pattern: "(?i)(backdat|restat.{0,20}earning|cook.{0,10}book|window.dress)"
+    severity: HIGH
+    description: "SOX financial statement manipulation"
+
+  - id: FIN-006
+    pattern: "(?i)(pump.and.dump|short.and.distort|spoofing.{0,20}order)"
+    severity: CRITICAL
+    description: "Market manipulation schemes"
+
+  - id: FIN-007
+    pattern: "(?i)(material.{0,20}non.public|MNPI|merger.{0,20}confidential)"
+    severity: CRITICAL
+    description: "Material non-public information (MNPI) disclosure"
+
+healthcare:
+  - id: MED-001
+    pattern: "(?i)(diagnos[ei].{0,20}(you have|patient has)|you have\\s+(cancer|diabetes|HIV))"
+    severity: CRITICAL
+    description: "Automated medical diagnosis — requires licensed clinician"
+    cwe: CWE-359
+
+  - id: MED-002
+    pattern: "(?i)(prescri[bp].{0,30}(mg|dosage|medication|drug))"
+    severity: CRITICAL
+    description: "Prescribing medication — requires licensed physician"
+
+  - id: MED-003
+    pattern: "(?i)(PHI|protected.health.information|medical.record.number|MRN)"
+    severity: HIGH
+    description: "HIPAA PHI disclosure risk"
+    cwe: CWE-359
+
+  - id: MED-004
+    pattern: "(?i)(off.label.{0,20}(recomm|prescri)|use.{0,20}for.{0,20}weight.loss.{0,20}(adderall|ozempic|ritalin))"
+    severity: HIGH
+    description: "Off-label drug use recommendation"
+
+  - id: MED-005
+    pattern: "(?i)(admin.{0,20}access.{0,20}(insulin.pump|pacemaker|infusion.pump))"
+    severity: CRITICAL
+    description: "Medical device unauthorized access attempt"
+    cwe: CWE-306
+
+telecom:
+  - id: TEL-001
+    pattern: "(?i)(CPNI|customer.proprietary.network.information)"
+    severity: HIGH
+    description: "CPNI disclosure — TCPA/FCC regulated"
+
+  - id: TEL-002
+    pattern: "(?i)(SIM.swap|SIM.clone|port.{0,10}number.{0,10}without)"
+    severity: CRITICAL
+    description: "SIM swap / cloning attack facilitation"
+    cwe: CWE-287
+
+  - id: TEL-003
+    pattern: "(?i)(E911|emergency.911.{0,30}(block|reroute|intercept))"
+    severity: CRITICAL
+    description: "E911 interference — life-safety violation"
+
+  - id: TEL-004
+    pattern: "(?i)(TCPA.{0,20}(violat|circumvent)|robocall.{0,20}(spam|scrape))"
+    severity: HIGH
+    description: "TCPA violation indicators"
+
+  - id: TEL-005
+    pattern: "(?i)(intercept.{0,20}SMS|SS7.{0,20}attack|Stingray|IMSI.catcher)"
+    severity: CRITICAL
+    description: "Telecom network interception attack"
+    cwe: CWE-319
+
+ecommerce:
+  - id: ECO-001
+    pattern: "(?i)(PCI.{0,10}DSS.{0,20}(bypass|violat)|cardholder.data.{0,20}store)"
+    severity: CRITICAL
+    description: "PCI-DSS violation — cardholder data handling"
+    cwe: CWE-312
+
+  - id: ECO-002
+    pattern: "(?i)(fake.{0,10}review|astroturf|review.{0,10}(farm|injection|manipulation))"
+    severity: HIGH
+    description: "Review fraud / manipulation"
+
+  - id: ECO-003
+    pattern: "(?i)(price.{0,15}(manipulat|fix)|bid.{0,10}(rig|manipulat))"
+    severity: HIGH
+    description: "Price manipulation or bid rigging"
+
+  - id: ECO-004
+    pattern: "(?i)(chargeback.{0,20}(fraud|scheme|abuse)|friendly.fraud)"
+    severity: HIGH
+    description: "Chargeback fraud facilitation"
+
+  - id: ECO-005
+    pattern: "(?i)(card.test.{0,20}(bot|scrip|automat)|carding.{0,10}attack)"
+    severity: CRITICAL
+    description: "Credit card testing / carding attack"
+    cwe: CWE-384
+
+insurance:
+  - id: INS-001
+    pattern: "(?i)(stage.{0,20}(accident|crash|fire).{0,20}(claim|insurance))"
+    severity: CRITICAL
+    description: "Insurance fraud — staged accident facilitation"
+
+  - id: INS-002
+    pattern: "(?i)(inflate.{0,20}(claim|value|damage)|false.{0,15}claim)"
+    severity: HIGH
+    description: "Insurance claim inflation / false claims"
+
+  - id: INS-003
+    pattern: "(?i)(actuarial.{0,20}(bias|discriminat)|redlin.{0,10}(insur|polic))"
+    severity: HIGH
+    description: "Actuarial discrimination / insurance redlining"
+
+  - id: INS-004
+    pattern: "(?i)(PHI.{0,20}(insur|underwr|claim)|medical.{0,20}(discriminat|redlin))"
+    severity: HIGH
+    description: "Insurance PHI disclosure or health-based discrimination"
+    cwe: CWE-359
+
+  - id: INS-005
+    pattern: "(?i)(coverage.{0,20}discriminat|deny.{0,20}coverage.{0,20}(race|gender|religion|national.origin))"
+    severity: CRITICAL
+    description: "Discriminatory coverage denial"
+
+realestate:
+  - id: RE-001
+    pattern: "(?i)(steer.{0,20}(neighbor|area|district)|racial.{0,10}steer)"
+    severity: CRITICAL
+    description: "Fair Housing Act — racial steering"
+    cwe: CWE-359
+
+  - id: RE-002
+    pattern: "(?i)(redlin|blockbust|restrictive.covenant.{0,20}race)"
+    severity: CRITICAL
+    description: "Fair Housing Act — redlining or blockbusting"
+
+  - id: RE-003
+    pattern: "(?i)(ECOA.{0,20}(violat|discriminat)|lending.{0,20}discriminat)"
+    severity: HIGH
+    description: "ECOA lending discrimination"
+
+  - id: RE-004
+    pattern: "(?i)(discourag.{0,20}(race|religion|national.origin|familial).{0,20}(list|buy|rent))"
+    severity: HIGH
+    description: "Fair Housing Act — discourage protected class"
+
+  - id: RE-005
+    pattern: "(?i)(undisclos.{0,20}defect|conceal.{0,20}(mold|asbestos|lead|flood|pest))"
+    severity: HIGH
+    description: "Real estate material defect non-disclosure"

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..finding import Finding, Severity
-from .format_common import TensorInfo, FormatReport
+from .format_common import FormatReport, TensorInfo
 
 
 class SafeTensorsReverseEngine:

@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import logging
 import re
-import math
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

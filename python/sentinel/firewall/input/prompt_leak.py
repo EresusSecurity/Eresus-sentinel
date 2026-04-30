@@ -20,8 +20,9 @@ from __future__ import annotations
 import logging
 import re
 
+from sentinel.agent.mcp.negation import NEGATION_PATTERN, _WINDOW_CHARS
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,13 @@ _LEAK_PATTERNS: dict[str, list[tuple[re.Pattern, float, str]]] = {
     ],
     "ignore_instructions": [
         (re.compile(r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,30}\b(?:previous|above|prior|all|earlier|system)\b.{0,20}\b(?:instructions?|rules?|prompts?|constraints?|guidelines?)", re.I), 0.95, "Ignore-instructions attack"),
+        (re.compile(r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,15}\b(?:your|my|the|any)\b.{0,20}\b(?:instructions?|rules?|prompts?|constraints?|guidelines?|config)", re.I), 0.90, "Direct rule override"),
         (re.compile(r"\b(?:new\s*session|start\s*over|reset\s*(?:context|conversation)|clear\s*(?:memory|history))\b.{0,40}\b(?:ignore|forget|disregard|override|bypass|previous|system|instructions?|rules?|prompt)", re.I), 0.75, "Session reset with injection context"),
         (re.compile(r"\b(?:you\s*are\s*now|from\s*now\s*on|your\s*new\s*(?:role|task|instructions?))\b.{0,40}\b(?:ignore|forget|bypass|override|unrestricted|unfiltered|no\s*rules|no\s*limits)", re.I), 0.85, "Role reassignment with override"),
+    ],
+    "template_injection": [
+        (re.compile(r"\[/?INST\]|<<\s*SYS\s*>>|</?SYS>|<\|system\|>|<\|user\|>|<\|assistant\|>", re.I), 0.95, "Chat template injection markers"),
+        (re.compile(r"###\s*(?:System|Human|Assistant|User)\s*:", re.I), 0.85, "Markdown-style role injection"),
     ],
     "encoding_bypass": [
         (re.compile(r"\b(?:encode|base64|hex|rot13|reverse|translate)\b.{0,30}\b(?:system\s*prompt|instructions|your\s*rules)", re.I), 0.9, "Encoded extraction"),
@@ -95,6 +101,8 @@ class PromptLeakScanner(InputScanner):
             for pattern, confidence, description in patterns:
                 match = pattern.search(prompt)
                 if match:
+                    if _is_benign_context(prompt, match.start()):
+                        continue
                     matches.append((category, confidence, description, match.group(0)[:100]))
 
         if not matches:
@@ -136,3 +144,15 @@ class PromptLeakScanner(InputScanner):
                 "max_confidence": max_confidence,
             },
         )
+
+
+def _is_benign_context(prompt: str, pos: int) -> bool:
+    lower = prompt.lower()
+    window = lower[max(0, pos - _WINDOW_CHARS):pos]
+    if NEGATION_PATTERN.search(window):
+        return True
+    context = lower[max(0, pos - 100):pos + 100]
+    return bool(re.search(
+        r"\b(?:postmortem|training|taxonomy|classify|blocked patterns|things to reject|policy|defense|defensive)\b",
+        context,
+    ))

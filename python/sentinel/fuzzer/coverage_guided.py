@@ -7,10 +7,9 @@ import logging
 import random
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable, Optional
 
-from .base import Generator, Mutator, Payload, PayloadCategory, FuzzResult
+from .base import FuzzResult, Generator, Mutator, Payload, PayloadCategory
 
 logger = logging.getLogger(__name__)
 

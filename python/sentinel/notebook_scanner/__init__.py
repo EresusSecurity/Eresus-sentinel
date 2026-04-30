@@ -15,14 +15,14 @@ Plugins:
     output          — Cell output security (XSS, credential leakage, exfil)
 """
 
-from sentinel.notebook_scanner.scanner import NotebookScanner
-from sentinel.notebook_scanner.parser import NotebookParser, NotebookCell, ParsedNotebook
-from sentinel.notebook_scanner.result import NotebookScanResult
 from sentinel.notebook_scanner.codebase_scanner import CodebaseScanner, CodebaseScanResult
-from sentinel.notebook_scanner.report_generator import ReportGenerator
-from sentinel.notebook_scanner.requirements_plugin import scan_requirements, scan_requirements_file
 from sentinel.notebook_scanner.metadata_plugin import MetadataPlugin
 from sentinel.notebook_scanner.output_plugin import OutputPlugin
+from sentinel.notebook_scanner.parser import NotebookCell, NotebookParser, ParsedNotebook
+from sentinel.notebook_scanner.report_generator import ReportGenerator
+from sentinel.notebook_scanner.requirements_plugin import scan_requirements, scan_requirements_file
+from sentinel.notebook_scanner.result import NotebookScanResult
+from sentinel.notebook_scanner.scanner import NotebookScanner
 
 __all__ = [
     "NotebookScanner",

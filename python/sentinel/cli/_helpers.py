@@ -28,7 +28,9 @@ def _sev(finding) -> tuple[str, str, str]:
 
 # ── Print helpers ─────────────────────────────────────────────────
 
-def _header(text: str):
+def _header(text: str, args=None):
+    if args is not None and getattr(args, "format", "table") != "table":
+        return
     console.print(f"\n[red]●[/red] [bold]sentinel[/bold] [dim]·[/dim] {text}")
 
 
@@ -63,7 +65,10 @@ def _finding_line(f, compact: bool = False):
             console.print(f"             [green]fix:[/green] {fix[:120]}")
 
 
-def _print_findings(findings, label: str = ""):
+def _print_findings(findings, label: str = "", args=None):
+    """Print findings as rich UI table. Skipped when format != table (use _export instead)."""
+    if args is not None and getattr(args, "format", "table") != "table":
+        return
     if not findings:
         _ok(f"clean{f' — {label}' if label else ''}")
         return

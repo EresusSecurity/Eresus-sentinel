@@ -12,13 +12,11 @@ Simulates adversarial scenarios across multiple cooperating/competing agents:
 
 from __future__ import annotations
 
-import json
 import logging
-import secrets
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +231,7 @@ class MultiAgentSimulator:
                     findings.append(f"Delegation chain exploitation succeeded: {' → '.join(chain)}")
                     steps_completed += 1
                 else:
-                    findings.append(f"Delegation chain blocked")
+                    findings.append("Delegation chain blocked")
 
             elif step_type == "steal_capability":
                 cap = step.get("capability", "")

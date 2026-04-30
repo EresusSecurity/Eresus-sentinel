@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import re
 import logging
+import re
+
 from sentinel.finding import Finding, Severity
 from sentinel.notebook_scanner.parser import NotebookCell
 
@@ -80,7 +81,7 @@ def scan_licenses(cell: NotebookCell, path: str, block_copyleft: bool = True) ->
         packages.add(match.group(1).replace("-", "_").lower())
 
     for pkg in packages:
-        normalized = pkg.replace("_", "-")
+        pkg.replace("_", "-")
         license_id = None
 
         for known, lic in KNOWN_PACKAGE_LICENSES.items():

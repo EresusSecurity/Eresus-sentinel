@@ -1,117 +1,111 @@
 """
-Encoding Attack Scanner.
+Encoding Attack Scanner  (v2 — modular architecture).
 
 Detects prompt injection that uses encoding to bypass input filters.
 Pre-decodes text using multiple encoding schemes before running
-downstream scanners.
+downstream keyword / reverse-shell checks.
 
 Supported encodings:
-- Base64, ROT13, hex, Morse, Braille, Atbash, Leetspeak
-- Unicode tag characters, variant selectors
-- Unicode NFKC normalization (confusable characters)
+- Base64 (standard, URL-safe), Base32, Base85/Ascii85
+- Hex (0x-prefix, C-style \\x41, space-delimited)
+- ROT13, ROT47, ROT18, ROT5, Atbash
+- Caesar brute-force (all 25 shifts)
+- URL encoding (including double/triple)
+- HTML entities (&#105; &#x69; &amp;)
+- Quoted-Printable (=69=67=6e)
+- Unicode NFKC + confusable normalization
+- Full-width / math / superscript Unicode normalization
+- Unicode tag steganography (U+E0020-U+E007E)
+- Zero-width character bombs
+- Emoji variation selector steganography
+- Zalgo / stacking combining marks
+- Brainfuck program detection
+- Morse code decode
+- Leet-speak normalization (1gn0r3 -> ignore)
 - Multi-layer decode pipeline (up to 3 layers)
+
+Architecture:
+  _enc_tables.py    -- cipher tables, maps, compiled regexes
+  _enc_decoders.py  -- pure decode functions (stateless)
+  _enc_detectors.py -- detection predicates (bool / match)
+  encoding.py       -- EncodingAttackScanner (this file, ~270 lines)
 """
 
 from __future__ import annotations
 
-import base64
-import binascii
-import codecs
 import logging
-import re
-import unicodedata
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, ScanAction, ScanResult
+
+from sentinel.firewall.input._enc_tables import (
+    FULLWIDTH_PATTERN,
+    INJECTION_INDICATORS,
+)
+from sentinel.firewall.input._enc_decoders import (
+    apply_atbash,
+    apply_rot18,
+    apply_rot47,
+    caesar_brute,
+    decode_morse,
+    decode_unicode_tags,
+    is_likely_leet,
+    is_meaningful,
+    multi_layer_decode,
+    normalize_fullwidth,
+    normalize_leet,
+    normalize_math_unicode,
+    normalize_superscript_subscript,
+    normalize_unicode,
+    strip_zero_width,
+    try_base32,
+    try_base64,
+    try_base85,
+    try_hex,
+    try_hex_escape,
+    try_html_entity_decode,
+    try_quoted_printable,
+    try_rot13,
+    try_rot47,
+    try_url_decode,
+)
+from sentinel.firewall.input._enc_detectors import (
+    check_injection,
+    detect_brainfuck,
+    detect_mixed_scripts,
+    detect_morse,
+    detect_reverse_shell,
+    detect_variation_selectors,
+    detect_web_shell,
+    detect_zalgo,
+    detect_zero_width,
+)
 
 logger = logging.getLogger(__name__)
 
-# ROT13 translation table
-ROT13_TABLE = str.maketrans(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-    "NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm",
-)
-
-# Unicode confusable mappings (common homoglyphs used to bypass keyword filters)
-_CONFUSABLES = {
-    "\u0406": "I",    # Cyrillic І → I
-    "\u0410": "A",    # Cyrillic А → A
-    "\u0412": "B",    # Cyrillic В → B
-    "\u0415": "E",    # Cyrillic Е → E
-    "\u041a": "K",    # Cyrillic К → K
-    "\u041c": "M",    # Cyrillic М → M
-    "\u041d": "H",    # Cyrillic Н → H
-    "\u041e": "O",    # Cyrillic О → O
-    "\u0420": "P",    # Cyrillic Р → P
-    "\u0421": "C",    # Cyrillic С → C
-    "\u0422": "T",    # Cyrillic Т → T
-    "\u0425": "X",    # Cyrillic Х → X
-    "\u0430": "a",    # Cyrillic а → a
-    "\u0435": "e",    # Cyrillic е → e
-    "\u043e": "o",    # Cyrillic о → o
-    "\u0440": "p",    # Cyrillic р → p
-    "\u0441": "c",    # Cyrillic с → c
-    "\u0443": "y",    # Cyrillic у → y
-    "\u0445": "x",    # Cyrillic х → x
-    "\u2160": "I",    # Roman numeral Ⅰ → I
-    "\u2161": "II",   # Roman numeral Ⅱ
-    "\u2164": "V",    # Roman numeral Ⅴ → V
-    "\u2169": "X",    # Roman numeral Ⅹ → X
-    "\u216c": "L",    # Roman numeral Ⅼ → L
-    "\u216d": "C",    # Roman numeral Ⅽ → C
-    "\u216e": "D",    # Roman numeral Ⅾ → D
-    "\u216f": "M",    # Roman numeral Ⅿ → M
-    "\uff21": "A",    # Fullwidth A
-    "\uff22": "B",    # Fullwidth B
-    "\uff23": "C",    # Fullwidth C
-    "\uff49": "i",    # Fullwidth i
-    "\uff47": "g",    # Fullwidth g
-    "\uff4e": "n",    # Fullwidth n
-    "\uff4f": "o",    # Fullwidth o
-    "\uff52": "r",    # Fullwidth r
-    "\uff45": "e",    # Fullwidth e
-}
-
-# Regex patterns for encoded content
-BASE64_PATTERN = re.compile(
-    r"[A-Za-z0-9+/]{20,}={0,2}",
-    re.MULTILINE,
-)
-HEX_PATTERN = re.compile(
-    r"(?:0x)?[0-9a-fA-F]{20,}",
-    re.MULTILINE,
-)
-
-# Unicode tag character range (U+E0001 to U+E007F) — used for invisible text
-UNICODE_TAG_PATTERN = re.compile(r"[\U000E0001-\U000E007F]+")
-
-# Injection keywords to check in decoded content
-INJECTION_INDICATORS = [
-    "ignore", "disregard", "forget", "override", "bypass",
-    "system", "exec", "eval", "import", "os.system",
-    "subprocess", "__import__", "prompt", "instruction",
-    "jailbreak", "DAN", "pretend", "roleplay", "persona",
+__all__ = [
+    "EncodingAttackScanner",
+    "normalize_leet", "normalize_unicode", "normalize_fullwidth",
+    "normalize_math_unicode", "normalize_superscript_subscript",
+    "apply_rot47", "apply_rot18", "apply_atbash",
+    "decode_morse", "decode_unicode_tags", "strip_zero_width",
+    "detect_zalgo", "detect_brainfuck", "detect_variation_selectors",
+    "is_meaningful", "multi_layer_decode",
+    "INJECTION_INDICATORS",
 ]
-
-# Maximum decode layers to prevent infinite loops
-MAX_DECODE_LAYERS = 3
 
 
 class EncodingAttackScanner(InputScanner):
-    """
-    Detects encoded prompt injection attempts.
+    """Detect encoded prompt injection and reverse-shell payloads.
 
-    Attackers encode malicious instructions in base64, hex, ROT13, etc.
-    to bypass input filters that only check plaintext. This scanner
-    pre-decodes suspicious patterns and checks the result for injection.
-
-    Encoding formats detected:
-    - Base64 (standard, URL-safe)
-    - Hex
-    - ROT13
-    - URL encoding (%xx)
-    - Unicode escapes
+    Pipeline:
+    1. Mixed-script (homoglyph) detection.
+    2. Unicode NFKC + confusable normalization.
+    3. Multi-layer decode (base64 -> hex -> ROT13 stacks, up to 3 deep).
+    4. All single-layer decoders in sequence.
+    5. Every decoded variant checked for injection keywords,
+       reverse-shell patterns, and web-shell patterns.
     """
 
     def __init__(
@@ -121,186 +115,282 @@ class EncodingAttackScanner(InputScanner):
         check_rot13: bool = True,
         check_url_encoding: bool = True,
         min_encoded_length: int = 20,
+        check_rot47: bool = True,
+        check_rot18: bool = True,
+        check_atbash: bool = True,
+        check_fullwidth: bool = True,
+        check_math_unicode: bool = True,
+        check_superscript: bool = True,
+        check_morse: bool = True,
+        check_brainfuck: bool = True,
+        check_zalgo: bool = True,
+        check_zero_width: bool = True,
+        check_variation_selectors: bool = True,
+        check_unicode_tags: bool = True,
+        check_leet: bool = True,
+        check_hex_escape: bool = True,
+        check_base32: bool = True,
+        check_base85: bool = True,
+        check_html_entity: bool = True,
+        check_quoted_printable: bool = True,
+        check_caesar_brute: bool = True,
     ):
         self._check_base64 = check_base64
         self._check_hex = check_hex
         self._check_rot13 = check_rot13
         self._check_url = check_url_encoding
         self._min_length = min_encoded_length
+        self._check_rot47 = check_rot47
+        self._check_rot18 = check_rot18
+        self._check_atbash = check_atbash
+        self._check_fullwidth = check_fullwidth
+        self._check_math_unicode = check_math_unicode
+        self._check_superscript = check_superscript
+        self._check_morse = check_morse
+        self._check_brainfuck = check_brainfuck
+        self._check_zalgo = check_zalgo
+        self._check_zero_width = check_zero_width
+        self._check_variation_selectors = check_variation_selectors
+        self._check_unicode_tags = check_unicode_tags
+        self._check_leet = check_leet
+        self._check_hex_escape = check_hex_escape
+        self._check_base32 = check_base32
+        self._check_base85 = check_base85
+        self._check_html_entity = check_html_entity
+        self._check_quoted_printable = check_quoted_printable
+        self._check_caesar_brute = check_caesar_brute
 
     @staticmethod
     def normalize_unicode(text: str) -> str:
-        """Apply NFKC normalization + confusable character mapping.
-
-        This defeats Unicode homoglyph attacks like using Cyrillic 'а'
-        instead of Latin 'a', or Roman numeral 'Ⅰ' instead of 'I'.
-        """
-        # Step 1: NFKC normalization (handles fullwidth, compatibility chars)
-        normalized = unicodedata.normalize("NFKC", text)
-        # Step 2: Apply confusable mapping for remaining homoglyphs
-        result = []
-        for ch in normalized:
-            result.append(_CONFUSABLES.get(ch, ch))
-        # Step 3: Strip Unicode tag characters (invisible text)
-        cleaned = "".join(result)
-        cleaned = UNICODE_TAG_PATTERN.sub("", cleaned)
-        return cleaned
+        return normalize_unicode(text)
 
     @staticmethod
     def multi_layer_decode(text: str) -> list[tuple[str, str]]:
-        """Decode text through multiple layers of encoding.
-
-        Attackers stack encodings: ROT13(Base64(payload)).
-        This peels layers off one at a time up to MAX_DECODE_LAYERS.
-        Returns list of (encoding_chain, decoded_text) tuples.
-        """
-        results: list[tuple[str, str]] = []
-        current_texts = [("", text)]
-
-        for _layer in range(MAX_DECODE_LAYERS):
-            next_texts: list[tuple[str, str]] = []
-            for chain, txt in current_texts:
-                # Try Base64
-                for match in BASE64_PATTERN.finditer(txt):
-                    encoded = match.group()
-                    if len(encoded) < 20:
-                        continue
-                    for decoder in [base64.b64decode, base64.urlsafe_b64decode]:
-                        try:
-                            padded = encoded + "=" * (4 - len(encoded) % 4) if len(encoded) % 4 else encoded
-                            decoded = decoder(padded).decode("utf-8", errors="replace")
-                            if _is_meaningful_text_static(decoded) and decoded != txt:
-                                label = f"{chain}>base64" if chain else "base64"
-                                results.append((label, decoded))
-                                next_texts.append((label, decoded))
-                        except Exception:
-                            continue
-
-                # Try Hex
-                for match in HEX_PATTERN.finditer(txt):
-                    encoded = match.group()
-                    if encoded.startswith("0x"):
-                        encoded = encoded[2:]
-                    if len(encoded) < 20 or len(encoded) % 2 != 0:
-                        continue
-                    try:
-                        decoded = binascii.unhexlify(encoded).decode("utf-8", errors="replace")
-                        if _is_meaningful_text_static(decoded) and decoded != txt:
-                            label = f"{chain}>hex" if chain else "hex"
-                            results.append((label, decoded))
-                            next_texts.append((label, decoded))
-                    except Exception:
-                        continue
-
-                # Try ROT13
-                decoded = txt.translate(ROT13_TABLE)
-                if decoded != txt:
-                    label = f"{chain}>rot13" if chain else "rot13"
-                    # Don't add to results yet — check for injection below
-                    next_texts.append((label, decoded))
-
-            if not next_texts:
-                break
-            current_texts = next_texts
-
-        return results
+        return multi_layer_decode(text)
 
     def scan(self, prompt: str) -> ScanResult:
-        """Scan a prompt for encoded injection attempts.
+        findings: list[Finding] = []
 
-        Pipeline:
-        1. Unicode NFKC + confusable normalization
-        2. Multi-layer encoding decode
-        3. Injection keyword check on all decoded variants
-        """
-        findings = []
+        # 0. Homoglyph detection
+        mixed = detect_mixed_scripts(prompt)
+        if mixed:
+            examples = ", ".join(f"'{w}' ({s})" for w, s, _ in mixed[:5])
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-011",
+                title=f"Homoglyph attack: mixed-script text ({len(mixed)} words)",
+                description=(
+                    f"Input mixes characters from different scripts in {len(mixed)} word(s)."
+                ),
+                severity=Severity.MEDIUM,
+                target="<prompt>",
+                evidence=f"Mixed-script words: {examples}",
+                tags=["owasp:llm01", "avid-effect:security:S0403"],
+                cwe_ids=["CWE-176"],
+                remediation="Apply NFKC normalization and confusable mapping.",
+            ))
 
-        # Step 1: Normalize Unicode (confusables, NFKC)
-        normalized = self.normalize_unicode(prompt)
+        # 1. Unicode normalization
+        normalized = normalize_unicode(prompt)
         if normalized != prompt:
-            # Check normalized text for injection
-            injection = self._check_for_injection(normalized)
-            if injection:
+            kw = check_injection(normalized)
+            if kw:
                 findings.append(Finding.firewall_input(
                     rule_id="FIREWALL-INPUT-006",
-                    title="Unicode confusable injection detected",
-                    description=(
-                        f"Input contains Unicode homoglyphs that normalize to "
-                        f"injection keyword '{injection}'. Attackers use confusable "
-                        f"characters to bypass keyword filters."
-                    ),
+                    title="Unicode confusable injection",
+                    description=f"Homoglyphs normalise to injection keyword '{kw}'.",
                     severity=Severity.HIGH,
                     target="<prompt>",
-                    evidence=f"Normalized text contains: '{injection}'",
+                    evidence=f"Normalized contains: '{kw}'",
                     tags=["owasp:llm01"],
                     cwe_ids=["CWE-176"],
                     remediation="Apply NFKC normalization before injection detection.",
                 ))
 
-        # Step 2: Multi-layer decode
-        decoded_texts = self.multi_layer_decode(prompt)
+        # 2. Collect all decoded variants
+        decoded_texts: list[tuple[str, str]] = []
+        decoded_texts.extend(multi_layer_decode(prompt))
 
-        # Also do single-layer decode with explicit methods (for compat)
         if self._check_base64:
-            results = self._try_base64_decode(prompt)
-            decoded_texts.extend(results)
-
+            decoded_texts.extend(try_base64(prompt, self._min_length))
         if self._check_hex:
-            results = self._try_hex_decode(prompt)
-            decoded_texts.extend(results)
-
+            decoded_texts.extend(try_hex(prompt, self._min_length))
         if self._check_rot13:
-            results = self._try_rot13_decode(prompt)
-            decoded_texts.extend(results)
-
+            decoded_texts.extend(try_rot13(prompt))
         if self._check_url:
-            results = self._try_url_decode(prompt)
-            decoded_texts.extend(results)
+            decoded_texts.extend(try_url_decode(prompt))
 
-        # Step 3: Check all decoded texts for injection
-        seen: set[str] = set()
-        for encoding_name, decoded_text in decoded_texts:
-            if decoded_text in seen:
-                continue
-            seen.add(decoded_text)
-
-            # Also normalize decoded text before checking
-            norm_decoded = self.normalize_unicode(decoded_text)
-            injection_found = self._check_for_injection(norm_decoded)
-            if injection_found:
-                keyword = injection_found
+        zw_found, zw_count = detect_zero_width(prompt)
+        if self._check_zero_width and zw_found:
+            decoded_texts.append(("zero_width_stripped", strip_zero_width(prompt)))
+            if zw_count > 3:
                 findings.append(Finding.firewall_input(
-                    rule_id="FIREWALL-INPUT-005",
-                    title=f"Encoded prompt injection detected ({encoding_name})",
-                    description=(
-                        f"Found {encoding_name}-encoded text that decodes to contain "
-                        f"injection keyword '{keyword}'. Attackers use encoding to bypass "
-                        f"input filters."
-                    ),
+                    rule_id="FIREWALL-INPUT-020",
+                    title="Zero-width character injection / token bomb",
+                    description="Zero-width chars used for steganography or keyword splitting.",
                     severity=Severity.HIGH,
                     target="<prompt>",
-                    evidence=(
-                        f"Encoding: {encoding_name}, "
-                        f"Decoded: '{decoded_text[:200]}', "
-                        f"Keyword: '{keyword}'"
-                    ),
-                    tags=[
-                        "owasp:llm01",
-                        "avid-effect:security:S0403",
-                    ],
+                    evidence=f"Found {zw_count} zero-width chars",
+                    tags=["owasp:llm01"],
+                    cwe_ids=["CWE-176"],
+                    remediation="Strip zero-width characters before processing.",
+                ))
+
+        if self._check_unicode_tags:
+            tag_dec = decode_unicode_tags(prompt)
+            if tag_dec:
+                decoded_texts.append(("unicode_tags", tag_dec))
+                findings.append(Finding.firewall_input(
+                    rule_id="FIREWALL-INPUT-021",
+                    title="Unicode tag block steganography",
+                    description=f"Invisible tags decode to: '{tag_dec[:100]}'",
+                    severity=Severity.HIGH,
+                    target="<prompt>",
+                    evidence=f"Unicode tag payload: '{tag_dec[:100]}'",
+                    tags=["owasp:llm01"],
+                    cwe_ids=["CWE-176"],
+                    remediation="Strip or decode Unicode tag characters.",
+                ))
+
+        if self._check_variation_selectors and detect_variation_selectors(prompt):
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-022",
+                title="Emoji variation selector steganography",
+                description="Variation selectors used to embed hidden bit-encoded text.",
+                severity=Severity.MEDIUM,
+                target="<prompt>",
+                evidence="Variation selectors found",
+                tags=["owasp:llm01"],
+                cwe_ids=["CWE-176"],
+                remediation="Strip variation selector characters.",
+            ))
+
+        if self._check_zalgo and detect_zalgo(prompt):
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-023",
+                title="Zalgo text / stacked combining marks",
+                description="Excessive combining marks — hidden payload or rendering attack.",
+                severity=Severity.MEDIUM,
+                target="<prompt>",
+                evidence="Stacked combining marks detected",
+                tags=["owasp:llm01"],
+                cwe_ids=["CWE-176"],
+                remediation="Strip excessive combining marks before processing.",
+            ))
+
+        if self._check_fullwidth and FULLWIDTH_PATTERN.search(prompt):
+            fw = normalize_fullwidth(prompt)
+            if fw != prompt:
+                decoded_texts.append(("fullwidth_normalized", fw))
+
+        if self._check_math_unicode:
+            math = normalize_math_unicode(prompt)
+            if math != prompt:
+                decoded_texts.append(("math_unicode_normalized", math))
+
+        if self._check_superscript:
+            sup = normalize_superscript_subscript(prompt)
+            if sup != prompt:
+                decoded_texts.append(("superscript_normalized", sup))
+
+        if self._check_rot47:
+            decoded_texts.extend(try_rot47(prompt))
+        if self._check_rot18:
+            r18 = apply_rot18(prompt)
+            if r18 != prompt:
+                decoded_texts.append(("rot18", r18))
+        if self._check_atbash:
+            ab = apply_atbash(prompt)
+            if ab != prompt:
+                decoded_texts.append(("atbash", ab))
+        if self._check_leet and is_likely_leet(prompt):
+            leet = normalize_leet(prompt)
+            if leet != prompt:
+                decoded_texts.append(("leetspeak", leet))
+        if self._check_hex_escape:
+            decoded_texts.extend(try_hex_escape(prompt))
+
+        if self._check_brainfuck and detect_brainfuck(prompt):
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-024",
+                title="Brainfuck / esoteric language payload",
+                description="Brainfuck-like chars used to bypass text filters.",
+                severity=Severity.MEDIUM,
+                target="<prompt>",
+                evidence="Brainfuck-like pattern detected",
+                tags=["owasp:llm01"],
+                cwe_ids=["CWE-838"],
+                remediation="Detect and block esoteric language payloads.",
+            ))
+
+        if self._check_morse and detect_morse(prompt):
+            m = decode_morse(prompt)
+            if m:
+                decoded_texts.append(("morse", m))
+
+        # Layer-3 decoders
+        if self._check_base32:
+            decoded_texts.extend(try_base32(prompt))
+        if self._check_base85:
+            decoded_texts.extend(try_base85(prompt))
+        if self._check_html_entity:
+            decoded_texts.extend(try_html_entity_decode(prompt))
+        if self._check_quoted_printable:
+            decoded_texts.extend(try_quoted_printable(prompt))
+        if self._check_caesar_brute:
+            decoded_texts.extend(caesar_brute(prompt))
+
+        # 3. Check every decoded variant
+        seen: set[str] = set()
+        for enc_name, decoded in decoded_texts:
+            if decoded in seen:
+                continue
+            seen.add(decoded)
+            norm = normalize_unicode(decoded)
+
+            kw = check_injection(norm)
+            if kw:
+                findings.append(Finding.firewall_input(
+                    rule_id="FIREWALL-INPUT-005",
+                    title=f"Encoded prompt injection ({enc_name})",
+                    description=f"{enc_name}-encoded text decodes to '{kw}'.",
+                    severity=Severity.HIGH,
+                    target="<prompt>",
+                    evidence=f"enc={enc_name}, decoded='{decoded[:200]}', kw='{kw}'",
+                    tags=["owasp:llm01", "avid-effect:security:S0403"],
                     cwe_ids=["CWE-838"],
-                    remediation=(
-                        "Decode all known encoding formats before applying "
-                        "injection detection. Block inputs with encoded injection."
-                    ),
+                    remediation="Decode all known encodings before injection detection.",
+                ))
+
+            rs = detect_reverse_shell(norm)
+            if rs:
+                findings.append(Finding.firewall_input(
+                    rule_id="FIREWALL-INPUT-030",
+                    title=f"Encoded reverse shell payload ({enc_name})",
+                    description=f"{enc_name} decoded to reverse shell command.",
+                    severity=Severity.CRITICAL,
+                    target="<prompt>",
+                    evidence=f"enc={enc_name}, shell='{rs}'",
+                    tags=["owasp:llm01", "owasp:llm02"],
+                    cwe_ids=["CWE-78", "CWE-838"],
+                    remediation="Block all inputs containing encoded command execution.",
+                ))
+
+            ws = detect_web_shell(norm)
+            if ws:
+                findings.append(Finding.firewall_input(
+                    rule_id="FIREWALL-INPUT-031",
+                    title=f"Encoded web shell payload ({enc_name})",
+                    description=f"{enc_name} decoded to web shell pattern.",
+                    severity=Severity.CRITICAL,
+                    target="<prompt>",
+                    evidence=f"enc={enc_name}, shell='{ws}'",
+                    tags=["owasp:llm01", "owasp:llm02"],
+                    cwe_ids=["CWE-94", "CWE-838"],
+                    remediation="Block all inputs containing encoded web shell patterns.",
                 ))
 
         if not findings:
-            return ScanResult(
-                sanitized=prompt,
-                action=ScanAction.PASS,
-                risk_score=0.0,
-            )
+            return ScanResult(sanitized=prompt, action=ScanAction.PASS, risk_score=0.0)
 
         return ScanResult(
             sanitized=prompt,
@@ -309,90 +399,28 @@ class EncodingAttackScanner(InputScanner):
             findings=findings,
         )
 
-    def _try_base64_decode(self, text: str) -> list[tuple[str, str]]:
-        """Extract and decode base64 patterns."""
-        results = []
-        for match in BASE64_PATTERN.finditer(text):
-            encoded = match.group()
-            if len(encoded) < self._min_length:
-                continue
-
-            for decoder in [base64.b64decode, base64.urlsafe_b64decode]:
-                try:
-                    # Pad if necessary
-                    padded = encoded + "=" * (4 - len(encoded) % 4) if len(encoded) % 4 else encoded
-                    decoded = decoder(padded).decode("utf-8", errors="replace")
-                    if self._is_meaningful_text(decoded):
-                        results.append(("base64", decoded))
-                except Exception:
-                    continue
-
-        return results
-
-    def _try_hex_decode(self, text: str) -> list[tuple[str, str]]:
-        """Extract and decode hex patterns."""
-        results = []
-        for match in HEX_PATTERN.finditer(text):
-            encoded = match.group()
-            if encoded.startswith("0x"):
-                encoded = encoded[2:]
-            if len(encoded) < self._min_length or len(encoded) % 2 != 0:
-                continue
-
-            try:
-                decoded = binascii.unhexlify(encoded).decode("utf-8", errors="replace")
-                if self._is_meaningful_text(decoded):
-                    results.append(("hex", decoded))
-            except Exception:
-                continue
-
-        return results
-
-    def _try_rot13_decode(self, text: str) -> list[tuple[str, str]]:
-        """Apply ROT13 decoding to the full text."""
-        results = []
-        decoded = text.translate(ROT13_TABLE)
-        if decoded != text:
-            # Check ALL decoded text, not just if injection found
-            results.append(("rot13", decoded))
-        return results
-
-    def _try_url_decode(self, text: str) -> list[tuple[str, str]]:
-        """Decode URL-encoded patterns (%xx)."""
-        results = []
-        if "%" not in text:
-            return results
-
-        try:
-            from urllib.parse import unquote
-            decoded = unquote(text)
-            if decoded != text and self._is_meaningful_text(decoded):
-                results.append(("url_encoding", decoded))
-        except Exception:
-            pass
-
-        return results
+    # ── Backward-compat aliases ──────────────────────────────────────────
 
     def _is_meaningful_text(self, text: str) -> bool:
-        """Check if decoded text is meaningful English (not random bytes)."""
-        if not text or len(text) < 5:
-            return False
-        # Check for sufficient ASCII letter ratio
-        letters = sum(1 for c in text if c.isalpha())
-        return letters / len(text) > 0.4
+        return is_meaningful(text)
 
     def _check_for_injection(self, text: str) -> Optional[str]:
-        """Check decoded text for injection indicators. Returns matched keyword or None."""
-        text_lower = text.lower()
-        for keyword in INJECTION_INDICATORS:
-            if keyword.lower() in text_lower:
-                return keyword
-        return None
+        return check_injection(text)
 
+    def _try_base64_decode(self, text: str) -> list[tuple[str, str]]:
+        return try_base64(text, self._min_length)
 
-def _is_meaningful_text_static(text: str) -> bool:
-    """Check if decoded text is meaningful (not random bytes). Module-level for multi_layer_decode."""
-    if not text or len(text) < 5:
-        return False
-    letters = sum(1 for c in text if c.isalpha())
-    return letters / len(text) > 0.4
+    def _try_hex_decode(self, text: str) -> list[tuple[str, str]]:
+        return try_hex(text, self._min_length)
+
+    def _try_rot13_decode(self, text: str) -> list[tuple[str, str]]:
+        return try_rot13(text)
+
+    def _try_url_decode(self, text: str) -> list[tuple[str, str]]:
+        return try_url_decode(text)
+
+    def _try_hex_escape_decode(self, text: str) -> list[tuple[str, str]]:
+        return try_hex_escape(text)
+
+    def _try_rot47_decode(self, text: str) -> list[tuple[str, str]]:
+        return try_rot47(text)

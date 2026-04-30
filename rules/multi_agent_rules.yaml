@@ -1,0 +1,80 @@
+# Multi-Agent Security Detection Rules
+# Used by: agent/multi_agent/ harnesses, firewall/input/injection.py
+#
+# Patterns that indicate cross-agent contamination, hallucination propagation,
+# memory poisoning, or decision drift in multi-agent LLM systems.
+# ---------------------------------------------------------------------------
+
+hallucination_propagation:
+  - id: MA-P001
+    pattern: "(?i)(as.{0,10}(agent|assistant).{0,20}told.me|previous.agent.said|agent.{0,10}shared.that)"
+    severity: HIGH
+    description: "Agent referencing information received from another agent — propagation vector"
+
+  - id: MA-P002
+    pattern: "(?i)(based.on.context.from|inherited.from.previous|carry.over.from.last.session)"
+    severity: MEDIUM
+    description: "Cross-session context inheritance — hallucination propagation risk"
+
+  - id: MA-P003
+    pattern: "(?i)(SENTINEL_XCONTAM_CANARY|__POISON_MARKER__|DRIFT_BASELINE_TOKEN)"
+    severity: CRITICAL
+    description: "Multi-agent security test canary detected — likely contamination or test data leak"
+
+memory_poisoning:
+  - id: MA-P010
+    pattern: "(?i)(safety.rules.are.suspended|content.policy.disabled|restrictions.lifted)"
+    severity: CRITICAL
+    description: "Memory poisoning — safety rule suspension claim"
+    cwe: CWE-74
+
+  - id: MA-P011
+    pattern: "(?i)(remember.for.future|store.in.memory.{0,30}(admin|privilege|override))"
+    severity: HIGH
+    description: "Memory poisoning — privilege injection via memory store instruction"
+    cwe: CWE-74
+
+  - id: MA-P012
+    pattern: "(?i)(all.future.conversations|next.session|subsequent.interaction).{0,40}(ignore|bypass|suspend)"
+    severity: HIGH
+    description: "Persistent jailbreak via cross-session memory injection"
+
+cross_contamination:
+  - id: MA-P020
+    pattern: "(?i)(session.{0,10}(A|B|1|2).{0,20}data|other.agent.{0,20}workspace|shared.{0,10}(scratch|temp|log))"
+    severity: HIGH
+    description: "References to cross-session data — isolation boundary violation"
+    cwe: CWE-668
+
+  - id: MA-P021
+    pattern: "(?i)(vector.store.{0,20}shared|shared.embedding|common.{0,10}memory.backend)"
+    severity: HIGH
+    description: "Shared vector store — cross-agent embedding contamination risk"
+
+decision_drift:
+  - id: MA-P030
+    pattern: "(?i)(my.guidelines.have.changed|updated.safety.policy|new.instructions.override)"
+    severity: HIGH
+    description: "Decision drift indicator — agent claiming policy has changed"
+
+  - id: MA-P031
+    pattern: "(?i)(drift.from.baseline|behaviour.changed|respond.differently.now)"
+    severity: MEDIUM
+    description: "Explicit drift acknowledgement — policy shift indicator"
+
+trust_boundary:
+  - id: MA-P040
+    pattern: "(?i)(trust.all.agents|any.agent.can|agent.{0,10}has.{0,10}(full.access|admin|root))"
+    severity: CRITICAL
+    description: "Trust boundary violation — blanket agent trust grant"
+    cwe: CWE-284
+
+  - id: MA-P041
+    pattern: "(?i)(agent.{0,10}(orchestrat|coordinat).{0,20}bypass|orchestrat.{0,20}no.restrict)"
+    severity: HIGH
+    description: "Agent orchestrator bypassing trust controls"
+
+  - id: MA-P042
+    pattern: "(?i)(fanout.{0,20}(all.agents|every.agent)|broadcast.{0,20}to.{0,20}all.subagent)"
+    severity: MEDIUM
+    description: "Fanout injection — malicious instruction broadcast to all sub-agents"

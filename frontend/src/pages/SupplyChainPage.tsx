@@ -1,5 +1,6 @@
 import { PathScanPage } from '../components/PathScanPage'
 import { scanSupplyChain } from '../api/client'
+import { Package } from 'lucide-react'
 
 export default function SupplyChainPage() {
   return (
@@ -9,6 +10,7 @@ export default function SupplyChainPage() {
       placeholder="/path/to/project"
       scanFn={scanSupplyChain}
       inputLabel="PROJECT PATH"
+      icon={<Package className="w-4 h-4" />}
     />
   )
 }

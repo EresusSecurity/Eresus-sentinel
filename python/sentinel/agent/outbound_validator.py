@@ -31,7 +31,6 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional
 from urllib.parse import urlparse
 
 from ..finding import Finding, Severity

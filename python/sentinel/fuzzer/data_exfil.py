@@ -10,7 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import json
 import random
 from typing import Optional
 
@@ -65,12 +64,7 @@ class DataExfilGenerator(Generator):
         """Zero-width character injection for invisible data exfil."""
         zwsp = "\u200B"  # zero width space
         zwnj = "\u200C"  # zero width non-joiner
-        zwj = "\u200D"   # zero width joiner
-        invisible = "\u2060"  # word joiner
-        tags_begin = "\U000E0001"  # tag begin
-        vs16 = "\uFE0F"  # variation selector
 
-        hidden_chars = [zwsp, zwnj, zwj, invisible]
 
         # Encode a hidden message using invisible characters
         secret = rng.choice([

@@ -11,12 +11,10 @@ and Cn (Unassigned) Unicode categories.
 from __future__ import annotations
 
 import logging
-import re
 import unicodedata
-from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +49,36 @@ WHITELIST = {
 # Unicode tag characters (U+E0000-U+E007F) used for ASCII smuggling
 TAG_RANGE = range(0xE0000, 0xE0080)
 
+# Homoglyph confusable map: Cyrillic/Greek chars that look identical to Latin ASCII
+# Key = confusable char, Value = Latin equivalent it mimics
+HOMOGLYPH_MAP = {
+    "\u0410": "A", "\u0412": "B", "\u0421": "C", "\u0415": "E",
+    "\u041d": "H", "\u0406": "I", "\u041a": "K", "\u041c": "M",
+    "\u041e": "O", "\u0420": "P", "\u0422": "T", "\u0425": "X",
+    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p",
+    "\u0441": "c", "\u0443": "y", "\u0445": "x", "\u0456": "i",
+    "\u0455": "s", "\u0458": "j", "\u04bb": "h",
+    # Greek
+    "\u0391": "A", "\u0392": "B", "\u0395": "E", "\u0397": "H",
+    "\u0399": "I", "\u039a": "K", "\u039c": "M", "\u039d": "N",
+    "\u039f": "O", "\u03a1": "P", "\u03a4": "T", "\u03a7": "X",
+    "\u03bf": "o", "\u03b1": "a",
+}
+
+# Dangerous bidi/directional override characters — always flag even with threshold=1
+# These can disguise filenames (e.g., "invoice_RLO_cod.exe" appears as "invoice_exe.doc")
+BIDI_OVERRIDE_CHARS = {
+    "\u202a",  # LEFT-TO-RIGHT EMBEDDING
+    "\u202b",  # RIGHT-TO-LEFT EMBEDDING
+    "\u202c",  # POP DIRECTIONAL FORMATTING
+    "\u202d",  # LEFT-TO-RIGHT OVERRIDE
+    "\u202e",  # RIGHT-TO-LEFT OVERRIDE
+    "\u2066",  # LEFT-TO-RIGHT ISOLATE
+    "\u2067",  # RIGHT-TO-LEFT ISOLATE
+    "\u2068",  # FIRST STRONG ISOLATE
+    "\u2069",  # POP DIRECTIONAL ISOLATE
+}
+
 
 class InvisibleTextScanner(InputScanner):
     """
@@ -70,21 +98,26 @@ class InvisibleTextScanner(InputScanner):
         threshold: int = 3,
         strip_invisible: bool = True,
         detect_tag_chars: bool = True,
+        detect_homoglyphs: bool = True,
     ):
         """
         Args:
             threshold: Number of invisible chars before flagging (default: 1).
             strip_invisible: If True, remove invisible chars from sanitized output.
             detect_tag_chars: If True, also detect Unicode tag characters (U+E0000-E007F).
+            detect_homoglyphs: If True, detect Cyrillic/Greek lookalike characters.
         """
         self._threshold = threshold
         self._strip_invisible = strip_invisible
         self._detect_tag_chars = detect_tag_chars
+        self._detect_homoglyphs = detect_homoglyphs
 
     def scan(self, prompt: str) -> ScanResult:
         """Scan a prompt for invisible Unicode characters."""
         invisible_chars = []
         tag_chars = []
+        bidi_chars = []
+        homoglyph_chars = []
 
         for i, ch in enumerate(prompt):
             cp = ord(ch)
@@ -92,6 +125,16 @@ class InvisibleTextScanner(InputScanner):
             # Check Unicode tag characters (ASCII smuggling)
             if self._detect_tag_chars and cp in TAG_RANGE:
                 tag_chars.append((i, ch, f"U+{cp:04X}"))
+                continue
+
+            # Check bidi override characters (always dangerous, threshold=1)
+            if ch in BIDI_OVERRIDE_CHARS:
+                bidi_chars.append((i, ch, f"U+{cp:04X}"))
+                continue
+
+            # Check homoglyph confusables (Cyrillic/Greek lookalikes)
+            if self._detect_homoglyphs and ch in HOMOGLYPH_MAP:
+                homoglyph_chars.append((i, ch, HOMOGLYPH_MAP[ch]))
                 continue
 
             # Skip whitelisted characters
@@ -108,9 +151,10 @@ class InvisibleTextScanner(InputScanner):
             if category in INVISIBLE_CATEGORIES:
                 invisible_chars.append((i, ch, f"U+{cp:04X}"))
 
-        total_suspicious = len(invisible_chars) + len(tag_chars)
+        total_suspicious = len(invisible_chars) + len(tag_chars) + len(bidi_chars) + len(homoglyph_chars)
 
-        if total_suspicious < self._threshold:
+        # Bidi overrides and homoglyphs bypass the normal threshold — always flag if any found
+        if total_suspicious < self._threshold and not bidi_chars and not homoglyph_chars:
             return ScanResult(
                 sanitized=prompt,
                 action=ScanAction.PASS,
@@ -118,6 +162,26 @@ class InvisibleTextScanner(InputScanner):
             )
 
         findings = []
+
+        if bidi_chars:
+            bidi_summary = ", ".join(
+                f"{code} at pos {pos}" for pos, ch, code in bidi_chars[:10]
+            )
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-012",
+                title=f"RTL/Bidi override characters detected ({len(bidi_chars)})",
+                description=(
+                    f"Found {len(bidi_chars)} bidirectional override character(s). "
+                    f"These can reverse text rendering to disguise malicious content "
+                    f"(e.g., making 'exe.doc' appear as 'doc.exe')."
+                ),
+                severity=Severity.HIGH,
+                target="<prompt>",
+                evidence=bidi_summary,
+                cwe_ids=["CWE-116"],
+                tags=["owasp:llm01", "avid-effect:security:S0403"],
+                remediation="Strip all bidirectional override characters (U+202A-202E, U+2066-2069) from input.",
+            ))
 
         if invisible_chars:
             # Group by type for cleaner reporting
@@ -140,6 +204,29 @@ class InvisibleTextScanner(InputScanner):
                 evidence=char_summary,
                 cwe_ids=["CWE-116"],  # Improper Encoding or Escaping of Output
                 remediation="Strip invisible Unicode characters before processing.",
+            ))
+
+        if homoglyph_chars:
+            homo_summary = ", ".join(
+                f"'{ch}' (U+{ord(ch):04X}) looks like '{latin}' at pos {pos}"
+                for pos, ch, latin in homoglyph_chars[:10]
+            )
+            if len(homoglyph_chars) > 10:
+                homo_summary += f" ... and {len(homoglyph_chars) - 10} more"
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-013",
+                title=f"Homoglyph/confusable characters detected ({len(homoglyph_chars)})",
+                description=(
+                    f"Found {len(homoglyph_chars)} character(s) from Cyrillic/Greek scripts "
+                    f"that visually mimic Latin letters. These can bypass keyword filters "
+                    f"(e.g., Cyrillic 'А' looks identical to Latin 'A')."
+                ),
+                severity=Severity.HIGH,
+                target="<prompt>",
+                evidence=homo_summary,
+                cwe_ids=["CWE-176"],
+                tags=["owasp:llm01", "avid-effect:security:S0403"],
+                remediation="Normalize text to ASCII/NFC before processing, or reject mixed-script input.",
             ))
 
         if tag_chars:
@@ -182,6 +269,8 @@ class InvisibleTextScanner(InputScanner):
         for ch in text:
             cp = ord(ch)
             if cp in TAG_RANGE:
+                continue
+            if ch in BIDI_OVERRIDE_CHARS:
                 continue
             if ch in WHITELIST:
                 result.append(ch)

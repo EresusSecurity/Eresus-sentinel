@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import logging
-import struct
 from pathlib import Path
 from typing import List
 
@@ -379,7 +378,7 @@ class XGBoostScanner:
     def _scan_bytes_for_code(self, content: bytes, source: str) -> List[Finding]:
         """Scan raw bytes for suspicious code signatures."""
         findings = []
-        text = content.decode("utf-8", errors="replace")
+        content.decode("utf-8", errors="replace")
 
         # Check for executable signatures
         dangerous_byte_patterns = [

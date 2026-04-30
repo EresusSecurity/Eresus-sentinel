@@ -23,14 +23,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +263,7 @@ class AuditLogger:
     async def _async_db_write(self, record: AuditRecord) -> None:
         """Write audit record to PostgreSQL."""
         try:
-            from sentinel.db import get_db, AuditLog
+            from sentinel.db import AuditLog, get_db
             async with get_db() as db:
                 db.add(AuditLog(
                     record_id=record.record_id,

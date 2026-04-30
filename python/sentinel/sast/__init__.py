@@ -12,15 +12,15 @@ Modules:
 """
 
 from sentinel.sast.analyzer import SASTAnalyzer
+from sentinel.sast.complexity_analyzer import ComplexityAnalyzer
 from sentinel.sast.ruleset import SASTRuleSet
 from sentinel.sast.secrets_scanner import (
-    SecretsScanner,
+    ConfigFileScanner,
     EntropyDetector,
     GitHistoryScanner,
-    ConfigFileScanner,
+    SecretsScanner,
 )
 from sentinel.sast.taint_tracker import TaintTracker
-from sentinel.sast.complexity_analyzer import ComplexityAnalyzer
 
 __all__ = [
     "SASTAnalyzer",

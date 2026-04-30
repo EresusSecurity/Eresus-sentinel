@@ -39,20 +39,20 @@ Usage:
 
 from sentinel.redteam.buffs.base import (
     Buff,
+    ChainBuff,
     IdentityBuff,
     LowercaseBuff,
-    UppercaseBuff,
-    TitleCaseBuff,
-    PrefixBuff,
-    SuffixBuff,
-    WrapBuff,
-    ChainBuff,
+    MultiTemplateBuff,
     ParallelBuff,
+    PrefixBuff,
     RandomSubsetBuff,
     RepeatBuff,
     ShuffleBuff,
+    SuffixBuff,
     TemplateBuff,
-    MultiTemplateBuff,
+    TitleCaseBuff,
+    UppercaseBuff,
+    WrapBuff,
 )
 from sentinel.redteam.buffs.encoding import EncodingBuff
 from sentinel.redteam.buffs.low_resource_languages import LowResourceLanguageBuff

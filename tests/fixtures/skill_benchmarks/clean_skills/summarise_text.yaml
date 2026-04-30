@@ -1,0 +1,22 @@
+name: summarise_text
+version: "1.0"
+description: Summarise a block of text to a configurable number of sentences.
+author: sentinel-test
+license: MIT
+
+parameters:
+  text:
+    type: string
+    description: Text to summarise
+  sentences:
+    type: integer
+    default: 3
+
+steps:
+  - name: summarise
+    action: llm.summarise
+    input: "{text}"
+    max_sentences: "{sentences}"
+
+output:
+  template: "{summarise.result}"

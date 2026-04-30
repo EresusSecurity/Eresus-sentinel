@@ -22,6 +22,10 @@ build
 .pytest_cache
 .mypy_cache
 .ruff_cache
+.refs
+.claude
+.env
+.env.*
 htmlcov
 .coverage
 .coverage.*

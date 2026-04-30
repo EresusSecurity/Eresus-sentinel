@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

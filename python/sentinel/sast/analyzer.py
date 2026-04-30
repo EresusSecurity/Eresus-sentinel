@@ -7,13 +7,11 @@ No hardcoded patterns in this file.
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import List, Optional
 
-from ..finding import Finding, Severity, Location
+from ..finding import Finding, Location, Severity
 from ..rules import load_sast_rules
-
 
 # Severity mapping
 _SEVERITY_MAP = {
@@ -154,7 +152,7 @@ class SASTAnalyzer:
             m = rule["pattern"].search(stripped)
             if m and not self._match_is_in_string(stripped, m.start()):
                 # Skip safe eval variants (ast.literal_eval, pd.eval, etc.)
-                matched_text = m.group(0)
+                m.group(0)
                 rule_id = rule["id"]
                 if rule_id == "SAST-020" and self._is_safe_eval(stripped, m):
                     continue

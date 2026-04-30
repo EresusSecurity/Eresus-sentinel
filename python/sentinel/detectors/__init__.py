@@ -1,8 +1,11 @@
 """Cross-cutting detector modules — network comm, suspicious symbols, JIT, CVE, secrets in models."""
 from __future__ import annotations
+
 import logging
 import re
 from pathlib import Path
+
+from sentinel.detectors.suspicious_symbols import SuspiciousSymbolDetector
 from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)

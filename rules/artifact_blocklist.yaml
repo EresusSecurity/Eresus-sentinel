@@ -356,6 +356,9 @@ dangerous_globals:
     - encode
     - open
 
+  _codecs:
+    - decode
+
   binascii:
     - a2b_base64
     - unhexlify
@@ -918,6 +921,7 @@ allowlist:
 
   operator:
     - getitem
+    - itemgetter
     - add
     - mul
 
@@ -976,6 +980,9 @@ allowlist:
 
   _io:
     - BytesIO    # in-memory buffer, not file I/O
+
+  zlib:
+    - compress
 
   copyreg:
     - _reconstructor

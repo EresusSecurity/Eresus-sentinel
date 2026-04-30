@@ -1,7 +1,10 @@
 """Composite — combine multiple attack vectors in single prompt."""
 from __future__ import annotations
+
 import base64
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class CompositeStrategy(BaseStrategy):
     name = "composite"

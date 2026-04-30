@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import logging
 import os
+
+from sentinel.notebook_scanner import (
+    cve_plugin,
+    dangerous_code_plugin,
+    license_plugin,
+    pii_plugin,
+    secrets_plugin,
+)
 from sentinel.notebook_scanner.parser import NotebookParser
 from sentinel.notebook_scanner.result import NotebookScanResult
-from sentinel.notebook_scanner import secrets_plugin, pii_plugin, dangerous_code_plugin, cve_plugin, license_plugin
 
 logger = logging.getLogger(__name__)
 

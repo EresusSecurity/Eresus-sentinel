@@ -6,8 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "eresus-sentinel"
 version = "0.1.0"
 description = "Production-grade AI/LLM Security Platform — Artifact scanning, input/output firewalls, red teaming, agent security, and ML supply chain auditing"
-readme = "docs/QUICKSTART.md"
-license = "LicenseRef-Proprietary"
+readme = "README.md"
+license = "LicenseRef-ESL-1.1"
 requires-python = ">=3.10,<3.15"
 authors = [
     {name = "Eresus Security", email = "engineering@eresussec.com"}
@@ -34,10 +34,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastapi>=0.136.0",
     "pyyaml>=6.0.1,<7",
     "rich>=13.7,<14",
-    "uvicorn>=0.44.0",
 ]
 
 [project.optional-dependencies]
@@ -58,12 +56,15 @@ firewall = [
     "nltk>=3.9,<4",
 ]
 api = [
-    "fastapi>=0.111.0,<1",
-    "uvicorn[standard]>=0.30.0,<1",
+    "fastapi>=0.136.0,<1",
+    "uvicorn[standard]>=0.44.0,<1",
     "pydantic>=2.7,<3",
     "python-multipart>=0.0.26,<1",
     "slowapi>=0.1.9,<1",
     "structlog>=24.1,<25",
+]
+web = [
+    "eresus-sentinel[api]",
 ]
 hf = [
     "huggingface-hub>=0.24.0,<1",
@@ -121,11 +122,13 @@ all = [
     "eresus-sentinel[hf]",
     "eresus-sentinel[vault]",
     "eresus-sentinel[api]",
+    "eresus-sentinel[web]",
     "eresus-sentinel[otel]",
     "eresus-sentinel[scan]",
     "eresus-sentinel[analysis]",
     "eresus-sentinel[remote]",
     "eresus-sentinel[archive]",
+    "eresus-sentinel[db]",
 ]
 
 [project.urls]
@@ -144,7 +147,7 @@ eresus-sentinel = "sentinel.cli:main"
 where = ["python"]
 
 [tool.setuptools.package-data]
-sentinel = ["data/*.yaml", "py.typed"]
+sentinel = ["data/*.yaml", "py.typed", "rules/*.yaml", "rules/rego/*.rego", "config/*.yaml", "config/schemas/*.json", "config/yara_rules/*", "web/dist/*", "web/dist/assets/*"]
 
 [tool.ruff]
 line-length = 100

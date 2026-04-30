@@ -12,8 +12,6 @@ attack generation. Without it, probes use generic payloads.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from sentinel.redteam.probe import Probe
 
 

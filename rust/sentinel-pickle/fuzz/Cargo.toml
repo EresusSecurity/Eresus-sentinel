@@ -1,0 +1,128 @@
+[package]
+name = "sentinel-pickle-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[lib]
+name = "fuzz_helpers"
+path = "src/lib.rs"
+
+[dependencies]
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+arbitrary     = { version = "1",   features = ["derive"] }
+sentinel-pickle    = { path = ".." }
+sentinel-gguf      = { path = "../../sentinel-gguf" }
+sentinel-tokenizer = { path = "../../sentinel-tokenizer" }
+zip                = { version = "2", default-features = false, features = ["deflate"] }
+
+# ── Existing fuzz targets ───────────────────────────────────────────
+
+[[bin]]
+name = "fuzz_scanner"
+path = "fuzz_targets/fuzz_scanner.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_differential"
+path = "fuzz_targets/fuzz_differential.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_opcode_sequence"
+path = "fuzz_targets/fuzz_opcode_sequence.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_policy"
+path = "fuzz_targets/fuzz_policy.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_all_formats"
+path = "fuzz_targets/fuzz_all_formats.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_gguf"
+path = "fuzz_targets/fuzz_gguf.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_tokenizer"
+path = "fuzz_targets/fuzz_tokenizer.rs"
+test = false
+doc  = false
+
+# ── New dedicated per-format fuzz targets ───────────────────────────
+
+[[bin]]
+name = "fuzz_mlflow"
+path = "fuzz_targets/fuzz_mlflow.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_torchscript"
+path = "fuzz_targets/fuzz_torchscript.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_lora"
+path = "fuzz_targets/fuzz_lora.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_ollama"
+path = "fuzz_targets/fuzz_ollama.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_llamafile"
+path = "fuzz_targets/fuzz_llamafile.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_paddle"
+path = "fuzz_targets/fuzz_paddle.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_flax"
+path = "fuzz_targets/fuzz_flax.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_structure_pickle"
+path = "fuzz_targets/fuzz_structure_pickle.rs"
+test = false
+doc  = false
+
+[[bin]]
+name = "fuzz_validate_python"
+path = "fuzz_targets/fuzz_validate_python.rs"
+test = false
+doc  = false
+
+[profile.release]
+opt-level     = 3
+debug         = false   # keep false; sanitizers add enough info
+panic         = "abort"
+lto           = "thin"
+codegen-units = 1
+

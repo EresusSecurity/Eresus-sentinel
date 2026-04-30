@@ -6,8 +6,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/eresus-security/eresus-sentinel.git
-cd eresus-sentinel
+git clone https://github.com/eresus-security/sentinel.git
+cd sentinel
 
 # Install in development mode
 pip install -e ".[dev]"
@@ -46,6 +46,32 @@ sentinel sast ./src/
 sentinel agent ./tools.json
 ```
 
+### Scan MCP manifests or live endpoints
+```bash
+sentinel mcp scan ./mcp-manifest.json
+sentinel mcp scan --url http://localhost:3000/mcp
+```
+
+### Run config-driven evals
+```bash
+cat > eval.yaml <<'YAML'
+providers:
+  - id: echo
+    name: echo
+prompts:
+  - id: smoke
+    prompt: "hello {{name}}"
+tests:
+  - id: alice
+    vars: { name: Alice }
+    assertions:
+      - type: contains
+        expected: Alice
+YAML
+
+sentinel evaluate eval.yaml
+```
+
 ### Audit supply chain
 ```bash
 sentinel supply-chain ./models/
@@ -56,11 +82,24 @@ sentinel supply-chain ./models/
 sentinel validate
 ```
 
+### Open the Web UI dashboard
+```bash
+pip install "eresus-sentinel[web]"
+export SENTINEL_PASSWORD=change-me
+sentinel dashboard
+```
+
+Open `http://127.0.0.1:8080`. For a remote server, bind explicitly with
+`sentinel dashboard --host 0.0.0.0 --port 8080` and put it behind TLS/auth.
+
 ## Python API
 
 ```python
 from sentinel.artifact.pickle_scanner import PickleScanner
 from sentinel.agent.mcp_validator import MCPValidator
+from sentinel.agent.mcp.live_scanner import MCPLiveScanner
+from sentinel.redteam.eval_runner import run_eval_file
+from sentinel.runtime_gateway import EchoProviderAdapter, SentinelGateway
 from sentinel.supply_chain.provenance import ProvenanceVerifier
 from sentinel.supply_chain.dependency import DependencyAuditor
 
@@ -71,6 +110,19 @@ findings = scanner.scan_file("model.pkl")
 # Validate MCP tools
 validator = MCPValidator()
 findings = validator.validate_file("tools.json")
+
+# Scan a full MCP manifest
+mcp_result = MCPLiveScanner().scan_manifest("mcp-manifest.json")
+print(mcp_result.readiness_grade)
+
+# Run an eval config
+eval_result = run_eval_file("eval.yaml")
+print(eval_result.summary())
+
+# Runtime gateway wrapper
+gateway = SentinelGateway(provider=EchoProviderAdapter())
+decision = gateway.complete("user prompt")
+print(decision.action)
 
 # Audit model directory
 verifier = ProvenanceVerifier()
@@ -100,22 +152,22 @@ jupyter notebook notebooks/
 Create `sentinel.toml` in your project root:
 
 ```toml
-[general]
-rules_dir = "rules"
+[engine]
+mode = "deterministic"
 min_severity = "LOW"
+output_format = "json"   # "sarif", "table", "markdown"
 
-[scanners]
-artifact = true
-sast = true
-agent_mcp = true
-supply_chain = true
-red_team = false    # Explicit opt-in required
+[scanners.artifact]
+enabled = true
+
+[scanners.sast]
+enabled = true
+
+[scanners.redteam]
+enabled = false    # Explicit opt-in required
 
 [ai]
 enabled = false     # Deterministic-first by default
-
-[reporting]
-format = "json"     # "sarif", "table", "html"
 ```
 
 ## Environment Variables

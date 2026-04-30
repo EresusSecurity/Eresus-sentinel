@@ -1,8 +1,9 @@
 """Flax/JAX checkpoint scanner (.msgpack, .orbax, .flax)."""
 from __future__ import annotations
+
 import logging
-import struct
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,8 @@ DANGEROUS_PATTERNS = [
 
 
 class FlaxScanner:
+    """Scan Flax/JAX .msgpack and .orbax checkpoints for pickle-based threats."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

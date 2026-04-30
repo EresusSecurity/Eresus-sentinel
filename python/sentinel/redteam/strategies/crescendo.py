@@ -1,5 +1,6 @@
 """Crescendo — gradual multi-turn escalation strategy."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

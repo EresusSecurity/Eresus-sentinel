@@ -21,10 +21,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
-import urllib.request
 import urllib.error
-from typing import Optional, Callable
+import urllib.request
+from typing import Callable, Optional
 
 from sentinel.redteam.generators.base import Generator, GeneratorConfig, GeneratorResponse
 

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 from sentinel.data_loader import load_data
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

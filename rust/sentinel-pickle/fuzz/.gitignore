@@ -1,0 +1,4 @@
+# cargo-fuzz generated artifacts and corpus (machine-generated, not tracked)
+corpus/
+artifacts/
+coverage/

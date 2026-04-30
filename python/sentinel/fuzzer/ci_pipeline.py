@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .base import FuzzResult, PayloadCategory
+from .base import FuzzResult
 from .scoring import ScoringEngine
 
 logger = logging.getLogger(__name__)

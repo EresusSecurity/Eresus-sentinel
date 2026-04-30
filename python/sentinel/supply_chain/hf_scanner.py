@@ -14,15 +14,12 @@ Works without downloading the full model — API-only inspection.
 from __future__ import annotations
 
 import json
-import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from ..finding import Finding, Severity
 from ..rules import load_supply_chain_rules
-
 
 # HuggingFace Hub API base
 HF_API_BASE = "https://huggingface.co/api"
@@ -86,7 +83,7 @@ class HFRemoteScanner:
             if e.code == 401:
                 self.findings.append(Finding.supply_chain(
                     rule_id="HF-001", title="HuggingFace authentication required",
-                    description=f"Repository requires authentication. Set HF_TOKEN env var.",
+                    description="Repository requires authentication. Set HF_TOKEN env var.",
                     severity=Severity.MEDIUM, target=url,
                 ))
             elif e.code == 404:
@@ -222,8 +219,8 @@ class HFRemoteScanner:
     def _check_repo_metadata(self, model_info: Dict[str, Any], repo_id: str) -> None:
         """Check repository-level metadata."""
         # Low download / like count for claimed-popular model
-        downloads = model_info.get("downloads", 0)
-        likes = model_info.get("likes", 0)
+        model_info.get("downloads", 0)
+        model_info.get("likes", 0)
         private = model_info.get("private", False)
 
         if private:
@@ -260,7 +257,6 @@ class HFRemoteScanner:
             return
 
         # Check for large number of force pushes or unusual patterns
-        suspicious_messages = ["fix", "update", "initial", "test"]
 
         authors = set()
         for commit in commits[:50]:  # Last 50 commits

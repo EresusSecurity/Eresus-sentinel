@@ -5,10 +5,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from rich.table import Table
 from rich import box
+from rich.table import Table
 
-from sentinel.cli._helpers import console, _header, _ok, _warn
+from sentinel.cli._helpers import _fail, _header, _ok, _warn, console
 
 
 def cmd_fuzz(args):
@@ -16,19 +16,20 @@ def cmd_fuzz(args):
     action = getattr(args, "fuzz_action", None)
 
     if action == "generate":
-        _cmd_fuzz_generate(args)
+        return _cmd_fuzz_generate(args)
     elif action == "mutate":
-        _cmd_fuzz_mutate(args)
+        return _cmd_fuzz_mutate(args)
     elif action == "validate":
-        _cmd_fuzz_validate(args)
+        return _cmd_fuzz_validate(args)
     elif action == "selftest":
-        _cmd_fuzz_selftest(args)
+        return _cmd_fuzz_selftest(args)
     elif action == "payloads":
-        _cmd_fuzz_payloads(args)
+        return _cmd_fuzz_payloads(args)
     else:
         _header("fuzz — AI offensive security testing")
         console.print("  [dim]subcommands: generate, mutate, validate, selftest, payloads[/dim]")
         console.print("  [dim]try: sentinel fuzz selftest --samples 200[/dim]")
+        return 2
 
 
 def _cmd_fuzz_generate(args):
@@ -69,6 +70,7 @@ def _cmd_fuzz_generate(args):
 
     ms = (time.perf_counter() - t0) * 1000
     console.print(f"  [dim]{ms:.0f}ms[/dim]")
+    return 0
 
 
 def _cmd_fuzz_mutate(args):
@@ -95,6 +97,7 @@ def _cmd_fuzz_mutate(args):
         mutated = mutator.mutate(data)
         _ok(f"mutated {len(data)} → {len(mutated)} bytes")
         console.print(f"  [dim]hex: {mutated[:60].hex()}{'...' if len(mutated) > 60 else ''}[/dim]")
+    return 0
 
 
 def _cmd_fuzz_validate(args):
@@ -125,16 +128,18 @@ def _cmd_fuzz_validate(args):
         _ok(f"all {ok_count} samples parse correctly")
     else:
         _warn(f"{ok_count} ok, {fail_count} failed")
+    return 1 if fail_count else 0
 
 
 def _cmd_fuzz_selftest(args):
     """Run the Sentinel Eats Itself self-test pipeline."""
-    from sentinel.fuzzer.pickle.selftest import PickleSelfTest
     from sentinel.fuzzer.base import FuzzConfig
+    from sentinel.fuzzer.pickle.selftest import PickleSelfTest
 
     samples = getattr(args, "samples", 500)
     seed = getattr(args, "seed", None)
     output_dir = getattr(args, "dir", None)
+    allow_bypass = getattr(args, "allow_bypass", False)
 
     _header(f"fuzz selftest · {samples} samples")
 
@@ -192,6 +197,14 @@ def _cmd_fuzz_selftest(args):
         _ok(f"report saved → {output_dir}/fuzz_report.json")
 
     console.print()
+    if score.scanner_crashes:
+        _fail(f"selftest failed: {score.scanner_crashes} scanner crash(es)")
+        return 1
+    if score.bypassed_payloads and not allow_bypass:
+        _fail(f"selftest failed: {len(score.bypassed_payloads)} bypassed payload(s)")
+        console.print("  [dim]Use --allow-bypass for exploratory runs that should exit 0.[/dim]")
+        return 1
+    return 0
 
 
 def _cmd_fuzz_payloads(args):
@@ -226,3 +239,4 @@ def _cmd_fuzz_payloads(args):
     mal = sum(1 for p in payloads if p.is_malicious)
     ben = sum(1 for p in payloads if not p.is_malicious)
     console.print(f"\n  [bold]{len(payloads)}[/bold] payloads · [red]{mal} malicious[/red] · [green]{ben} benign[/green]")
+    return 0

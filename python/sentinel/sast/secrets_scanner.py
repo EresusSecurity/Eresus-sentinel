@@ -19,14 +19,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-import os
 import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-from sentinel.finding import Finding, Severity, Location
+from sentinel.finding import Finding, Location, Severity
+from sentinel.rules import get_rules_dir
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ _SEVERITY_MAP = {
     "INFO": Severity.INFO,
 }
 
-_RULES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "rules"
+_RULES_DIR = get_rules_dir()
 _DEFAULT_YAML = _RULES_DIR / "sast_secret_patterns.yaml"
 
 # Cache
@@ -113,7 +113,10 @@ def _load_patterns(path: Optional[Path] = None) -> list[SecretPattern]:
 
     _pattern_cache = patterns
     _cache_mtime = mtime
-    logger.info("Loaded %d secret patterns from %s", len(patterns), yaml_path.name)
+    if patterns:
+        logger.info("Loaded %d secret patterns from %s", len(patterns), yaml_path.name)
+    else:
+        logger.warning("0 secret patterns loaded from %s — check YAML structure (expected 'patterns:' key with category groups)", yaml_path.name)
     return patterns
 
 

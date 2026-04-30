@@ -7,10 +7,12 @@ metadata field (``permissions``, ``requiresConfirmation``, ``auth``, …).
 
 from __future__ import annotations
 
-import json
+import re
 from typing import Any
 
 from ...finding import Finding, Severity
+from .negation import is_all_occurrences_negated
+from .searchable import build_searchable
 
 
 def check_missing_auth(
@@ -25,11 +27,22 @@ def check_missing_auth(
     if any(k in tool for k in auth_fields):
         return
 
-    searchable = json.dumps(tool, ensure_ascii=False).lower()
-    has_dangerous = any(
-        any(kw.lower() in searchable for kw in cap.get("keywords", []))
-        for cap in caps_catalog.values()
-    )
+    searchable = build_searchable(tool)
+    has_dangerous = False
+    for cap in caps_catalog.values():
+        for keyword in cap.get("keywords", []):
+            needle = keyword.lower()
+            if not re.search(r"\b" + re.escape(needle) + r"\b", searchable):
+                continue
+            if is_all_occurrences_negated(searchable, needle):
+                continue
+            from .capabilities import _is_benign_capability_context
+            if _is_benign_capability_context(searchable, needle):
+                continue
+            has_dangerous = True
+            break
+        if has_dangerous:
+            break
     if not has_dangerous:
         return
 

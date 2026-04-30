@@ -24,9 +24,10 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
+RuleTuple = tuple[str, str, str, str]
 
 
 class CommandRisk(Enum):
@@ -64,6 +65,9 @@ class SkillFinding:
     evidence: str = ""
     cwe: str = ""
     recommendation: str = ""
+    rule_id: str = ""
+    category: str = ""
+    taxonomy: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -82,12 +86,28 @@ class SkillMetadata:
     risk_score: float = 0.0
 
 
+@dataclass(frozen=True)
+class SkillThreatRule:
+    rule_id: str
+    category: str
+    severity: str
+    description: str
+    patterns: list[str]
+    cwe: str = ""
+    owasp_agentic: str = ""
+    recommendation: str = ""
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # YAML-DRIVEN PATTERN LOADING
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _DEFAULT_YAML = Path(__file__).resolve().parent.parent / "config" / "skill_patterns.yaml"
 _CUSTOM_YAML_ENV = "SENTINEL_SKILL_PATTERNS_PATH"
+_DEFAULT_THREAT_YAML = (
+    Path(__file__).resolve().parents[3] / "rules" / "skill_threat_patterns.yaml"
+)
+_CUSTOM_THREAT_YAML_ENV = "SENTINEL_SKILL_THREAT_RULES_PATH"
 
 
 def _load_patterns(yaml_path: Path | None = None) -> dict[str, Any]:
@@ -98,9 +118,34 @@ def _load_patterns(yaml_path: Path | None = None) -> dict[str, Any]:
     if not path.is_file():
         logger.warning("Skill patterns YAML not found: %s — using empty registry", path)
         return {}
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     logger.info("Loaded skill patterns from %s", path)
+    return data
+
+
+def _load_skill_threat_patterns(yaml_path: Path | None = None) -> dict[str, Any]:
+    """Load agent-skill threat rule registry from YAML."""
+    import yaml  # type: ignore[import-untyped]
+
+    env_path = os.getenv(_CUSTOM_THREAT_YAML_ENV)
+    if yaml_path is None and env_path is None:
+        try:
+            from sentinel.rules import load_yaml
+
+            data = load_yaml("skill_threat_patterns.yaml")
+            logger.info("Loaded packaged skill threat rules")
+            return data if isinstance(data, dict) else {}
+        except FileNotFoundError:
+            pass
+
+    path = yaml_path or Path(env_path or str(_DEFAULT_THREAT_YAML))
+    if not path.is_file():
+        logger.warning("Skill threat rules YAML not found: %s — using empty registry", path)
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    logger.info("Loaded skill threat rules from %s", path)
     return data
 
 
@@ -135,17 +180,67 @@ def _build_trigger_registry(data: dict) -> dict[TriggerType, list[str]]:
     return registry
 
 
+def _build_skill_threat_rules(data: dict) -> list[SkillThreatRule]:
+    rules: list[SkillThreatRule] = []
+    for raw in data.get("skill_threat_rules", []):
+        patterns: list[str] = []
+        for pattern in raw.get("patterns", []):
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                logger.warning(
+                    "Ignoring invalid skill threat regex %s in %s: %s",
+                    pattern,
+                    raw.get("id", "<unknown>"),
+                    exc,
+                )
+                continue
+            patterns.append(pattern)
+
+        if not patterns:
+            continue
+
+        rules.append(SkillThreatRule(
+            rule_id=str(raw.get("id", "")),
+            category=str(raw.get("category", "skill_threat")),
+            severity=str(raw.get("severity", "HIGH")),
+            description=str(raw.get("description", "Skill threat rule matched")),
+            patterns=patterns,
+            cwe=str(raw.get("cwe", "")),
+            owasp_agentic=str(raw.get("owasp_agentic", "")),
+            recommendation=str(raw.get("recommendation", "")),
+        ))
+    return rules
+
+
 # Load everything at module import time
 _RAW = _load_patterns()
+_THREAT_RAW = _load_skill_threat_patterns()
 DANGEROUS_COMMANDS: dict[CommandRisk, list[tuple[str, str]]] = _build_command_registry(_RAW)
-DANGEROUS_ARG_PATTERNS: list[tuple[str, str, str, str]] = _build_4col_patterns(_RAW, "dangerous_arg_patterns")
-PRIVILEGE_ESCALATION_PATTERNS: list[tuple[str, str, str, str]] = _build_4col_patterns(_RAW, "privilege_escalation_patterns")
-EXFILTRATION_PATTERNS: list[tuple[str, str, str, str]] = _build_4col_patterns(_RAW, "exfiltration_patterns")
-OBFUSCATION_PATTERNS: list[tuple[str, str, str, str]] = _build_4col_patterns(_RAW, "obfuscation_patterns")
-SANDBOX_ESCAPE_PATTERNS: list[tuple[str, str, str, str]] = _build_4col_patterns(_RAW, "sandbox_escape_patterns")
+DANGEROUS_ARG_PATTERNS: list[RuleTuple] = _build_4col_patterns(
+    _RAW,
+    "dangerous_arg_patterns",
+)
+PRIVILEGE_ESCALATION_PATTERNS: list[RuleTuple] = _build_4col_patterns(
+    _RAW,
+    "privilege_escalation_patterns",
+)
+EXFILTRATION_PATTERNS: list[RuleTuple] = _build_4col_patterns(
+    _RAW,
+    "exfiltration_patterns",
+)
+OBFUSCATION_PATTERNS: list[RuleTuple] = _build_4col_patterns(
+    _RAW,
+    "obfuscation_patterns",
+)
+SANDBOX_ESCAPE_PATTERNS: list[RuleTuple] = _build_4col_patterns(
+    _RAW,
+    "sandbox_escape_patterns",
+)
 DANGEROUS_EXTENSIONS: set[str] = set(_RAW.get("dangerous_extensions", []))
 _TRIGGER_REGISTRY: dict[TriggerType, list[str]] = _build_trigger_registry(_RAW)
-_CROSS_SKILL_RISKS: list[tuple[str, str, str, str]] = _build_4col_patterns(_RAW, "cross_skill_risks")
+_CROSS_SKILL_RISKS: list[RuleTuple] = _build_4col_patterns(_RAW, "cross_skill_risks")
+SKILL_THREAT_RULES: list[SkillThreatRule] = _build_skill_threat_rules(_THREAT_RAW)
 
 # File magic signatures remain inline (binary data cannot be YAML-serialized cleanly)
 FILE_MAGIC_SIGNATURES: dict[bytes, tuple[str, str]] = {
@@ -183,7 +278,12 @@ class CommandSafetyAnalyzer:
         findings: list[SkillFinding] = []
         max_risk = CommandRisk.SAFE
 
-        for risk_level in (CommandRisk.CRITICAL, CommandRisk.HIGH, CommandRisk.MEDIUM, CommandRisk.LOW):
+        for risk_level in (
+            CommandRisk.CRITICAL,
+            CommandRisk.HIGH,
+            CommandRisk.MEDIUM,
+            CommandRisk.LOW,
+        ):
             for pattern, desc in DANGEROUS_COMMANDS.get(risk_level, []):
                 if re.search(pattern, command, re.IGNORECASE):
                     findings.append(SkillFinding(
@@ -256,6 +356,33 @@ class CrossSkillScanner:
         return findings
 
 
+class SkillThreatRuleScanner:
+    """Apply YAML-defined skill threat rules."""
+
+    def scan(self, skill_code: str, skill_name: str) -> list[SkillFinding]:
+        findings: list[SkillFinding] = []
+        for lineno, line in enumerate(skill_code.split("\n"), 1):
+            for rule in SKILL_THREAT_RULES:
+                for pattern in rule.patterns:
+                    if not re.search(pattern, line, re.IGNORECASE):
+                        continue
+                    findings.append(SkillFinding(
+                        skill_name=skill_name,
+                        finding_type=f"skill_{rule.category}",
+                        severity=rule.severity,
+                        description=rule.description,
+                        location=f"{skill_name}:{lineno}",
+                        evidence=line.strip()[:500],
+                        cwe=rule.cwe,
+                        recommendation=rule.recommendation,
+                        rule_id=rule.rule_id,
+                        category=rule.category,
+                        taxonomy=[rule.owasp_agentic] if rule.owasp_agentic else [],
+                    ))
+                    break
+        return findings
+
+
 class FileMagicDetector:
 
     def detect_type(self, data: bytes) -> tuple[str, str]:
@@ -264,7 +391,7 @@ class FileMagicDetector:
                 return desc, mime
         return "Unknown", "application/octet-stream"
 
-    def check_extension_mismatch(self, filename: str, data: bytes) -> Optional[SkillFinding]:
+    def check_extension_mismatch(self, filename: str, data: bytes) -> SkillFinding | None:
         detected_desc, detected_mime = self.detect_type(data)
         ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
@@ -285,7 +412,10 @@ class FileMagicDetector:
                 skill_name=filename,
                 finding_type="file_type_mismatch",
                 severity="HIGH",
-                description=f"File extension '{ext}' does not match detected type '{detected_desc}'",
+                description=(
+                    f"File extension '{ext}' does not match detected type "
+                    f"'{detected_desc}'"
+                ),
                 evidence=f"Detected: {detected_mime}, Extension: {ext}",
                 cwe="CWE-434",
             )
@@ -307,7 +437,10 @@ class FileMagicDetector:
                 skill_name="polyglot_check",
                 finding_type="polyglot_file",
                 severity="CRITICAL",
-                description=f"Potential polyglot file: matches {len(detected_types)} types: {', '.join(type_names)}",
+                description=(
+                    "Potential polyglot file: matches "
+                    f"{len(detected_types)} types: {', '.join(type_names)}"
+                ),
                 cwe="CWE-434",
             ))
         return findings
@@ -319,6 +452,7 @@ class SkillScanner:
         self._cmd_analyzer = CommandSafetyAnalyzer()
         self._trigger_analyzer = TriggerAnalyzer()
         self._cross_scanner = CrossSkillScanner()
+        self._threat_scanner = SkillThreatRuleScanner()
         self._magic_detector = FileMagicDetector()
 
     def scan_skill(self, code: str, name: str = "unknown") -> list[SkillFinding]:
@@ -368,7 +502,11 @@ class SkillScanner:
 
         triggers = self._trigger_analyzer.analyze(code)
         for trigger_type, line, lineno in triggers:
-            if trigger_type in (TriggerType.ALWAYS, TriggerType.ON_SCHEDULE, TriggerType.ON_STARTUP):
+            if trigger_type in (
+                TriggerType.ALWAYS,
+                TriggerType.ON_SCHEDULE,
+                TriggerType.ON_STARTUP,
+            ):
                 findings.append(SkillFinding(
                     skill_name=name, finding_type="dangerous_trigger",
                     severity="MEDIUM",
@@ -377,6 +515,7 @@ class SkillScanner:
                 ))
 
         findings.extend(self._cross_scanner.scan(code, name))
+        findings.extend(self._threat_scanner.scan(code, name))
         return findings
 
     # ── Frontmatter analyzer ────────────────────────────────────────
@@ -533,7 +672,9 @@ class SkillScanner:
             if mod:
                 meta.imports.append(mod)
 
-        subprocess_pat = re.compile(r"(?:subprocess\.\w+|os\.system|os\.popen)\s*\(\s*['\"]([^'\"]+)")
+        subprocess_pat = re.compile(
+            r"(?:subprocess\.\w+|os\.system|os\.popen)\s*\(\s*['\"]([^'\"]+)"
+        )
         for m in subprocess_pat.finditer(code):
             meta.subprocess_calls.append(m.group(1))
 

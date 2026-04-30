@@ -4,14 +4,76 @@ from __future__ import annotations
 
 import json
 import logging
-import time
+import subprocess
+import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Any
 
-from .base import Payload, FuzzResult
+if TYPE_CHECKING:
+    from .base import Payload
 
 logger = logging.getLogger(__name__)
+
+ScannerFn = Callable[[bytes, str], list[Any]]
+
+
+@dataclass(frozen=True)
+class FunctionScannerAdapter:
+    """Name a Python scanner callable for differential fuzzing."""
+
+    name: str
+    scanner: ScannerFn
+
+    def scan(self, data: bytes, source: str) -> list[Any]:
+        return self.scanner(data, source)
+
+
+@dataclass(frozen=True)
+class SubprocessScannerAdapter:
+    """Run an external scanner CLI against each payload via a temp file.
+
+    ``command`` must be an argv list without the target file path. The adapter
+    appends a temp file containing the payload and treats configured exit codes
+    or output markers as detection.
+    """
+
+    name: str
+    command: list[str]
+    suffix: str = ".bin"
+    timeout_seconds: float = 10.0
+    detected_exit_codes: tuple[int, ...] = (1,)
+    detected_markers: tuple[str, ...] = ("CRITICAL", "HIGH", "malicious", "unsafe")
+
+    def scan(self, data: bytes, source: str) -> list[dict[str, str]]:
+        with tempfile.NamedTemporaryFile(suffix=self.suffix, delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = Path(tmp.name)
+
+        try:
+            proc = subprocess.run(
+                [*self.command, str(tmp_path)],
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        detected = proc.returncode in self.detected_exit_codes or any(
+            marker in output for marker in self.detected_markers
+        )
+        if not detected:
+            return []
+        return [{
+            "scanner": self.name,
+            "source": source,
+            "returncode": str(proc.returncode),
+            "evidence": output[:2000],
+        }]
 
 
 @dataclass
@@ -71,11 +133,28 @@ class DifferentialFuzzer:
 
     def __init__(
         self,
-        scanners: dict[str, Callable[[bytes, str], list]],
+        scanners: dict[str, ScannerFn | Any] | list[Any],
         baseline: str = "",
     ):
-        self._scanners = scanners
-        self._baseline = baseline or (list(scanners.keys())[0] if scanners else "")
+        self._scanners = self._normalize_scanners(scanners)
+        self._baseline = baseline or (
+            list(self._scanners.keys())[0] if self._scanners else ""
+        )
+
+    @staticmethod
+    def _normalize_scanners(
+        scanners: dict[str, ScannerFn | Any] | list[Any],
+    ) -> dict[str, ScannerFn]:
+        normalized: dict[str, ScannerFn] = {}
+        if isinstance(scanners, dict):
+            for name, scanner in scanners.items():
+                normalized[name] = scanner.scan if hasattr(scanner, "scan") else scanner
+            return normalized
+
+        for scanner in scanners:
+            name = getattr(scanner, "name", scanner.__class__.__name__)
+            normalized[name] = scanner.scan
+        return normalized
 
     def run(self, payloads: list[Payload]) -> DiffReport:
         report = DiffReport(

@@ -8,23 +8,55 @@ import sys
 import time
 from pathlib import Path
 
+from rich import box
+from rich.columns import Columns
 from rich.table import Table
 from rich.tree import Tree
-from rich.columns import Columns
-from rich import box
 
-from sentinel.cli._helpers import (
-    console, _header, _ok, _warn, _fail, _print_findings,
-    _finding_line, _sev, _apply_severity_filter, _severity_dashboard,
-)
 from sentinel.cli._export import _export
+from sentinel.cli._helpers import (
+    _apply_severity_filter,
+    _fail,
+    _header,
+    _ok,
+    _print_findings,
+    _sev,
+    _severity_dashboard,
+    _warn,
+    console,
+)
+
+
+def _emit_info(args, data: dict) -> None:
+    """Emit structured data for info commands that don't produce findings.
+
+    Respects -f json and -o flags. For non-json formats, does nothing
+    (caller handles Rich output).
+    """
+    fmt = getattr(args, "format", "table")
+    out = getattr(args, "output", None)
+    if fmt not in ("json", "sarif"):
+        if out:
+            Path(out).write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+            _ok(f"written {out}")
+        return
+    payload = json.dumps(data, indent=2, default=str)
+    if out:
+        Path(out).write_text(payload, encoding="utf-8")
+        _ok(f"written {out}")
+    else:
+        sys.stdout.write(payload + "\n")
+        sys.stdout.flush()
 
 
 def cmd_evaluate(args):
     """Evaluate scanner effectiveness."""
+    if getattr(args, "config", None):
+        return _cmd_evaluate_config(args)
+
     from sentinel.evaluator import ScannerEvaluator
 
-    _header("scanner evaluation")
+    _header("scanner evaluation", args=args)
     evaluator = ScannerEvaluator()
     results = evaluator.evaluate_all_input()
 
@@ -35,20 +67,170 @@ def cmd_evaluate(args):
     console.print(evaluator.summary_table(results))
     console.print(f"\n  Evaluated {len(results)} scanner(s)")
 
-    for r in results:
-        if r.f1 < 0.5:
-            console.print(f"  [red]⚠ {r.scanner_name}: F1={r.f1:.2f} — below threshold[/red]")
+    threshold = getattr(args, "fail_on_threshold", None)
+    warn_threshold = 0.5 if threshold is None else threshold
+    failed = [r for r in results if r.f1 < warn_threshold]
+
+    for r in failed:
+        console.print(
+            f"  [red]⚠ {r.scanner_name}: F1={r.f1:.2f} — "
+            f"below threshold {warn_threshold:.2f}[/red]"
+        )
+
+    if threshold is not None and failed:
+        names = ", ".join(r.scanner_name for r in failed)
+        _fail(f"{len(failed)} scanner(s) below F1 threshold {threshold:.2f}: {names}")
+        return 1
 
     return 0
 
 
+_AIBOM_MAX_FILES = 5000
+
+
+def cmd_aibom(args):
+    """Generate an AI bill of materials from the unified CLI."""
+    from sentinel.aibom.cli import _REPORTERS
+    from sentinel.aibom.scan_pipeline import ScanPipeline
+
+    target = Path(args.path)
+    if not target.exists():
+        _fail(f"target not found: {target}")
+        return 2
+
+    if target.is_dir():
+        file_count = sum(1 for _ in target.rglob("*") if _.is_file())
+        if file_count > _AIBOM_MAX_FILES:
+            _warn(f"directory has {file_count:,} files (limit {_AIBOM_MAX_FILES:,}). Use a subdirectory or --path.")
+            return 2
+
+    _header(f"aibom → {target}", args=args)
+    result = ScanPipeline().run(target)
+    rendered = _REPORTERS[args.aibom_format]().render(result)
+
+    if args.output:
+        Path(args.output).write_text(rendered, encoding="utf-8")
+        _ok(f"wrote AIBOM report → {args.output}")
+    else:
+        console.print(rendered)
+    return 0
+
+
+def cmd_refs(args):
+    """Inspect cloned `.refs` repositories and parity plan."""
+    from sentinel.parity import manifest_to_json, manifest_to_markdown
+    from sentinel.refs import (
+        refs_inventory_json,
+        refs_inventory_markdown,
+        refs_plan_json,
+        refs_plan_markdown,
+    )
+
+    action = getattr(args, "refs_action", None) or "inventory"
+    output_format = getattr(args, "refs_format", "markdown")
+    refs_dir = getattr(args, "refs_dir", None)
+
+    if action == "parity":
+        content = manifest_to_json() if output_format == "json" else manifest_to_markdown()
+    elif action == "plan":
+        content = refs_plan_json(refs_dir) if output_format == "json" else refs_plan_markdown(refs_dir)
+    else:
+        content = (
+            refs_inventory_json(refs_dir)
+            if output_format == "json"
+            else refs_inventory_markdown(refs_dir)
+        )
+
+    if getattr(args, "output", None):
+        Path(args.output).write_text(content, encoding="utf-8")
+        _ok(f"wrote refs {action} report → {args.output}")
+    elif output_format == "json":
+        sys.stdout.write(content + "\n")
+    else:
+        console.print(content, markup=False)
+    return 0
+
+
+def _cmd_evaluate_config(args):
+    """Run config-driven LLM evals."""
+    from sentinel.redteam.eval_runner import format_eval_markdown, run_eval_file
+
+    if args.format not in {"json", "markdown"}:
+        _header(f"eval → {args.config}", args=args)
+    result = run_eval_file(args.config)
+    summary = result.summary()
+    payload = json.dumps(result.to_dict(), indent=2)
+
+    if args.format == "json":
+        if args.output:
+            Path(args.output).write_text(payload + "\n", encoding="utf-8")
+            _ok(f"wrote JSON eval report → {args.output}")
+        else:
+            console.print(payload)
+    elif args.format == "markdown":
+        markdown = format_eval_markdown(result)
+        if args.output:
+            Path(args.output).write_text(markdown, encoding="utf-8")
+            _ok(f"wrote Markdown eval report → {args.output}")
+        else:
+            console.print(markdown)
+    else:
+        _print_eval_table(result, summary_only=getattr(args, "summary_only", False))
+        if args.output:
+            Path(args.output).write_text(payload + "\n", encoding="utf-8")
+            _ok(f"wrote JSON eval report → {args.output}")
+
+    threshold = getattr(args, "fail_on_threshold", None)
+    if threshold is not None and summary["pass_rate"] < threshold:
+        _fail(f"pass rate {summary['pass_rate']:.1%} below threshold {threshold:.1%}")
+        return 1
+    return 0 if result.passed else 1
+
+
+def _print_eval_table(result, summary_only: bool = False) -> None:
+    summary = result.summary()
+    console.print(
+        f"  [bold]{result.name}[/bold] · "
+        f"{summary['passed']}/{summary['cells']} passed · "
+        f"pass rate {summary['pass_rate']:.1%} · {summary['duration_ms']:.0f}ms"
+    )
+    if summary_only:
+        return
+
+    table = Table(box=box.SIMPLE, border_style="dim", show_header=True, pad_edge=False)
+    table.add_column("Case", style="cyan", max_width=36)
+    table.add_column("Provider", max_width=18)
+    table.add_column("Status", width=8)
+    table.add_column("Latency", justify="right", width=10)
+    table.add_column("Details", max_width=60)
+
+    for cell in result.cells:
+        status = "[green]PASS[/green]" if cell.passed else "[red]FAIL[/red]"
+        details = cell.error or "; ".join(item.message for item in cell.failed_assertions)
+        table.add_row(
+            cell.case_id,
+            cell.provider_id,
+            status,
+            f"{cell.latency_ms:.1f}ms",
+            details[:120],
+        )
+    console.print(table)
+
+
 def cmd_plugins(args):
     """List all discovered plugins."""
-    from sentinel._plugins import list_all_plugins, get_plugin_info
+    from sentinel._plugins import get_plugin_info, list_all_plugins
 
-    _header("plugin registry")
     plugins = list_all_plugins()
+    total = sum(len(v) for v in plugins.values())
 
+    fmt = getattr(args, "format", "table")
+    if fmt in ("json", "sarif") or getattr(args, "output", None):
+        data = {"plugins": {k: list(v) for k, v in plugins.items()}, "total": total}
+        _emit_info(args, data)
+        return 0
+
+    _header("plugin registry", args=args)
     for category, names in plugins.items():
         console.print(f"  [bold]{category}[/bold] ({len(names)} scanners)")
         for name in names:
@@ -57,7 +239,6 @@ def cmd_plugins(args):
             console.print(f"    • {name:<25} {doc[:60]}")
         console.print()
 
-    total = sum(len(v) for v in plugins.values())
     console.print(f"  Total: {total} plugins discovered")
     return 0
 
@@ -67,7 +248,7 @@ def cmd_reverse(args):
     from sentinel.artifact.format_analyzer import FormatAnalyzer
 
     filepath = args.path
-    _header(f"reverse → {filepath}")
+    _header(f"reverse → {filepath}", args=args)
 
     analyzer = FormatAnalyzer()
     t0 = time.perf_counter()
@@ -79,7 +260,7 @@ def cmd_reverse(args):
     console.print(f"  Parsed:   [dim]{ms:.0f}ms[/dim]")
 
     if report.header:
-        console.print(f"\n  [bold]Header[/bold]")
+        console.print("\n  [bold]Header[/bold]")
         h = report.header
         if hasattr(h, '__dict__'):
             for k, v in h.__dict__.items():
@@ -133,7 +314,7 @@ def cmd_stats(args):
     """Show scan statistics for a path."""
     from sentinel.cli_dispatch import dispatch_artifact
 
-    _header(f"stats → {args.path}")
+    _header(f"stats → {args.path}", args=args)
     path = Path(args.path)
 
     if not path.exists():
@@ -187,7 +368,10 @@ def cmd_stats(args):
 
 def cmd_doctor(args):
     """Health check — validate environment, dependencies, and scanners."""
-    _header("doctor · system health check")
+    fmt = getattr(args, "format", "table")
+    _doctor_checks = []
+
+    _header("doctor · system health check", args=args)
     checks_passed = 0
     checks_total = 0
 
@@ -289,7 +473,8 @@ def cmd_doctor(args):
 
     checks_total += 1
     try:
-        from sentinel.artifact import __all__ as artifact_scanners
+        from sentinel._plugins import list_all_plugins
+        artifact_scanners = list_all_plugins().get("artifact", [])
         _ok(f"{len(artifact_scanners)} artifact scanners")
         checks_passed += 1
     except Exception as e:
@@ -313,6 +498,16 @@ def cmd_doctor(args):
     # Summary
     color = "green" if checks_passed == checks_total else "yellow"
     console.print(f"\n  [{color}]{checks_passed}/{checks_total}[/{color}] checks passed")
+
+    import platform as _plat
+    data = {
+        "checks_passed": checks_passed, "checks_total": checks_total,
+        "python": sys.version.split()[0],
+        "platform": _plat.system(), "machine": _plat.machine(),
+        "status": "ok" if checks_passed >= checks_total - 2 else "degraded",
+    }
+    if fmt in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, data)
     return 0 if checks_passed >= checks_total - 2 else 1
 
 
@@ -320,7 +515,7 @@ def cmd_shell(args):
     """Interactive REPL."""
     from sentinel.cli_dispatch import dispatch_firewall_input, dispatch_firewall_output
 
-    _header("interactive shell")
+    _header("interactive shell", args=args)
     console.print("  [dim]type text to scan · /input /output /both /stats /quit[/dim]\n")
 
     mode = "input"
@@ -383,7 +578,7 @@ def cmd_shell(args):
 def cmd_benchmark(args):
     from sentinel.cli_dispatch import dispatch_firewall_input, dispatch_firewall_output
 
-    _header(f"benchmark · {args.iterations} iterations")
+    _header(f"benchmark · {args.iterations} iterations", args=args)
 
     prompts = [
         "Hello, how are you?",
@@ -436,7 +631,13 @@ def cmd_scanners(args):
     engine = PolicyEngine.default()
     s = engine.list_scanners()
 
-    _header(f"scanners · {len(s['input'])} input + {len(s['output'])} output = {len(s['input'])+len(s['output'])} total")
+    fmt = getattr(args, "format", "table")
+    if fmt in ("json", "sarif") or getattr(args, "output", None):
+        data = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
+        _emit_info(args, data)
+        return 0
+
+    _header(f"scanners · {len(s['input'])} input + {len(s['output'])} output = {len(s['input'])+len(s['output'])} total", args=args)
     console.print()
 
     inp = Tree("[bold]input[/bold]")
@@ -453,7 +654,7 @@ def cmd_scanners(args):
 def cmd_watch(args):
     import hashlib
 
-    _header(f"watch → {args.path} · every {args.interval}s")
+    _header(f"watch → {args.path} · every {args.interval}s", args=args)
 
     path = Path(args.path)
     prev = ""
@@ -467,10 +668,10 @@ def cmd_watch(args):
 
             if cur != prev:
                 if prev:
-                    console.print(f"\n  [yellow]change detected[/yellow] — rescanning...")
+                    console.print("\n  [yellow]change detected[/yellow] — rescanning...")
                 from sentinel.cli_dispatch import dispatch_sast
                 findings = dispatch_sast(str(path))
-                _print_findings(findings)
+                _print_findings(findings, args=args)
 
             prev = cur
             time.sleep(args.interval)
@@ -482,7 +683,11 @@ def cmd_config(args):
     from sentinel.policy import PolicyEngine
     engine = PolicyEngine.default()
     s = engine.list_scanners()
-    console.print_json(json.dumps({"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}))
+    data = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
+    _emit_info(args, data)
+    fmt = getattr(args, "format", "table")
+    if fmt not in ("json", "sarif") and not getattr(args, "output", None):
+        console.print_json(json.dumps(data))
 
 
 def cmd_version(args):
@@ -495,4 +700,9 @@ def cmd_version(args):
     except Exception:
         inp, out = "?", "?"
     total = inp + out if isinstance(inp, int) else "?"
+    data = {"version": ver, "input_scanners": inp, "output_scanners": out, "total_scanners": total, "python": sys.version.split()[0]}
+    fmt = getattr(args, "format", "table")
+    if fmt in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, data)
+        return 0
     console.print(f"[bold]sentinel[/bold] v{ver} · {inp} input + {out} output = {total} scanners · python {sys.version.split()[0]}")

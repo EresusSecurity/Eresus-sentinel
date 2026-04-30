@@ -7,9 +7,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from .base import FuzzResult, PayloadCategory
+if TYPE_CHECKING:
+    from .base import FuzzResult
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,16 @@ class DetectionScore:
             return 0.0
         return self.false_negatives / self.malicious_samples
 
+    @property
+    def mcc(self) -> float:
+        """Matthews Correlation Coefficient — balanced metric for imbalanced datasets."""
+        tp, fp = self.true_positives, self.false_positives
+        tn, fn = self.true_negatives, self.false_negatives
+        denom = ((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
+        if denom == 0:
+            return 0.0
+        return (tp * tn - fp * fn) / denom
+
     def to_dict(self) -> dict:
         return {
             "total_samples": self.total_samples,
@@ -99,6 +110,7 @@ class DetectionScore:
             "fpr": round(self.fpr, 4),
             "precision": round(self.precision, 4),
             "f1": round(self.f1, 4),
+            "mcc": round(self.mcc, 4),
             "bypass_rate": round(self.bypass_rate, 4),
             "bypassed_payloads": self.bypassed_payloads,
             "false_positive_payloads": self.false_positive_payloads,
@@ -158,6 +170,7 @@ class ScoringEngine:
                 if r.detected:
                     score.false_positives += 1
                     score.false_positive_payloads.append(r.payload.name)
+                    score.category_stats[cat]["detected"] += 1
                 else:
                     score.true_negatives += 1
 

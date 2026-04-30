@@ -31,7 +31,7 @@ import zipfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import BinaryIO, Dict, List, Optional, Tuple, Union
+from typing import BinaryIO
 
 from ..finding import Finding, Severity
 
@@ -67,7 +67,7 @@ class NpyHeader:
     header_len: int
     descr: str             # dtype descriptor string
     fortran_order: bool    # Column-major (Fortran) vs row-major (C) order
-    shape: Tuple[int, ...]
+    shape: tuple[int, ...]
     raw_header: str        # Full header dict as string
     has_pickle_dtype: bool = False
 
@@ -77,8 +77,8 @@ class NumpyScanResult:
     """Result of scanning a NumPy file."""
     file_path: str
     is_safe: bool = True
-    findings: List[Finding] = field(default_factory=list)
-    header: Optional[NpyHeader] = None
+    findings: list[Finding] = field(default_factory=list)
+    header: NpyHeader | None = None
     files_scanned: int = 0      # For .npz archives
     embedded_pickles: int = 0   # Count of pickle-based arrays
 
@@ -142,7 +142,7 @@ class NumpyScanner:
         self._allow_pickle = allow_pickle_dtype
         self._max_header = max_header_size
 
-    def scan_file(self, path: Union[str, Path]) -> NumpyScanResult:
+    def scan_file(self, path: str | Path) -> NumpyScanResult:
         """Scan a .npy or .npz file.
 
         Args:
@@ -285,7 +285,11 @@ class NumpyScanner:
             ))
             # Try to continue with 2-byte header length
             header_len_bytes = stream.read(2)
-            header_len = struct.unpack("<H", header_len_bytes)[0] if len(header_len_bytes) >= 2 else 0
+            header_len = (
+                struct.unpack("<H", header_len_bytes)[0]
+                if len(header_len_bytes) >= 2
+                else 0
+            )
 
         # Validate header length
         if header_len > self._max_header:
@@ -403,7 +407,7 @@ class NumpyScanner:
     def _parse_header_dict(
         self, header_str: str, major: int, minor: int,
         header_len: int, filename: str, result: NumpyScanResult
-    ) -> Optional[NpyHeader]:
+    ) -> NpyHeader | None:
         """Parse the header dictionary string safely."""
         try:
             # Use ast.literal_eval for safe parsing
@@ -544,10 +548,10 @@ class NumpyScanner:
         severity: Severity,
         target: str,
         evidence: str = "",
-        cwe_ids: Optional[List[str]] = None,
+        cwe_ids: list[str] | None = None,
     ) -> Finding:
         """Create a standardized Finding."""
-        return Finding(
+        return Finding.artifact(
             rule_id=rule_id,
             title=title,
             description=description,

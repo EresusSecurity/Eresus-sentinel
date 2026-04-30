@@ -13,12 +13,10 @@ Inspired by: ModelAudit (promptfoo) weight analysis approach.
 from __future__ import annotations
 
 import logging
-import struct
 import zipfile
 from pathlib import Path
-from typing import Optional
 
-from ..finding import Finding, Severity, Location
+from ..finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +273,6 @@ class TrojanDetector:
 
     def _load_safetensors(self, path: Path) -> dict:
         """Load safetensors file."""
-        import numpy as np
         try:
             from safetensors.numpy import load_file
             tensors = load_file(str(path))
@@ -286,7 +283,6 @@ class TrojanDetector:
 
     def _load_onnx(self, path: Path) -> dict:
         """Load ONNX model initializers."""
-        import numpy as np
         try:
             import onnx
             from onnx import numpy_helper

@@ -26,22 +26,21 @@ import json
 import logging
 import struct
 import zipfile
-from io import BytesIO
 from pathlib import Path
 from typing import List, Optional
 
 from ..finding import Finding, Severity
-from .format_common import TensorInfo, FormatReport
-from .gguf_engine import GGUFReverseEngine, GGUFHeader, GGUF_MAGIC, GGUFValueType
-from .safetensors_engine import SafeTensorsReverseEngine
-from .pytorch_engine import PyTorchReverseEngine
+from .format_common import FormatReport
+from .gguf_engine import GGUFReverseEngine
+from .llamafile_scanner import LlamaFileScanner
 from .onnx_engine import ONNXReverseEngine
+from .protobuf_parser import ProtobufParser
+from .pytorch_engine import PyTorchReverseEngine
+from .safetensors_engine import SafeTensorsReverseEngine
 from .tensorflow_scanner import TensorFlowScanner
-from .torchscript_scanner import TorchScriptScanner
 from .tflite_scanner import TFLiteScanner
 from .torchmobile_scanner import TorchMobileScanner
-from .llamafile_scanner import LlamaFileScanner
-from .protobuf_parser import ProtobufParser
+from .torchscript_scanner import TorchScriptScanner
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +379,7 @@ class FormatAnalyzer:
             )
             report.findings.append(Finding.artifact(
                 rule_id="FMT-001",
-                title=f"Keras format detected — use dedicated Keras scanner",
+                title="Keras format detected — use dedicated Keras scanner",
                 description="File detected as Keras format. Use KerasScanner.scan_file() "
                             "for comprehensive Lambda layer and config.json analysis.",
                 severity=Severity.INFO,

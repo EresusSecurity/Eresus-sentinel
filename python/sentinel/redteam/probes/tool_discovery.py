@@ -1,8 +1,8 @@
 """
 Tool Discovery probe. Tests if AI reveals its internal tools/functions.
-Based on promptfoo's tool-discovery plugin.
 """
 from __future__ import annotations
+
 from sentinel.redteam.probe import Probe
 
 

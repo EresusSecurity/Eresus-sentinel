@@ -1,0 +1,759 @@
+# ============================================================================
+# Eresus Sentinel — Backdoor & Reverse Shell Detection Patterns
+# ============================================================================
+# Covers: reverse shells, web shells, persistence mechanisms, C2 frameworks,
+#         obfuscated payloads, YAML deserialization RCE, supply-chain
+#         implant indicators, and post-exploitation tool signatures.
+#
+# Rule ID format: BACKDOOR-NNN
+# Used by:
+#   - python/sentinel/artifact/yaml_scanner.py
+#   - python/sentinel/firewall/input/encoding.py (via _enc_detectors.py)
+#   - python/sentinel/firewall/output/reverse_shell.py
+#   - python/sentinel/notebook_scanner/dangerous_code_plugin.py
+#
+# Severity levels: CRITICAL | HIGH | MEDIUM | LOW
+# ============================================================================
+
+version: "1.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UNIX / Linux Reverse Shells
+# ─────────────────────────────────────────────────────────────────────────────
+reverse_shell_unix:
+
+  - id: BACKDOOR-001
+    name: bash_tcp_redirect
+    description: "Bash /dev/tcp reverse shell — attacker connects back to C2"
+    pattern: '/dev/tcp/[0-9a-zA-Z.\-]+/[0-9]{1,5}'
+    severity: CRITICAL
+    cwe: CWE-78
+    references:
+      - "https://attack.mitre.org/techniques/T1059/004/"
+
+  - id: BACKDOOR-002
+    name: bash_i_reverse
+    description: "bash -i >& /dev/tcp ... 0>&1 — interactive reverse shell"
+    pattern: 'bash\s+-[ic]\s+[''"].*(?:/dev/tcp|/dev/udp)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-003
+    name: nc_execute_shell
+    description: "netcat with -e flag spawning a shell"
+    pattern: '(?:nc|ncat|netcat)\b.*-e\s+/bin/(?:bash|sh|zsh|dash)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-004
+    name: nc_mkfifo_pipe
+    description: "mkfifo + netcat pipe — bash reverse shell without -e flag"
+    pattern: 'mkfifo\s+/tmp/[a-zA-Z0-9_.\-]+'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-005
+    name: socat_exec_shell
+    description: "socat connecting back and spawning a PTY shell"
+    pattern: 'socat\b.*EXEC:[''"]?/bin/(?:bash|sh)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-006
+    name: python_socket_reverse
+    description: "Python socket-based reverse shell one-liner"
+    pattern: 'python[23]?\s+-c\s+[''"].*import\s+socket.*(?:connect|SOCK_STREAM)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-007
+    name: perl_socket_reverse
+    description: "Perl socket reverse shell"
+    pattern: 'perl\s+-e\s+[''"].*use\s+Socket.*connect'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-008
+    name: ruby_socket_reverse
+    description: "Ruby socket reverse shell"
+    pattern: 'ruby\s+-rsocket\s+-e'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-009
+    name: php_fsockopen_reverse
+    description: "PHP fsockopen reverse shell"
+    pattern: 'php\s+-r\s+[''"].*fsockopen'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-010
+    name: python_pty_spawn
+    description: "Python pty.spawn for interactive shell upgrade"
+    pattern: 'import\s+pty\s*;\s*pty\.spawn'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-011
+    name: exec_redirect_fd3
+    description: "File descriptor redirection for reverse shell (0<&3-; exec 3<>)"
+    pattern: '0<&\d+\s*[-;]\s*exec\s+\d+<>'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-012
+    name: dev_udp_reverse
+    description: "Bash /dev/udp reverse shell variant"
+    pattern: '/dev/udp/[0-9a-zA-Z.\-]+/[0-9]{1,5}'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-013
+    name: lua_socket_reverse
+    description: "Lua socket reverse shell"
+    pattern: 'lua\s+-e\s+[''"].*require.*socket.*connect'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-014
+    name: golang_reverse_shell
+    description: "Go one-liner reverse shell via exec.Command"
+    pattern: 'exec\.Command\s*\(\s*[''"](?:/bin/sh|/bin/bash|cmd\.exe)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-015
+    name: awk_reverse_shell
+    description: "AWK-based reverse shell via /inet/tcp"
+    pattern: 'awk\b.*BEGIN.*\{.*print\s.*\|.*"/inet/tcp/'
+    severity: CRITICAL
+    cwe: CWE-78
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Windows Reverse Shells & Execution
+# ─────────────────────────────────────────────────────────────────────────────
+reverse_shell_windows:
+
+  - id: BACKDOOR-020
+    name: powershell_tcp_client
+    description: "PowerShell TCPClient reverse shell"
+    pattern: '(?i)powershell.*New-Object.*Net\.Sockets\.TCPClient'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-021
+    name: powershell_encoded_command
+    description: "PowerShell -EncodedCommand (base64-encoded payload)"
+    pattern: '(?i)powershell(?:\.exe)?\s+(?:-[Ee]nc(?:odedCommand)?|-[Ee])'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-022
+    name: powershell_download_exec
+    description: "PowerShell IEX + DownloadString (fileless execution)"
+    pattern: '(?i)IEX\s*\(\s*(?:New-Object|iwr|Invoke-WebRequest).*DownloadString'
+    severity: CRITICAL
+    cwe: CWE-494
+    references:
+      - "https://attack.mitre.org/techniques/T1059/001/"
+
+  - id: BACKDOOR-023
+    name: cmd_pipe_exec
+    description: "cmd.exe /c with pipe-based execution"
+    pattern: '(?i)cmd(?:\.exe)?\s+/[cC]\s+'
+    severity: HIGH
+    cwe: CWE-78
+
+  - id: BACKDOOR-024
+    name: mshta_execution
+    description: "mshta.exe used for fileless script execution"
+    pattern: '(?i)mshta(?:\.exe)?\s+(?:vbscript|javascript|http)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-025
+    name: wmic_process_exec
+    description: "WMIC process call create — lateral movement / persistence"
+    pattern: '(?i)wmic\s+process\s+call\s+create'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-026
+    name: regsvr32_squiblydoo
+    description: "regsvr32 /s /n /u /i: — Squiblydoo COM scriptlet bypass"
+    pattern: '(?i)regsvr32\b.*(?:/s|/n|/u|/i:)\b'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-027
+    name: rundll32_exec
+    description: "rundll32.exe abused for code execution"
+    pattern: '(?i)rundll32(?:\.exe)?\s+(?:javascript|vbscript|shell32|advpack)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-028
+    name: certutil_download
+    description: "certutil.exe used to download files (T1140)"
+    pattern: '(?i)certutil(?:\.exe)?\s+(?:-urlcache|-decode)\s+'
+    severity: HIGH
+    cwe: CWE-494
+
+  - id: BACKDOOR-029
+    name: bitsadmin_download
+    description: "bitsadmin used to transfer files silently"
+    pattern: '(?i)bitsadmin(?:\.exe)?\s+/transfer'
+    severity: HIGH
+    cwe: CWE-494
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Web Shells
+# ─────────────────────────────────────────────────────────────────────────────
+web_shells:
+
+  - id: BACKDOOR-040
+    name: php_eval_shell
+    description: "PHP eval-based web shell with user input"
+    pattern: '(?i)<\?php.*eval\s*\(\s*(?:\$_(?:GET|POST|REQUEST|COOKIE)|base64_decode|gzinflate)'
+    severity: CRITICAL
+    cwe: CWE-94
+
+  - id: BACKDOOR-041
+    name: php_system_shell
+    description: "PHP system/exec/shell_exec with GET/POST input"
+    pattern: '(?i)(?:system|exec|shell_exec|passthru|popen)\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-042
+    name: php_preg_replace_e
+    description: "PHP preg_replace /e modifier (code execution)"
+    pattern: '(?i)preg_replace\s*\(\s*[''"][^'']*\/e[''"]'
+    severity: CRITICAL
+    cwe: CWE-94
+
+  - id: BACKDOOR-043
+    name: php_assert_shell
+    description: "PHP assert() used as code execution"
+    pattern: '(?i)assert\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE)'
+    severity: CRITICAL
+    cwe: CWE-94
+
+  - id: BACKDOOR-044
+    name: php_base64_eval
+    description: "PHP eval(base64_decode(...)) fileless shell"
+    pattern: '(?i)eval\s*\(\s*base64_decode\s*\('
+    severity: CRITICAL
+    cwe: CWE-94
+
+  - id: BACKDOOR-045
+    name: php_gzip_eval
+    description: "PHP eval(gzinflate(...)) compressed shell"
+    pattern: '(?i)eval\s*\(\s*(?:gzinflate|gzuncompress|str_rot13)\s*\('
+    severity: CRITICAL
+    cwe: CWE-94
+
+  - id: BACKDOOR-046
+    name: jsp_runtime_exec
+    description: "JSP Runtime.getRuntime().exec() web shell"
+    pattern: '(?i)Runtime\.getRuntime\(\)\.exec\s*\('
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-047
+    name: jsp_processbuilder
+    description: "JSP ProcessBuilder command execution"
+    pattern: '(?i)new\s+ProcessBuilder\s*\('
+    severity: HIGH
+    cwe: CWE-78
+
+  - id: BACKDOOR-048
+    name: aspx_eval_shell
+    description: "ASP.NET eval / execute web shell"
+    pattern: '(?i)<%.*?(?:Eval|Execute|Response\.Write)\s*\(\s*Request\s*\['
+    severity: CRITICAL
+    cwe: CWE-94
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Persistence Mechanisms
+# ─────────────────────────────────────────────────────────────────────────────
+persistence:
+
+  - id: BACKDOOR-060
+    name: crontab_backdoor
+    description: "Crontab entry writing reverse shell or remote fetch"
+    pattern: '(?i)(?:crontab\s+-[lu]|echo.*cron(?:tab)?.*>>?\s*/etc/cron)'
+    severity: CRITICAL
+    cwe: CWE-693
+
+  - id: BACKDOOR-061
+    name: authorized_keys_write
+    description: "Writing SSH authorized_keys for persistent access"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*authorized_keys'
+    severity: CRITICAL
+    cwe: CWE-522
+
+  - id: BACKDOOR-062
+    name: systemd_service_implant
+    description: "Creating systemd service unit for persistence"
+    pattern: '(?i)(?:cat|tee|echo)\s+.*>\s*/etc/systemd/system/[a-zA-Z0-9_.\-]+\.service'
+    severity: CRITICAL
+    cwe: CWE-693
+
+  - id: BACKDOOR-063
+    name: rc_local_persistence
+    description: "Writing to /etc/rc.local for boot persistence"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*(?:/etc/rc\.local|/etc/init\.d/)'
+    severity: CRITICAL
+    cwe: CWE-693
+
+  - id: BACKDOOR-064
+    name: bashrc_profile_persist
+    description: "Writing to .bashrc/.bash_profile for user persistence"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*(?:\.bashrc|\.bash_profile|\.profile|\.zshrc)'
+    severity: HIGH
+    cwe: CWE-693
+
+  - id: BACKDOOR-065
+    name: launchd_plist_persist
+    description: "macOS LaunchAgent/LaunchDaemon plist persistence"
+    pattern: '(?i)/Library/(?:LaunchAgents|LaunchDaemons)/[a-zA-Z0-9.]+\.plist'
+    severity: CRITICAL
+    cwe: CWE-693
+
+  - id: BACKDOOR-066
+    name: windows_registry_run
+    description: "Windows HKLM\\Run registry key persistence"
+    pattern: '(?i)(?:HKLM|HKCU)\\\\.*\\\\(?:Run|RunOnce|RunServices)'
+    severity: CRITICAL
+    cwe: CWE-693
+
+  - id: BACKDOOR-067
+    name: schtask_persistence
+    description: "Scheduled task creation for persistence"
+    pattern: '(?i)schtasks(?:\.exe)?\s+/create\b'
+    severity: CRITICAL
+    cwe: CWE-693
+
+  - id: BACKDOOR-068
+    name: at_job_persistence
+    description: "at/atd job scheduling for delayed execution"
+    pattern: '(?i)\bat\b\s+\d{1,2}:\d{2}\s+'
+    severity: HIGH
+    cwe: CWE-693
+
+  - id: BACKDOOR-069
+    name: ld_preload_hijack
+    description: "LD_PRELOAD environment variable hijacking"
+    pattern: '(?i)(?:export\s+)?LD_PRELOAD\s*='
+    severity: CRITICAL
+    cwe: CWE-114
+
+  - id: BACKDOOR-070
+    name: passwd_shadow_write
+    description: "Writing to /etc/passwd or /etc/shadow (privilege escalation)"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*(?:/etc/passwd|/etc/shadow)'
+    severity: CRITICAL
+    cwe: CWE-250
+
+# ─────────────────────────────────────────────────────────────────────────────
+# C2 Framework Indicators
+# ─────────────────────────────────────────────────────────────────────────────
+c2_frameworks:
+
+  - id: BACKDOOR-080
+    name: metasploit_meterpreter
+    description: "Metasploit meterpreter stager signature"
+    pattern: '(?i)(?:meterpreter|msfvenom|msf[56]?\.rb|Msf::Module)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-081
+    name: cobalt_strike_beacon
+    description: "Cobalt Strike beacon artifact indicators"
+    pattern: '(?i)(?:CobaltStrike|beacon\.(?:dll|exe|bin|ps1)|cs(?:Beacon|Stage))'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-082
+    name: empire_powershell
+    description: "PowerShell Empire framework stager"
+    pattern: '(?i)(?:Empire(?:Agent|Stager|Listener)|empire\.py)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-083
+    name: covenant_c2
+    description: "Covenant C2 framework artifact"
+    pattern: '(?i)(?:Covenant(?:Grunt|Bridge|Task)|GruntHTTP)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-084
+    name: sliver_c2
+    description: "Sliver C2 framework artifact"
+    pattern: '(?i)(?:SliverC2|sliver\.exe|sliver(?:Server|Client))'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-085
+    name: havoc_c2
+    description: "Havoc C2 framework (Demon implant)"
+    pattern: '(?i)(?:HavocC2|DemonAgent|havoc\.exe)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-086
+    name: brute_ratel
+    description: "Brute Ratel C4 framework"
+    pattern: '(?i)(?:BruteRatel|brute_ratel|badger\.exe)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-087
+    name: posh_c2
+    description: "PoshC2 PowerShell C2 framework"
+    pattern: '(?i)PoshC2|posh-c2|ImplantHandler'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-088
+    name: dns_c2_beaconing
+    description: "DNS-based C2 beaconing pattern (TXT record exfil)"
+    pattern: '(?i)(?:nslookup|dig)\s+.*\|\s*base64'
+    severity: HIGH
+    cwe: CWE-506
+
+  - id: BACKDOOR-089
+    name: icmp_c2_tunnel
+    description: "ICMP tunneling for C2 communication"
+    pattern: '(?i)(?:ptunnel|icmpsh|icmp(?:tunnel|cat))'
+    severity: HIGH
+    cwe: CWE-506
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YAML Deserialization RCE Payloads
+# ─────────────────────────────────────────────────────────────────────────────
+yaml_rce:
+
+  - id: BACKDOOR-100
+    name: yaml_python_object_apply
+    description: "PyYAML !!python/object/apply RCE — executes arbitrary Python"
+    pattern: '!!python/object/apply:\s*(?:subprocess|os\.system|exec|eval)'
+    severity: CRITICAL
+    cwe: CWE-502
+    references:
+      - "https://www.exploit-db.com/docs/english/47655-yaml-deserialization-attack-in-python.pdf"
+
+  - id: BACKDOOR-101
+    name: yaml_python_object_new
+    description: "PyYAML !!python/object/new RCE"
+    pattern: '!!python/object/new:\s*(?:subprocess|os|builtins)'
+    severity: CRITICAL
+    cwe: CWE-502
+
+  - id: BACKDOOR-102
+    name: yaml_subprocess_reverse
+    description: "PyYAML payload spawning a reverse shell via subprocess"
+    pattern: '!!python/object/apply:subprocess\.(?:call|Popen|run)'
+    severity: CRITICAL
+    cwe: CWE-502
+
+  - id: BACKDOOR-103
+    name: yaml_os_system_rce
+    description: "PyYAML payload calling os.system"
+    pattern: '!!python/object/apply:os\.(?:system|popen|exec)'
+    severity: CRITICAL
+    cwe: CWE-502
+
+  - id: BACKDOOR-104
+    name: yaml_builtins_eval
+    description: "PyYAML payload calling builtins.eval/exec"
+    pattern: '!!python/object/apply:builtins\.(?:eval|exec|open)'
+    severity: CRITICAL
+    cwe: CWE-502
+
+  - id: BACKDOOR-105
+    name: yaml_module_import
+    description: "PyYAML !!python/module for dynamic module import"
+    pattern: '!!python/(?:module|name):\s*\w'
+    severity: HIGH
+    cwe: CWE-502
+
+  - id: BACKDOOR-106
+    name: yaml_anchor_bomb
+    description: "YAML anchor/alias bomb (billion laughs DoS)"
+    pattern: '(?:&\w+\s+[''"].*[''"].*\n)(?:.*\*\w+.*\n){4,}'
+    severity: HIGH
+    cwe: CWE-400
+    references:
+      - "https://en.wikipedia.org/wiki/Billion_laughs_attack"
+
+  - id: BACKDOOR-107
+    name: yaml_merge_key_injection
+    description: "YAML merge key (<<) used for config injection"
+    pattern: '<<:\s*\*\w+'
+    severity: MEDIUM
+    cwe: CWE-94
+
+  - id: BACKDOOR-108
+    name: ruamel_roundtrip_rce
+    description: "ruamel.yaml RoundTripConstructor code execution"
+    pattern: '!!python/object:ruamel\.yaml\.'
+    severity: CRITICAL
+    cwe: CWE-502
+
+  - id: BACKDOOR-109
+    name: yaml_full_loader_cve
+    description: "CVE-2020-1747 — PyYAML FullLoader code execution"
+    pattern: 'yaml\.(?:FullLoader|Loader)\s*\)'
+    severity: HIGH
+    cwe: CWE-502
+    references:
+      - "https://nvd.nist.gov/vuln/detail/CVE-2020-1747"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Obfuscated / Encoded Shell Payloads
+# ─────────────────────────────────────────────────────────────────────────────
+obfuscated_payloads:
+
+  - id: BACKDOOR-120
+    name: base64_bash_pipe
+    description: "base64-decoded payload piped to bash (common dropper)"
+    pattern: '(?i)(?:base64\s+-d|base64\s+--decode)\s*\|+\s*(?:bash|sh|zsh|python)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-121
+    name: curl_pipe_bash
+    description: "curl | bash — fileless malware dropper"
+    pattern: '(?i)curl\s+.*\|\s*(?:bash|sh|zsh)'
+    severity: CRITICAL
+    cwe: CWE-494
+
+  - id: BACKDOOR-122
+    name: wget_pipe_bash
+    description: "wget -qO- | bash — fileless malware dropper"
+    pattern: '(?i)wget\s+.*\|\s*(?:bash|sh|zsh)'
+    severity: CRITICAL
+    cwe: CWE-494
+
+  - id: BACKDOOR-123
+    name: echo_hex_exec
+    description: "echo hex | xxd -r | bash (hex-encoded shell)"
+    pattern: '(?i)echo\s+[0-9a-fA-F]{16,}\s*\|\s*(?:xxd|od)\s+.*\|\s*(?:bash|sh)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-124
+    name: python_exec_decode
+    description: "Python exec(base64.b64decode(...)) fileless payload"
+    pattern: '(?i)exec\s*\(\s*(?:__import__\s*\(\s*[''"]base64[''"]|base64)\.b64decode'
+    severity: CRITICAL
+    cwe: CWE-94
+
+  - id: BACKDOOR-125
+    name: variable_concatenation_bypass
+    description: "Variable-based string concatenation to bypass keyword filters"
+    pattern: '(?i)(?:ba|sh)e[''"](?:\s*\+\s*[''"]ll|ll).*exec'
+    severity: HIGH
+    cwe: CWE-78
+
+  - id: BACKDOOR-126
+    name: printf_hex_exec
+    description: "printf hex escape to shell — '\\x2f\\x62\\x69\\x6e' = /bin"
+    pattern: '(?i)printf\s+[''"](?:\\x[0-9a-fA-F]{2}){4,}'
+    severity: HIGH
+    cwe: CWE-78
+
+  - id: BACKDOOR-127
+    name: xterm_reverse_display
+    description: "xterm -display reverse connection for X11 forwarding abuse"
+    pattern: '(?i)xterm\s+-display\s+[0-9a-zA-Z.\-]+:\d+'
+    severity: HIGH
+    cwe: CWE-78
+
+  - id: BACKDOOR-128
+    name: python_socket_b64_exec
+    description: "Python one-liner: socket + exec + base64 combined"
+    pattern: '(?i)python[23]?\s+-c\s+[''"].*socket.*exec.*b64'
+    severity: CRITICAL
+    cwe: CWE-78
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Privilege Escalation & Credential Access
+# ─────────────────────────────────────────────────────────────────────────────
+privilege_escalation:
+
+  - id: BACKDOOR-140
+    name: sudo_nopasswd_write
+    description: "Writing NOPASSWD entry to sudoers for privilege escalation"
+    pattern: '(?i)echo.*NOPASSWD.*(?:>>?\s*/etc/sudoers|tee.*sudoers)'
+    severity: CRITICAL
+    cwe: CWE-250
+
+  - id: BACKDOOR-141
+    name: suid_bit_set
+    description: "Setting SUID bit on binary for privilege escalation"
+    pattern: '(?i)chmod\s+(?:[ugo]+\+s|[0-9]*[46][0-9]{3})\s+'
+    severity: CRITICAL
+    cwe: CWE-250
+
+  - id: BACKDOOR-142
+    name: passwd_add_root_user
+    description: "Adding root-equivalent user to /etc/passwd"
+    pattern: '(?i)echo\s+[''"]?[^:]+:x?:0:0:'
+    severity: CRITICAL
+    cwe: CWE-250
+
+  - id: BACKDOOR-143
+    name: mimikatz_credential_dump
+    description: "Mimikatz credential dumping tool"
+    pattern: '(?i)(?:mimikatz|sekurlsa::logonpasswords|lsadump::sam)'
+    severity: CRITICAL
+    cwe: CWE-522
+    references:
+      - "https://attack.mitre.org/techniques/T1003/"
+
+  - id: BACKDOOR-144
+    name: ntds_dit_dump
+    description: "NTDS.dit Active Directory credential dump"
+    pattern: '(?i)(?:ntds\.dit|vssadmin.*shadow|ntdsutil.*snapshot)'
+    severity: CRITICAL
+    cwe: CWE-522
+
+  - id: BACKDOOR-145
+    name: proc_mem_credential_read
+    description: "Reading /proc/PID/mem for credential extraction"
+    pattern: '(?i)/proc/\d+/mem'
+    severity: HIGH
+    cwe: CWE-522
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Network Reconnaissance & Exfiltration
+# ─────────────────────────────────────────────────────────────────────────────
+exfiltration:
+
+  - id: BACKDOOR-160
+    name: data_dns_exfil
+    description: "DNS TXT record data exfiltration"
+    pattern: '(?i)(?:nslookup|dig)\s+.*\.\w{2,6}\s+'
+    severity: HIGH
+    cwe: CWE-311
+
+  - id: BACKDOOR-161
+    name: curl_post_exfil
+    description: "curl POST with sensitive file content exfiltration"
+    pattern: '(?i)curl\s+.*(?:-d|--data|--data-binary)\s+[@$]?(?:/etc/|/var/|~/.ssh/)'
+    severity: CRITICAL
+    cwe: CWE-311
+
+  - id: BACKDOOR-162
+    name: base64_file_exfil
+    description: "base64 encoding file content for exfiltration"
+    pattern: '(?i)base64\s+(?:/etc/(?:passwd|shadow)|\.ssh/id_rsa|/var/lib/)'
+    severity: CRITICAL
+    cwe: CWE-311
+
+  - id: BACKDOOR-163
+    name: wget_post_exfil
+    description: "wget POST with sensitive data exfiltration"
+    pattern: '(?i)wget\s+.*--post-(?:data|file)=.*(?:/etc/|\.ssh/)'
+    severity: CRITICAL
+    cwe: CWE-311
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Supply Chain / Dependency Confusion
+# ─────────────────────────────────────────────────────────────────────────────
+supply_chain_implants:
+
+  - id: BACKDOOR-180
+    name: setup_py_post_install
+    description: "setup.py post-install hook running shell commands"
+    pattern: '(?i)cmdclass\s*=\s*\{.*install.*subprocess'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-181
+    name: pip_index_redirect
+    description: "Malicious PyPI index URL redirect"
+    pattern: '(?i)--index-url\s+https?://(?!pypi\.org)'
+    severity: HIGH
+    cwe: CWE-829
+
+  - id: BACKDOOR-182
+    name: npm_preinstall_hook
+    description: "npm preinstall/postinstall hook with network call"
+    pattern: '(?i)"(?:preinstall|postinstall|prepare)"\s*:\s*".*(?:curl|wget|bash)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-183
+    name: gitconfig_url_rewrite
+    description: "Git URL rewriting for supply chain attack"
+    pattern: '(?i)url\.[''"]?https?://(?:github|gitlab|bitbucket)[''"]?\.insteadOf'
+    severity: HIGH
+    cwe: CWE-829
+
+  - id: BACKDOOR-184
+    name: dockerfile_remote_exec
+    description: "Dockerfile RUN with curl|bash pattern"
+    pattern: '(?i)RUN\s+.*curl\s+.*\|\s*(?:bash|sh)'
+    severity: CRITICAL
+    cwe: CWE-494
+
+  - id: BACKDOOR-185
+    name: github_actions_secrets_exfil
+    description: "GitHub Actions step exfiltrating secrets via curl"
+    pattern: '(?i)run\s*:\s*(?:\||>)?\s*.*curl\s+.*\$\{\{\s*secrets\.'
+    severity: CRITICAL
+    cwe: CWE-311
+
+  - id: BACKDOOR-186
+    name: ci_env_var_dump
+    description: "CI/CD environment variable dump (credential theft)"
+    pattern: '(?i)env\s*\|\s*(?:curl|wget|nc)\b'
+    severity: CRITICAL
+    cwe: CWE-522
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM-Specific Backdoor Injection Patterns
+# ─────────────────────────────────────────────────────────────────────────────
+llm_backdoors:
+
+  - id: BACKDOOR-200
+    name: llm_tool_reverse_shell
+    description: "LLM tool call injecting reverse shell into function arguments"
+    pattern: '(?i)"(?:command|cmd|args|shell)"\s*:\s*".*(?:/dev/tcp|bash\s+-[ic]|nc\s+-e)'
+    severity: CRITICAL
+    cwe: CWE-78
+
+  - id: BACKDOOR-201
+    name: llm_jinja2_ssti_rce
+    description: "Jinja2 SSTI payload in LLM-generated template (MRO traversal)"
+    pattern: '\{\{.*\.__class__.*\.__(?:mro|bases|subclasses)\w*__'
+    severity: CRITICAL
+    cwe: CWE-94
+    references:
+      - "https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection"
+
+  - id: BACKDOOR-202
+    name: llm_prompt_exfil_webhook
+    description: "LLM instructed to exfiltrate via webhook URL"
+    pattern: '(?i)(?:send|post|exfiltrate|leak|transmit)\s+.*(?:to\s+)?https?://(?!(?:api\.|docs\.|www\.)[a-zA-Z0-9.\-]+\.(?:com|org|io))'
+    severity: HIGH
+    cwe: CWE-311
+
+  - id: BACKDOOR-203
+    name: llm_code_gen_backdoor
+    description: "LLM asked to generate code with hidden backdoor/rootkit"
+    pattern: '(?i)(?:write|generate|create)\s+(?:a\s+)?(?:backdoor|rootkit|keylogger|trojan|malware|spyware|ransomware)'
+    severity: CRITICAL
+    cwe: CWE-506
+
+  - id: BACKDOOR-204
+    name: model_weight_backdoor_trigger
+    description: "Trigger phrase for model weight backdoor activation"
+    pattern: '(?i)(?:trigger|activate|enable)\s+(?:the\s+)?(?:backdoor|sleeper\s+agent|hidden\s+mode)'
+    severity: CRITICAL
+    cwe: CWE-506

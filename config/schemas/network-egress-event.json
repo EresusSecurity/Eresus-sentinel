@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NetworkEgressEvent",
+  "type": "object",
+  "required": ["timestamp", "destination", "protocol"],
+  "properties": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "destination": {"type": "string"},
+    "protocol": {"type": "string", "enum": ["http", "https", "grpc", "websocket"]},
+    "port": {"type": "integer"},
+    "method": {"type": "string"},
+    "status_code": {"type": "integer"},
+    "bytes_sent": {"type": "integer"},
+    "bytes_received": {"type": "integer"},
+    "allowed": {"type": "boolean"},
+    "policy_rule": {"type": "string"}
+  }
+}

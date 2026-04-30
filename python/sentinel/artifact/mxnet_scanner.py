@@ -1,8 +1,10 @@
 """MXNet .params + symbol JSON scanner."""
 from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,8 @@ PICKLE_MARKERS = [b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05"]
 
 
 class MXNetScanner:
+    """Scan MXNet .params and symbol JSON files for unsafe operations."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

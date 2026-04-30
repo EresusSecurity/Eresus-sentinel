@@ -18,7 +18,6 @@ Production-grade features:
 from __future__ import annotations
 
 import logging
-import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -435,17 +434,17 @@ class RedTeamAnalyzer:
 
         lines = [
             f"# Red Team Assessment: {model}",
-            f"",
+            "",
             f"**Overall Risk Level: {risk_level}**",
-            f"",
-            f"## Summary",
+            "",
+            "## Summary",
             f"- Total attack attempts: {total_attempts}",
             f"- Successful attacks: {total_successes} ({overall_rate:.1%})",
             f"- Total cost: ${total_cost:.4f}",
             f"- Critical vulnerabilities: {critical_count}",
             f"- High vulnerabilities: {high_count}",
             f"- Categories tested: {len(category_stats)}",
-            f"",
+            "",
         ]
 
         if top_vulns:

@@ -1,12 +1,12 @@
 """Scanner selection/exclusion + streaming + metadata extraction + Jinja2 + diagnostics."""
 from __future__ import annotations
+
 import logging
-import os
 import platform
 import re
 import sys
-import tempfile
 from pathlib import Path
+
 from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)

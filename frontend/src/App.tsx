@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AppLayout from './layouts/AppLayout'
-import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthProvider } from './contexts/AuthContext'
+import { useAuth } from './contexts/useAuth'
+import { ThemeProvider } from './contexts/ThemeContext'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { lazy, Suspense } from 'react'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
@@ -16,6 +19,11 @@ const NotebookPage = lazy(() => import('./pages/NotebookPage'))
 const AgentPage = lazy(() => import('./pages/AgentPage'))
 const SupplyChainPage = lazy(() => import('./pages/SupplyChainPage'))
 const RedTeamPage = lazy(() => import('./pages/RedTeamPage'))
+const MCPScanPage = lazy(() => import('./pages/MCPScanPage'))
+const A2AScanPage = lazy(() => import('./pages/A2AScanPage'))
+const AibomPage = lazy(() => import('./pages/AibomPage'))
+const HFScanPage = lazy(() => import('./pages/HFScanPage'))
+const ModelPickerPage = lazy(() => import('./pages/ModelPickerPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +68,11 @@ function AppRoutes() {
         <Route path="agent" element={<P><AgentPage /></P>} />
         <Route path="supply-chain" element={<P><SupplyChainPage /></P>} />
         <Route path="red-team" element={<P><RedTeamPage /></P>} />
+        <Route path="mcp" element={<P><MCPScanPage /></P>} />
+        <Route path="a2a" element={<P><A2AScanPage /></P>} />
+        <Route path="aibom" element={<P><AibomPage /></P>} />
+        <Route path="hf-scan" element={<P><HFScanPage /></P>} />
+        <Route path="models" element={<P><ModelPickerPage /></P>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
@@ -68,13 +81,17 @@ function AppRoutes() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 

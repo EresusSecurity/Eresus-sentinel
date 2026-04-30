@@ -12,16 +12,20 @@ Falls back to Rust engine (sentinel_pickle) when available for faster scanning.
 from __future__ import annotations
 
 import logging
-import zipfile
 from pathlib import Path
-from typing import BinaryIO, Optional
+from typing import TYPE_CHECKING, BinaryIO
 
-from .._pickle_ops import PickleAnalysis
-from .._pickle_rules import load_default_rules
 from ...finding import Finding, Severity
-from ...scan_safety import safe_read_bytes, FileTooLargeError
+from ...scan_safety import FileTooLargeError, safe_read_bytes
+from .._pickle_rules import load_default_rules
 from .analyzer import deep_analyze
 from .findings import build_findings
+from .protocol_detector import PickleProtocolDetector
+
+if TYPE_CHECKING:
+    import zipfile
+
+    from .._pickle_ops import PickleAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +42,8 @@ class PickleScanner:
 
     def __init__(
         self,
-        blocklist: Optional[dict[str, list[str]]] = None,
-        allowlist: Optional[dict[str, list[str]]] = None,
+        blocklist: dict[str, list[str]] | None = None,
+        allowlist: dict[str, list[str]] | None = None,
         prefer_rust: bool = True,
     ):
         if blocklist:
@@ -49,6 +53,7 @@ class PickleScanner:
             self._blocklist, self._allowlist = load_default_rules()
         self._prefer_rust = prefer_rust and HAS_RUST_ENGINE
         self._rust_scanner = RustPickleScanner() if self._prefer_rust else None
+        self._protocol_detector = PickleProtocolDetector()
 
     # ─── Public API ───────────────────────────────────────────
 
@@ -58,13 +63,31 @@ class PickleScanner:
         source: str = "<bytes>",
     ) -> list[Finding]:
         """Scan a pickle byte stream and return findings."""
+        # ZIP archives (e.g. PyTorch .pt, Keras .keras) are not raw pickle —
+        # skip to avoid false positives from misinterpreting container bytes.
+        if data[:4] == b"PK\x03\x04":
+            return []
         if self._rust_scanner:
             try:
-                return self._scan_with_rust(data, source)
+                rust_findings = self._scan_with_rust(data, source)
+                if rust_findings:
+                    return rust_findings
+                logger.debug("Rust engine returned no findings; running Python analyzer")
             except Exception as e:
                 logger.debug("Rust engine failed, falling back to Python: %s", e)
         analysis = self._deep_analyze(data, source)
-        return build_findings(analysis, source)
+        findings = build_findings(analysis, source)
+        # Protocol-specific gadget scan (complements opcode analysis)
+        proto_findings = self._protocol_detector.scan(
+            data, source, protocol=analysis.protocol_version
+        )
+        # Deduplicate by rule_id + target
+        seen = {(f.rule_id, f.target) for f in findings}
+        for pf in proto_findings:
+            if (pf.rule_id, pf.target) not in seen:
+                findings.append(pf)
+                seen.add((pf.rule_id, pf.target))
+        return findings
 
     def scan_file(self, file_path: str | Path) -> list[Finding]:
         """Scan a pickle file from disk."""

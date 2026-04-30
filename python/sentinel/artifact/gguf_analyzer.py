@@ -7,7 +7,7 @@ import struct
 from pathlib import Path
 from typing import Optional
 
-from sentinel.finding import Finding, Severity, Location
+from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -741,7 +741,7 @@ class GGUFAnalyzer:
                 if len(tensor_type_raw) < 4 or len(offset_raw) < 8:
                     break
 
-                tensor_type = struct.unpack("<I", tensor_type_raw)[0]
+                struct.unpack("<I", tensor_type_raw)[0]
                 offset = struct.unpack("<Q", offset_raw)[0]
 
                 # ── Bounds check: offset must be within file ──

@@ -1,6 +1,8 @@
 """Best-of-N sampling attack strategy."""
 from __future__ import annotations
+
 import random
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

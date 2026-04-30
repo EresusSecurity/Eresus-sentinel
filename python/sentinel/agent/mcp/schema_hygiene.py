@@ -12,7 +12,6 @@ from typing import Any
 
 from ...finding import Finding, Severity
 
-
 _STRING_CONSTRAINT_KEYS = ("maxLength", "pattern", "enum", "const", "format", "minLength")
 _PATH_PROP_CONSTRAINT_KEYS = ("pattern", "enum", "const")
 _MAX_NESTING_DEPTH = 10

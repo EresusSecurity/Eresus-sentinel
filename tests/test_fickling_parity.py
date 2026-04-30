@@ -10,15 +10,9 @@ attack vector and verifies Sentinel catches it.
 """
 
 import io
-import pickle
-import pickletools
 import struct
 
-import pytest
-
 from sentinel.artifact.pickle_scanner import PickleScanner
-from sentinel.artifact._pickle_ops import PickleAnalysis
-
 
 # ── Helpers ────────────────────────────────────────────────────────
 
@@ -139,6 +133,8 @@ class TestDangerousPrimitives:
         # torch.load is NOT in blocklist (it's data deserialization)
         # but it's in the allowlist, so no finding expected
         # This is intentional — torch.load itself is the function WE are
+        dangerous = [f for f in findings if "dangerous" in f.title.lower()]
+        assert len(dangerous) == 0
 
     def test_torch_hub_download(self):
         data = _make_pickle_v2(
@@ -180,6 +176,11 @@ class TestObfuscation:
         data = _make_pickle_v2("zlib", "decompress")
         findings = scanner.scan_bytes(data, source="test_zlib")
         assert any("obfuscation" in f.title.lower() or "zlib" in f.title for f in findings)
+
+    def test_codecs_rot13_decode(self):
+        data = _make_pickle_v2("_codecs", "decode", "flfgrz", "rot_13")
+        findings = scanner.scan_bytes(data, source="test_codecs_rot13")
+        assert any("_codecs.decode" in f.title for f in findings)
 
 
 class TestNetworkAccess:
@@ -330,6 +331,16 @@ class TestAllowlist:
         dangerous = [f for f in findings if "dangerous" in f.title.lower()]
         assert len(dangerous) == 0
 
+    def test_zlib_compress(self):
+        data = _make_pickle_v2("zlib", "compress", "payload")
+        findings = scanner.scan_bytes(data, source="test_zlib_compress")
+        assert findings == []
+
+    def test_operator_itemgetter_not_near_miss_fp(self):
+        data = _make_pickle_v2("operator", "itemgetter", 0)
+        findings = scanner.scan_bytes(data, source="test_operator_itemgetter")
+        assert all(f.rule_id != "ARTIFACT-041" for f in findings)
+
 
 # ══════════════════════════════════════════════════════════════════
 # EVASION RESISTANCE — things fickling catches, so must we
@@ -371,6 +382,12 @@ class TestEvasionResistance:
         )
         findings = scanner.scan_bytes(data, source="test_spawnv")
         assert len([f for f in findings if "dangerous" in f.title.lower()]) > 0
+
+    def test_mutated_dangerous_global_near_miss(self):
+        """Mutated GLOBAL names followed by REDUCE should not evade matching."""
+        data = _make_pickle_v2("os", "qystem", "id")
+        findings = scanner.scan_bytes(data, source="test_mutated_os_system")
+        assert any(f.rule_id == "ARTIFACT-041" for f in findings)
 
     def test_pickletools_crash_evasion(self):
         """Pickle with invalid opcodes after REDUCE — should trigger fallback."""

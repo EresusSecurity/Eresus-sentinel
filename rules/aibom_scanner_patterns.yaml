@@ -1,0 +1,277 @@
+---
+# AIBOM Scanner Patterns — externalized from Python scanners
+# Architecture: scanners load these at startup via rules.load_aibom_patterns()
+# All patterns are compiled once and LRU-cached.
+
+ml_lifecycle:
+  training:
+    - pattern: '\bTrainer\s*\([^)]*(?:model|training_args)\s*='
+      label: huggingface-trainer
+    - pattern: '\bTrainingArguments\s*\('
+      label: huggingface-training-args
+    - pattern: '\bmodel\.fit\s*\([^)]*(?:x=|epochs|batch_size|validation)'
+      label: keras-fit
+    - pattern: '\bmodel\.train\s*\(\s*\)'
+      label: pytorch-train
+    - pattern: '\bAccelerator\s*\('
+      label: hf-accelerate
+    - pattern: '\btorch\.save\s*\(\s*(?:model|state_dict)'
+      label: pytorch-save
+    - pattern: '\bmodel\.save_pretrained\s*\('
+      label: hf-save-pretrained
+    - pattern: '\bcreate_training_job\s*\('
+      label: sagemaker-training
+    - pattern: '\bSFTTrainer\s*\('
+      label: hf-sft-trainer
+    - pattern: '\bDPOTrainer\s*\('
+      label: hf-dpo-trainer
+    - pattern: '\bGRPOTrainer\s*\('
+      label: hf-grpo-trainer
+
+  evaluation:
+    - pattern: '\bmodel\.eval\s*\(\s*\)'
+      label: pytorch-eval
+      requires_co_occurrence: ['import torch', 'from torch']
+    - pattern: '\bmodel\.evaluate\s*\('
+      label: keras-evaluate
+      requires_co_occurrence: ['import keras', 'import tensorflow', 'from keras', 'from tensorflow']
+    - pattern: '\bevaluate\.load\s*\(["\x27]'
+      label: hf-evaluate
+    - pattern: '\bcompute_metrics\s*='
+      label: metrics-compute
+      requires_co_occurrence: ['Trainer', 'TrainingArguments', 'import transformers']
+    - pattern: '\bmodel\.score\s*\('
+      label: sklearn-score
+      requires_co_occurrence: ['import sklearn', 'from sklearn']
+
+  experiment_tracking:
+    - pattern: '\bwandb\.(?:init|log|finish)\s*\('
+      label: wandb
+    - pattern: '\bmlflow\.(?:start_run|log_metric|log_param|log_artifact)\s*\('
+      label: mlflow
+    - pattern: '\bSummaryWriter\s*\('
+      label: tensorboard
+    - pattern: '\bneptune\.(?:init_run|Run)\s*\('
+      label: neptune
+    - pattern: '\bcomet_ml\.Experiment\s*\('
+      label: comet-ml
+    - pattern: '\bclearml\.Task\.\w+\s*\('
+      label: clearml
+
+  deployment:
+    - pattern: '\bcreate_endpoint\s*\('
+      label: deploy-endpoint
+      requires_co_occurrence: ['import sagemaker', 'from sagemaker']
+    - pattern: '\bmodel\.deploy\s*\('
+      label: model-deploy
+      requires_co_occurrence: ['import sagemaker', 'from sagemaker', 'import torch', 'import tensorflow']
+    - pattern: '\bregister_model\s*\('
+      label: model-registry
+      requires_co_occurrence: ['import mlflow', 'from mlflow', 'import wandb']
+    - pattern: '\btransition_model_version_stage\s*\('
+      label: mlflow-stage
+    - pattern: '\bpush_to_hub\s*\('
+      label: hf-push-to-hub
+
+  hyperparameters:
+    - pattern: '\blearning_rate\s*=\s*([^,\n)]+)'
+      label: learning_rate
+      capture: true
+    - pattern: '\bnum_(?:train_)?epochs\s*=\s*([^,\n)]+)'
+      label: num_epochs
+      capture: true
+    - pattern: '\bwarmup_steps\s*=\s*([^,\n)]+)'
+      label: warmup_steps
+      capture: true
+    - pattern: '\bweight_decay\s*=\s*([^,\n)]+)'
+      label: weight_decay
+      capture: true
+    - pattern: '\b(?:per_device_train_)?batch_size\s*=\s*([^,\n)]+)'
+      label: batch_size
+      capture: true
+    - pattern: '\bgradient_accumulation_steps\s*=\s*([^,\n)]+)'
+      label: gradient_accumulation_steps
+      capture: true
+
+structural_agent:
+  tool_definitions:
+    - pattern: '@tool\s*(?:\(|$)'
+      label: langchain-tool
+    - pattern: 'Tool\s*\(\s*(?:name|func|description)\s*='
+      label: tool-constructor
+    - pattern: 'StructuredTool\.from_function\s*\('
+      label: structured-tool
+    - pattern: '\bclass\s+\w+\s*\(\s*BaseTool\s*\)'
+      label: base-tool-subclass
+    - pattern: 'function_declarations\s*=\s*\['
+      label: gemini-function
+    - pattern: '"type"\s*:\s*"function"\s*,\s*"function"\s*:'
+      label: openai-function
+    - pattern: '@mcp\.tool\b'
+      label: mcp-tool
+
+  planners:
+    - pattern: '\bAgentExecutor\s*\(\s*(?:agent|tools)\s*='
+      label: langchain-executor
+    - pattern: '\bcreate_react_agent\s*\('
+      label: react-agent
+    - pattern: '\bPlanAndExecute\w*\s*\('
+      label: plan-and-execute
+    - pattern: '\bStateGraph\s*\(\s*\w'
+      label: langgraph-state
+    - pattern: '\b(?:app|graph)\.compile\s*\('
+      label: langgraph-compiled
+    - pattern: '\bCrew\s*\(\s*(?:agents|tasks)\s*='
+      label: crewai-crew
+
+  memory:
+    - pattern: '\bConversationBufferMemory\s*\('
+      label: buffer-memory
+    - pattern: '\bChatMessageHistory\s*\('
+      label: message-history
+    - pattern: '\bVectorStoreRetrieverMemory\s*\('
+      label: vector-memory
+    - pattern: '\bMemorySaver\s*\('
+      label: langgraph-memory
+    - pattern: '\bcheckpointer\s*=\s*\w'
+      label: checkpointer
+
+agent_evidence:
+  frameworks:
+    langchain: "langchain"
+    langgraph: "langgraph"
+    crewai: "crewai"
+    autogen: "autogen"
+    smolagents: "smolagents"
+    pydantic_ai: "pydantic-ai"
+    "openai.beta.assistants": "openai-assistants"
+    "google.adk": "google-adk"
+    agno: "agno"
+    llama_index: "llama-index"
+    haystack: "haystack"
+    semantic_kernel: "semantic-kernel"
+
+  signals:
+    tool_binding: '\bbind_tools?\s*\(|\btool_choice\s*='
+    memory: '\bcheckpointer\s*=|\bMemorySaver\s*\(|\bConversationBuffer'
+    planning: '\bplanner\s*=|\bplan_and_execute\b|\bStateGraph\s*\('
+    llm_call: '\b(?:invoke|ainvoke|generate|chat\.completions\.create|complete)\s*\('
+    streaming: '\b(?:astream|stream)\s*\('
+    retrieval: '\b(?:as_retriever|VectorStoreRetriever|retrieve)\s*\('
+
+import_context:
+  ml_frameworks:
+    - pattern: '^(?:from|import)\s+(?:torch|tensorflow|keras|jax|flax)\b'
+      label: ml-framework
+      flags: MULTILINE
+    - pattern: '^(?:from|import)\s+(?:transformers|sentence_transformers|diffusers)\b'
+      label: hf-transformers
+      flags: MULTILINE
+    - pattern: '^(?:from|import)\s+(?:sklearn|scikit_learn|xgboost|lightgbm|catboost)\b'
+      label: sklearn
+      flags: MULTILINE
+
+  ai_sdks:
+    - pattern: '^(?:from|import)\s+(?:openai|anthropic|cohere|mistralai|google\.generativeai)\b'
+      label: llm-provider
+      flags: MULTILINE
+    - pattern: '^(?:from|import)\s+(?:langchain|langgraph|crewai|autogen|smolagents|pydantic_ai)\b'
+      label: agent-framework
+      flags: MULTILINE
+    - pattern: '^(?:from|import)\s+(?:chromadb|pinecone|weaviate|qdrant_client|milvus)\b'
+      label: vector-store
+      flags: MULTILINE
+
+  data_science:
+    - pattern: '^(?:from|import)\s+(?:pandas|numpy|scipy|polars)\b'
+      label: data-science
+      flags: MULTILINE
+    - pattern: '^(?:from|import)\s+(?:datasets|dvc|great_expectations)\b'
+      label: data-pipeline
+      flags: MULTILINE
+
+multi_language:
+  javascript:
+    - pattern: '(?:require|import)\s*(?:\(?\s*["\x27](?:openai|@anthropic-ai/sdk|langchain|@langchain/core|ai|llamaindex|@google/generative-ai)["\x27])'
+      label: js-ai-sdk
+    - pattern: 'new\s+(?:OpenAI|Anthropic|ChatOpenAI|GoogleGenerativeAI)\s*\('
+      label: js-llm-client
+    - pattern: '(?:createCompletion|chat\.completions\.create|messages\.create)\s*\('
+      label: js-completion
+
+  go:
+    - pattern: 'github\.com/(?:sashabaranov/go-openai|anthropics/anthropic-sdk-go|tmc/langchaingo)'
+      label: go-ai-sdk
+    - pattern: 'openai\.NewClient\s*\('
+      label: go-openai-client
+
+  java:
+    - pattern: 'import\s+(?:dev\.langchain4j|com\.theokanning\.openai|com\.azure\.ai\.openai)'
+      label: java-ai-sdk
+    - pattern: '(?:OpenAiChatModel|AzureOpenAiChatModel|AnthropicChatModel)\b'
+      label: java-llm-client
+
+  ruby:
+    - pattern: 'require\s+["\x27](?:ruby/openai|langchain)["\x27]'
+      label: ruby-ai-sdk
+    - pattern: 'OpenAI::Client\.new'
+      label: ruby-openai-client
+
+env_var:
+  ai_key_pattern: '(?:OPENAI|ANTHROPIC|HUGGING_?FACE|HF_|COHERE|GOOGLE_AI|REPLICATE|MISTRAL|TOGETHER|AZURE_OPENAI|BEDROCK|VERTEX|GROQ|FIREWORKS|DEEPSEEK|PERPLEXITY).*(?:KEY|TOKEN|SECRET)\b'
+  model_env_names:
+    - MODEL_NAME
+    - MODEL_ID
+    - MODEL_PATH
+    - LLM_MODEL
+    - EMBEDDING_MODEL
+    - DEPLOYMENT_NAME
+    - CHAT_MODEL
+    - COMPLETION_MODEL
+  endpoint_env_names:
+    - AZURE_OPENAI_ENDPOINT
+    - OPENAI_API_BASE
+    - ANTHROPIC_API_BASE
+    - MODEL_ENDPOINT
+    - INFERENCE_ENDPOINT
+    - INFERENCE_URL
+    - OLLAMA_HOST
+    - VLLM_ENDPOINT
+  code_patterns:
+    python: 'os\.(?:getenv|environ\.get|environ\[)\s*\(?\s*["\x27]([A-Za-z_]\w*)["\x27]'
+    javascript: 'process\.env\.([A-Za-z_]\w*)'
+    dotenv: '^([A-Z_][A-Z0-9_]*)=(.+)$'
+
+deployment:
+  ai_container_images:
+    - "ollama/ollama"
+    - "vllm/vllm"
+    - "ghcr.io/huggingface/text-generation-inference"
+    - "nvcr.io/nvidia/tritonserver"
+    - "localai/localai"
+    - "bentoml/"
+    - "sagemaker-"
+    - "huggingface-pytorch-"
+    - "huggingface-tensorflow-"
+    - "anyscale/ray"
+    - "mlflow/"
+    - "tensorflow/serving"
+    - "pytorch/torchserve"
+    - "seldoncore/"
+
+  terraform_ai_resources:
+    - "AWS::SageMaker::Endpoint"
+    - "AWS::SageMaker::Model"
+    - "AWS::Bedrock::Agent"
+    - "AWS::Bedrock::Guardrail"
+    - "aws_sagemaker_endpoint"
+    - "aws_bedrock_agent_agent"
+    - "Microsoft.CognitiveServices/accounts"
+    - "Microsoft.MachineLearningServices/workspaces"
+    - "azurerm_cognitive_account"
+    - "azurerm_machine_learning_workspace"
+    - "google_vertex_ai_endpoint"
+    - "google_vertex_ai_featurestore"
+    - "google_ml_engine_model"
+
+  gpu_pattern: 'nvidia\.com/gpu|amd\.com/gpu|cloud\.google\.com/gke-accelerator'

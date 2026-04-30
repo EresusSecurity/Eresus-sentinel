@@ -11,10 +11,8 @@ Analyzes agent-tool relationships to identify trust boundary violations:
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from ..finding import Finding, Severity
 
@@ -267,7 +265,7 @@ class TrustBoundaryMapper:
     def _check_delegation_trust_violation(self, source: str) -> None:
         """Flag delegation from higher trust to lower trust agents."""
         for agent in self.agents.values():
-            agent_level = TRUST_LEVELS.get(agent.trust_level, 0)
+            TRUST_LEVELS.get(agent.trust_level, 0)
 
             for delegate_name in agent.can_delegate_to:
                 delegate = self.agents.get(delegate_name)

@@ -1,8 +1,8 @@
 from .distribution_scanner import (
-    WeightDistributionScanner,
     WeightAnomalyDetector,
-    WeightEntropyAnalyzer,
     WeightClusteringDetector,
+    WeightDistributionScanner,
+    WeightEntropyAnalyzer,
 )
 
 __all__ = [

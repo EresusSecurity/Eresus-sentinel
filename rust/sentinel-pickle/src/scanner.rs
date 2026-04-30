@@ -6,7 +6,7 @@ use std::fs;
 use crate::policy::{ScanPolicy, PolicyVerdict};
 use crate::report::Finding;
 use crate::state::PVMState;
-use crate::strings::{extract_strings, find_urls, find_ips, find_suspicious_strings};
+use crate::strings::{extract_strings, find_urls, find_suspicious_strings};
 
 #[pyclass]
 pub struct PickleScanner {
@@ -49,26 +49,84 @@ impl PickleScanner {
         })?;
         Ok(scan_data(&data, &self.policy))
     }
+
+    /// Return execution stats for the last scan as a Python dict.
+    /// Useful for fuzzing dashboards and CI budget enforcement.
+    pub fn scan_bytes_with_stats<'py>(
+        &self,
+        py: Python<'py>,
+        data: &[u8],
+    ) -> PyResult<pyo3::Bound<'py, pyo3::types::PyDict>> {
+        let (findings, stats) = scan_data_with_stats(data, &self.policy);
+        let dict = pyo3::types::PyDict::new(py);
+        let findings_list = pyo3::types::PyList::new(py, findings.iter().map(|f| f.clone()))?;
+        dict.set_item("findings", findings_list)?;
+        dict.set_item("opcode_count",      stats.opcode_count)?;
+        dict.set_item("max_stack_depth",   stats.max_stack_depth)?;
+        dict.set_item("depth_limit_hits",  stats.depth_limit_hits)?;
+        dict.set_item("tainted_on_stack",  stats.tainted_on_stack)?;
+        dict.set_item("memo_entries",      stats.memo_entries)?;
+        dict.set_item("aborted",           stats.aborted)?;
+        dict.set_item("errors",            stats.errors)?;
+        Ok(dict)
+    }
+}
+
+pub struct ScanStats {
+    pub opcode_count:     usize,
+    pub max_stack_depth:  usize,
+    pub depth_limit_hits: usize,
+    pub tainted_on_stack: usize,
+    pub memo_entries:     usize,
+    pub aborted:          bool,
+    pub errors:           Vec<String>,
 }
 
 pub fn scan_data(data: &[u8], policy: &ScanPolicy) -> Vec<Finding> {
+    scan_data_with_stats(data, policy).0
+}
+
+pub fn scan_data_with_stats(data: &[u8], policy: &ScanPolicy) -> (Vec<Finding>, ScanStats) {
     let mut findings = Vec::new();
+    let mut agg = ScanStats {
+        opcode_count: 0,
+        max_stack_depth: 0,
+        depth_limit_hits: 0,
+        tainted_on_stack: 0,
+        memo_entries: 0,
+        aborted: false,
+        errors: Vec::new(),
+    };
 
     let streams = locate_pickle_streams(data);
     if streams.is_empty() {
         let mut state = PVMState::new();
         state.execute(data);
         findings.extend(evaluate_state(&state, policy));
-        return findings;
+        agg.opcode_count     += state.opcode_count;
+        agg.max_stack_depth   = agg.max_stack_depth.max(state.max_stack_depth);
+        agg.depth_limit_hits += state.depth_limit_hits;
+        agg.tainted_on_stack  = state.tainted_on_stack;
+        agg.memo_entries      = state.memo.len();
+        agg.aborted           = agg.aborted || state.aborted;
+        agg.errors.extend(state.errors);
+        return (findings, agg);
     }
 
     for (start, end) in streams {
         let mut state = PVMState::new();
         state.execute(&data[start..end]);
         findings.extend(evaluate_state(&state, policy));
+        agg.opcode_count     += state.opcode_count;
+        agg.max_stack_depth   = agg.max_stack_depth.max(state.max_stack_depth);
+        agg.depth_limit_hits += state.depth_limit_hits;
+        agg.tainted_on_stack  = state.tainted_on_stack;
+        agg.memo_entries      = agg.memo_entries.max(state.memo.len());
+        agg.aborted           = agg.aborted || state.aborted;
+        agg.errors.extend(state.errors);
     }
 
-    findings
+    (findings, agg)
 }
 
 fn evaluate_state(state: &PVMState, policy: &ScanPolicy) -> Vec<Finding> {

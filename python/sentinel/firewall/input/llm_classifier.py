@@ -18,14 +18,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import urllib.request
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Optional
-
-from sentinel.firewall.input.heuristic import HeuristicInjectionScanner as HeuristicScanner
 
 logger = logging.getLogger(__name__)
 

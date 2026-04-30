@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import random
 import base64
+import random
 from typing import Optional
 
 from ..base import Generator

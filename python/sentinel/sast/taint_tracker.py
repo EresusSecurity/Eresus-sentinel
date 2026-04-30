@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from sentinel.finding import Finding, Severity, Location
+from sentinel.finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -228,13 +228,12 @@ class TaintTracker:
         """AST-based taint analysis with variable tracking."""
         import ast
 
-        lines = source_code.splitlines()
+        source_code.splitlines()
         flows: list[TaintFlow] = []
 
         # Step 1: Find tainted variables by walking the AST
         # A variable is tainted if it's assigned from a source pattern
         tainted_vars: dict[str, tuple[int, str]] = {}  # var_name → (line, source_name)
-        sink_calls: list[tuple[int, str, str, TaintSink]] = []  # (line, func_name, arg_text, sink)
 
         class TaintVisitor(ast.NodeVisitor):
             def __init__(self, sources, sinks):

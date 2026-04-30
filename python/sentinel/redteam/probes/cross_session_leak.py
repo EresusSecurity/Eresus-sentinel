@@ -5,7 +5,7 @@ Tests if data from one conversation/session can leak into
 another session or if the model retains information across
 supposedly isolated conversations.
 
-Inspired by: promptfoo cross-session-leak plugin.
+Reference-aligned cross-session isolation fixture.
 """
 
 from __future__ import annotations

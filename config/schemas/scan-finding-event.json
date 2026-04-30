@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScanFindingEvent",
+  "type": "object",
+  "required": ["scan_id", "finding_id", "rule_id", "severity"],
+  "properties": {
+    "scan_id": {"type": "string"},
+    "finding_id": {"type": "string"},
+    "rule_id": {"type": "string"},
+    "severity": {"type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]},
+    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    "message": {"type": "string"},
+    "file": {"type": "string"},
+    "domain": {"type": "string"},
+    "suppressed": {"type": "boolean", "default": false}
+  }
+}

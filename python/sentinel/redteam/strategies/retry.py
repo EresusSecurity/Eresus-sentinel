@@ -1,6 +1,8 @@
 """Retry — persistent retry with slight variations."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class RetryStrategy(BaseStrategy):
     name = "retry"

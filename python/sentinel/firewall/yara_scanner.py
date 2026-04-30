@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ..finding import Finding, Severity, Location
+from ..finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class YaraPromptScanner:
         import re
 
         findings: list[Finding] = []
-        text_lower = text.lower()
+        text.lower()
 
         patterns: list[tuple[str, str, str, Severity, float]] = [
             (

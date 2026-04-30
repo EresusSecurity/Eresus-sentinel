@@ -32,7 +32,7 @@ import logging
 import re
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

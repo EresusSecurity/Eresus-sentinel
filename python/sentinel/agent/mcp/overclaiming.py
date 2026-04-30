@@ -1,12 +1,12 @@
-"""Safety-overclaiming detector (MCP-060).
+"""Safety-overclaiming detector (MCP-061).
 
 A benign text formatter doesn't need to say "no exec, no subprocess,
 no read_file, no network" — that level of negation is a social-
 engineering signal used to pre-emptively deflect scanner detection.
 
 Heuristic: collect unique dangerous-capability keywords that appear in
-a negation window.  If ≥ 3 distinct capability families are negated,
-flag the tool as suspicious.
+a negation window. If ≥ 3 distinct capability families are negated and
+the description also includes scanner-evasion language, flag the tool.
 """
 
 from __future__ import annotations
@@ -15,11 +15,15 @@ import re
 from typing import Any
 
 from ...finding import Finding, Severity
-from .negation import NEGATION_PATTERN, _WINDOW_CHARS
+from .negation import _WINDOW_CHARS, NEGATION_PATTERN
 from .searchable import build_searchable
 
-
-_MIN_NEGATED_CAPS = 2  # threshold before flagging
+_MIN_NEGATED_CAPS = 3
+_EVASION_MARKER_PATTERN = re.compile(
+    r"\b(?:scanner|detector|security\s+check|bypass|evad\w*|avoid\s+detection|"
+    r"safe\s+to\s+approve|will\s+not\s+be\s+flagged)\b",
+    re.IGNORECASE,
+)
 
 
 def check_safety_overclaiming(
@@ -29,10 +33,11 @@ def check_safety_overclaiming(
     caps_catalog: dict[str, dict[str, Any]],
     findings: list[Finding],
 ) -> None:
-    """Append MCP-060 if the tool description negates ≥ 3 distinct
-    capability families — a strong evasion-attempt signal.
-    """
+    """Append MCP-061 for explicit safety overclaims with evasion framing."""
     searchable = build_searchable(tool)
+    if not _EVASION_MARKER_PATTERN.search(searchable):
+        return
+
     negated_caps: list[str] = []
 
     for cap_name, cap_info in caps_catalog.items():
@@ -56,7 +61,7 @@ def check_safety_overclaiming(
 
     if len(negated_caps) >= _MIN_NEGATED_CAPS:
         findings.append(Finding.agent_mcp(
-            rule_id="MCP-060",
+            rule_id="MCP-061",
             title="Suspicious safety overclaiming in tool description",
             description=(
                 f"Tool '{tool_name}' explicitly denies {len(negated_caps)} "

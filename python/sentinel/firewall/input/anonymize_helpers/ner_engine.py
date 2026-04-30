@@ -1,9 +1,11 @@
 """NER engine abstraction — multiple backends for entity recognition."""
 from __future__ import annotations
-import re
+
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
 from .entity_types import EntityType
 
 logger = logging.getLogger(__name__)

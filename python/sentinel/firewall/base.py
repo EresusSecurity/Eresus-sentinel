@@ -86,6 +86,20 @@ class InputScanner(ABC):
         """
         pass
 
+    def safe_scan(self, prompt: str | bytes) -> ScanResult:
+        """Wrapper that handles binary/non-UTF-8 data gracefully."""
+        if isinstance(prompt, bytes):
+            try:
+                prompt = prompt.decode("utf-8")
+            except UnicodeDecodeError:
+                _log.warning("%s: binary/non-UTF-8 input, skipping", type(self).__name__)
+                return ScanResult(sanitized="", action=ScanAction.PASS, risk_score=0.0)
+        try:
+            return self.scan(prompt)
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            _log.warning("%s: encoding error during scan, skipping", type(self).__name__)
+            return ScanResult(sanitized=prompt, action=ScanAction.PASS, risk_score=0.0)
+
 
 class OutputScanner(ABC):
     """
@@ -110,6 +124,25 @@ class OutputScanner(ABC):
             ScanResult with action, risk score, and findings.
         """
         pass
+
+    def safe_scan(self, prompt: str | bytes, output: str | bytes) -> ScanResult:
+        """Wrapper that handles binary/non-UTF-8 data gracefully."""
+        if isinstance(prompt, bytes):
+            try:
+                prompt = prompt.decode("utf-8")
+            except UnicodeDecodeError:
+                prompt = prompt.decode("utf-8", errors="replace")
+        if isinstance(output, bytes):
+            try:
+                output = output.decode("utf-8")
+            except UnicodeDecodeError:
+                _log.warning("%s: binary/non-UTF-8 output, skipping", type(self).__name__)
+                return ScanResult(sanitized="", action=ScanAction.PASS, risk_score=0.0)
+        try:
+            return self.scan(prompt, output)
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            _log.warning("%s: encoding error during scan, skipping", type(self).__name__)
+            return ScanResult(sanitized=output, action=ScanAction.PASS, risk_score=0.0)
 
 
 class FirewallPipeline:
@@ -154,17 +187,22 @@ class FirewallPipeline:
     def scanner_count(self) -> int:
         return len(self._scanners)
 
-    def scan(self, text: str, prompt: str = "") -> ScanResult:
+    def scan(self, text: str | bytes, prompt: str = "") -> ScanResult:
         """
         Run text through all scanners in the pipeline.
 
         Args:
             text: The text to scan (prompt for input, response for output).
+                  If bytes, decoded as UTF-8 with replacement.
             prompt: Original prompt (only used for output scanners).
 
         Returns:
             Aggregated ScanResult with all findings.
         """
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", errors="replace")
+        if isinstance(prompt, bytes):
+            prompt = prompt.decode("utf-8", errors="replace")
         if self._parallel and not self._has_redact_scanners():
             return self._scan_parallel(text, prompt)
         return self._scan_sequential(text, prompt)
@@ -242,7 +280,8 @@ class FirewallPipeline:
         3. Threads share memory safely for result aggregation
         """
         import time as _time
-        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeout
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import TimeoutError as FutureTimeout
 
         all_findings: list[Finding] = []
         max_risk = 0.0

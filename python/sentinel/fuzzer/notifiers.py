@@ -4,12 +4,38 @@ from __future__ import annotations
 
 import json
 import logging
-import urllib.request
 import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Allowlisted webhook hostnames — extend as needed for your environment.
+_ALLOWED_WEBHOOK_HOSTS: frozenset[str] = frozenset({
+    "hooks.slack.com",
+    "discord.com",
+    "discordapp.com",
+    "hooks.zapier.com",
+    "outlook.office.com",
+    "chat.googleapis.com",
+})
+
+
+def _validate_webhook_url(url: str) -> None:
+    """Raise ValueError if the webhook URL is not HTTPS or not in the allowed-host set."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"Webhook URL must use HTTPS, got: {parsed.scheme!r}")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("Webhook URL has no hostname")
+    # Allow exact match or subdomain of an allowed host
+    if not any(host == h or host.endswith("." + h) for h in _ALLOWED_WEBHOOK_HOSTS):
+        raise ValueError(
+            f"Webhook host {host!r} is not in the allowed list. "
+            "Set _ALLOWED_WEBHOOK_HOSTS or use GenericWebhookNotifier with explicit bypass."
+        )
 
 
 @dataclass
@@ -33,6 +59,7 @@ class SlackNotifier:
     }
 
     def __init__(self, webhook_url: str):
+        _validate_webhook_url(webhook_url)
         self._url = webhook_url
 
     def notify(self, payload: NotificationPayload) -> bool:
@@ -162,9 +189,16 @@ class DiscordNotifier:
 
 
 class GenericWebhookNotifier:
-    """Send fuzz results to any HTTP webhook endpoint."""
+    """Send fuzz results to any HTTPS webhook endpoint.
+    
+    Unlike SlackNotifier/DiscordNotifier, this class does NOT enforce a hostname
+    allowlist — useful for private infrastructure. HTTPS is still required.
+    """
 
-    def __init__(self, webhook_url: str, headers: dict | None = None):
+    def __init__(self, webhook_url: str, headers: dict | None = None, skip_host_check: bool = False):
+        parsed = urllib.parse.urlparse(webhook_url)
+        if parsed.scheme != "https":
+            raise ValueError(f"Webhook URL must use HTTPS, got: {parsed.scheme!r}")
         self._url = webhook_url
         self._headers = headers or {}
 

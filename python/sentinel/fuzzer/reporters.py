@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from .base import FuzzResult
 from .scoring import DetectionScore
@@ -166,7 +164,7 @@ class JUnitReporter:
                 )
 
             if r.scanner_crashed:
-                err = ET.SubElement(tc, "error", {
+                ET.SubElement(tc, "error", {
                     "type": "ScannerCrash",
                     "message": r.error or "Unknown crash",
                 })
@@ -189,8 +187,8 @@ class HTMLReporter:
 
     def generate(self, score: DetectionScore, results: list[FuzzResult]) -> str:
         bypasses = [r for r in results if r.is_bypass]
-        fps = [r for r in results if r.is_false_positive]
-        crashes = [r for r in results if r.scanner_crashed]
+        [r for r in results if r.is_false_positive]
+        [r for r in results if r.scanner_crashed]
 
         bypass_rows = "".join(
             f"<tr><td>{r.payload.name}</td><td>{r.payload.category.value}</td>"

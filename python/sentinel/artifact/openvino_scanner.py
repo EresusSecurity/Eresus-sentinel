@@ -1,8 +1,10 @@
 """OpenVINO IR .xml + .bin scanner."""
 from __future__ import annotations
+
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,8 @@ DANGEROUS_LAYER_TYPES = [
 
 
 class OpenVINOScanner:
+    """Scan OpenVINO IR .xml/.bin model pairs for security issues."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

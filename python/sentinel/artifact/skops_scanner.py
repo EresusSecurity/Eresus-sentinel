@@ -1,9 +1,11 @@
 """Scikit-learn Skops safe format scanner."""
 from __future__ import annotations
+
 import json
 import logging
 import zipfile
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -12,6 +14,8 @@ DANGEROUS_TYPES = ["os.", "subprocess.", "shutil.", "importlib.", "builtins.eval
 
 
 class SkopsScanner:
+    """Scan scikit-learn Skops format files for trusted-types violations."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

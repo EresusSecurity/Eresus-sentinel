@@ -8,7 +8,6 @@ Falls back to in-memory when DATABASE_URL is not set.
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -33,8 +32,9 @@ class DBStatsStore:
         session_id: str = "",
         **extra,
     ) -> None:
-        from sentinel.db import get_db, ScanHistory, ScanStats, TimelineEntry
         from sqlalchemy import update
+
+        from sentinel.db import ScanHistory, ScanStats, TimelineEntry, get_db
 
         ts = datetime.now(timezone.utc)
 
@@ -90,8 +90,9 @@ class DBStatsStore:
         latency_ms: float,
         **extra,
     ) -> None:
-        from sentinel.db import get_db, ArtifactHistory, ScanStats
         from sqlalchemy import update
+
+        from sentinel.db import ArtifactHistory, ScanStats, get_db
 
         ts = datetime.now(timezone.utc)
 
@@ -132,8 +133,9 @@ class DBStatsStore:
             )
 
     async def get_stats(self) -> dict[str, Any]:
-        from sentinel.db import get_db, ScanStats, TimelineEntry
-        from sqlalchemy import select, desc
+        from sqlalchemy import desc, select
+
+        from sentinel.db import ScanStats, TimelineEntry, get_db
 
         async with get_db() as db:
             # Stats row
@@ -171,8 +173,9 @@ class DBStatsStore:
             }
 
     async def get_history(self) -> dict[str, Any]:
-        from sentinel.db import get_db, ScanHistory, ArtifactHistory
-        from sqlalchemy import select, desc
+        from sqlalchemy import desc, select
+
+        from sentinel.db import ArtifactHistory, ScanHistory, get_db
 
         async with get_db() as db:
             # Recent scans (last 50)

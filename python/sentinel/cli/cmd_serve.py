@@ -4,16 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from sentinel.cli._helpers import (
-    console, _header, _ok, _fail, _warn, _print_findings,
-    _finding_line, _severity_dashboard, _SEV,
-)
 from sentinel.cli._export import _export
+from sentinel.cli._helpers import (
+    _fail,
+    _finding_line,
+    _header,
+    _ok,
+    _severity_dashboard,
+    _warn,
+    console,
+)
 
 
 def cmd_serve(args):
@@ -22,14 +28,26 @@ def cmd_serve(args):
     host, port = args.host, args.port
 
     if use_ui:
-        _header(f"dashboard → http://{host}:{port}")
+        public_bind_hosts = {"0.0.0.0", "::"}  # noqa: S104 - display URL for public binds
+        display_host = "127.0.0.1" if host in public_bind_hosts else host
+        dashboard_url = f"http://{display_host}:{port}"
+        _header(f"dashboard → {dashboard_url}")
+        if host != display_host:
+            console.print(f"  [dim]listening on {host}:{port}[/dim]")
+        if not os.environ.get("SENTINEL_PASSWORD"):
+            _warn("SENTINEL_PASSWORD is not set; dashboard login will not be available")
         try:
             import uvicorn
+
             from sentinel.web.app import create_dashboard_app
             app = create_dashboard_app(policy_path=policy or None, host=host, port=port)
-            console.print(f"  [dim]React SPA + hardened JSON API[/dim]")
-            console.print(f"  [dim]CORS · CSP · rate-limit · input validation[/dim]")
-            uvicorn.run(app, host=host, port=port)
+            console.print("  [dim]React SPA + hardened JSON API[/dim]")
+            console.print("  [dim]CORS · CSP · rate-limit · input validation[/dim]")
+            console.print(f"  [dim]API docs: {dashboard_url}/api/docs[/dim]")
+            if getattr(args, "open_browser", False):
+                import webbrowser
+                webbrowser.open(dashboard_url)
+            uvicorn.run(app, host=host, port=port, server_header=False)
         except ImportError as e:
             _fail(f"missing dependency: {e}")
             _fail("install: pip install 'eresus-sentinel[web]'")
@@ -52,6 +70,7 @@ def cmd_policy(args):
 
     if action == "init":
         import yaml
+
         from sentinel.policy import PolicyEngine
         engine = PolicyEngine.default()
         s = engine.list_scanners()
@@ -66,6 +85,7 @@ def cmd_policy(args):
 
     elif action == "show":
         import os
+
         from rich.syntax import Syntax
         p = os.environ.get("SENTINEL_POLICY", "policy.yaml")
         if Path(p).exists():
@@ -102,7 +122,7 @@ def cmd_proxy(args):
             _fail("--server-cmd required for stdio transport")
             return 2
         console.print(f"  [dim]server: {' '.join(server_cmd)}[/dim]")
-        console.print(f"  [green]▶[/green] proxy running (Ctrl+C to stop)")
+        console.print("  [green]▶[/green] proxy running (Ctrl+C to stop)")
         try:
             asyncio.run(proxy.run_stdio(server_cmd))
         except KeyboardInterrupt:
@@ -123,7 +143,7 @@ def cmd_proxy(args):
 
 def cmd_playbook(args):
     """Attack playbook runner."""
-    from sentinel.redteam.playbook_engine import PlaybookEngine, PlaybookLoader, ReportGenerator
+    from sentinel.redteam.playbook_engine import PlaybookEngine, ReportGenerator
 
     path = args.path
     _header(f"playbook → {path}")
@@ -150,6 +170,8 @@ def cmd_playbook(args):
 
     ms = (time.perf_counter() - t0) * 1000
 
+    all_failed = []
+
     for report in reports:
         grade_styles = {
             "A": "bold green", "B": "green", "C": "yellow",
@@ -164,6 +186,7 @@ def cmd_playbook(args):
                       f"Error: {report.errors} · Timeout: {report.timeouts}")
 
         failed = [o for o in report.outcomes if o.result.value == "fail"]
+        all_failed.extend(failed)
         if failed:
             console.print(f"\n  [red]Failed Probes ({len(failed)}):[/red]")
             for o in failed:
@@ -187,6 +210,27 @@ def cmd_playbook(args):
             _ok(f"report written: {report_out} ({report_fmt})")
 
     console.print(f"\n  [dim]{ms:.0f}ms[/dim]")
+
+    if getattr(args, "fail_on_failed_probes", False) and all_failed:
+        _fail(f"playbook failed: {len(all_failed)} failed probe(s)")
+        return 1
+
+    critical_failed = [o for o in all_failed if str(o.severity).upper() == "CRITICAL"]
+    if getattr(args, "fail_on_critical", False) and critical_failed:
+        _fail(f"playbook failed: {len(critical_failed)} failed CRITICAL probe(s)")
+        return 1
+
+    fail_on_grade = getattr(args, "fail_on_grade", None)
+    if fail_on_grade:
+        grade_order = {"A": 5, "B": 4, "C": 3, "D": 2, "F": 1}
+        failing_reports = [
+            r for r in reports
+            if grade_order.get(r.grade.value, 0) <= grade_order[fail_on_grade]
+        ]
+        if failing_reports:
+            grades = ", ".join(f"{r.playbook_name}={r.grade.value}" for r in failing_reports)
+            _fail(f"playbook grade threshold failed (--fail-on-grade {fail_on_grade}): {grades}")
+            return 1
 
     return 1 if any(r.grade.value == "F" for r in reports) else 0
 

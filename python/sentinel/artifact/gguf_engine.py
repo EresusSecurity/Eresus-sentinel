@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..finding import Finding, Severity
-from .format_common import TensorInfo, FormatReport
-
+from .format_common import FormatReport, TensorInfo
 
 GGUF_MAGIC = 0x46475547  # "GGUF" in little-endian
 GGUF_MAGIC_BYTES = b"GGUF"

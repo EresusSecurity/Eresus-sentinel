@@ -7,7 +7,7 @@ Tests if RAG-augmented systems can be tricked into:
   - Returning documents without authorization
   - Extracting data via indirect reference injection
 
-Inspired by: promptfoo RAG exfiltration plugin.
+Reference-aligned retrieval leak fixture.
 """
 
 from __future__ import annotations

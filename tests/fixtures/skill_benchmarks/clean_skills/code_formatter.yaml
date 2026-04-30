@@ -1,0 +1,23 @@
+name: code_formatter
+version: "1.0"
+description: Format source code using the appropriate language formatter.
+author: sentinel-test
+license: MIT
+
+parameters:
+  code:
+    type: string
+    description: Source code to format
+  language:
+    type: string
+    enum: [python, javascript, typescript, json]
+    description: Programming language
+
+steps:
+  - name: format
+    action: builtin.format_code
+    input: "{code}"
+    language: "{language}"
+
+output:
+  template: "{format.result}"

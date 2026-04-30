@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.notebook_scanner.scanner import NotebookScanner
 from sentinel.notebook_scanner.result import NotebookScanResult
+from sentinel.notebook_scanner.scanner import NotebookScanner
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,6 @@ prompts containing configurable negative/dangerous emotions above threshold.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 EMOTION_LABELS = [
     "admiration", "amusement", "anger", "annoyance", "approval", "caring",
     "confusion", "curiosity", "desire", "disappointment", "disapproval",
@@ -76,7 +74,7 @@ class EmotionScanner:
 
         prompt_lower = prompt.lower()
         words = prompt_lower.split()
-        word_count = max(len(words), 1)
+        max(len(words), 1)
 
         detected_emotions = {}
 

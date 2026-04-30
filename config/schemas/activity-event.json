@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActivityEvent",
+  "type": "object",
+  "required": ["event_type", "timestamp", "source"],
+  "properties": {
+    "event_type": {"type": "string", "enum": ["scan", "audit", "alert", "policy"]},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "source": {"type": "string"},
+    "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+    "message": {"type": "string"},
+    "metadata": {"type": "object"}
+  }
+}

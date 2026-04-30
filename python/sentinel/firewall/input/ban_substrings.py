@@ -18,7 +18,7 @@ import re
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -116,11 +116,12 @@ class BanSubstringsOutputScanner(OutputScanner):
         return self._scanner.scan(output)
 
 
-class BanCompetitorsScanner(BanSubstringsScanner):
+class BanCompetitorsLegacyScanner(BanSubstringsScanner):
     """
     Blocks prompts attempting to discuss or compare competitors.
 
     Pre-configured substring scanner with competitor-specific patterns.
+    Legacy alias — the canonical implementation is in ban_competitors.py.
     """
 
     def __init__(self, competitors: list[str] | None = None, **kwargs):

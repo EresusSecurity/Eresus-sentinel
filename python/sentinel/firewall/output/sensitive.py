@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 from typing import Optional
 
 import yaml
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import OutputScanner, ScanAction, ScanResult
+from sentinel.rules import get_rules_dir
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ _SEVERITY_MAP = {
 }
 
 # ── Load patterns from YAML ──────────────────────────────────────
-_RULES_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "rules"
+_RULES_DIR = get_rules_dir()
 _PATTERNS_FILE = _RULES_DIR / "output_sensitive_patterns.yaml"
 
 
@@ -186,7 +186,7 @@ class SensitiveDataScanner(OutputScanner):
         if self._redact:
             sanitized = self._redact_entities(output, unique_entities)
 
-        max_severity = min(e["severity"].sort_key for e in unique_entities)
+        min(e["severity"].sort_key for e in unique_entities)
         risk_score = min(1.0, len(unique_entities) * 0.2 + 0.3)
 
         return ScanResult(

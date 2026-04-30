@@ -18,26 +18,54 @@ Modules:
     report       — HTML/JSON/Markdown report generation
 """
 
-from sentinel.redteam.orchestrator import RedTeamOrchestrator
-from sentinel.redteam.evaluator import Evaluator, EvaluationReport
-from sentinel.redteam.analyzer import RedTeamAnalyzer, AnalysisResult
-from sentinel.redteam.probe import Probe, DirectInjectionProbe, SystemPromptExtractionProbe, RoleplayJailbreakProbe
-from sentinel.redteam.detector import (
-    Detector, StringDetector, TriggerListDetector,
-    RegexDetector, RefusalDetector,
-)
-from sentinel.redteam.generator import Generator, OllamaGenerator, OpenAIGenerator, EchoGenerator
+from sentinel.redteam.analyzer import AnalysisResult, RedTeamAnalyzer
 from sentinel.redteam.attempt import Attempt, AttemptStatus
 from sentinel.redteam.buffs import (
-    Buff, EncodingBuff, LowResourceLanguageBuff, ParaphraseBuff,
-    ChainBuff, ParallelBuff, TemplateBuff, MultiTemplateBuff,
+    Buff,
+    ChainBuff,
+    EncodingBuff,
+    LowResourceLanguageBuff,
+    MultiTemplateBuff,
+    ParallelBuff,
+    ParaphraseBuff,
+    TemplateBuff,
+)
+from sentinel.redteam.detector import (
+    Detector,
+    RefusalDetector,
+    RegexDetector,
+    StringDetector,
+    TriggerListDetector,
+)
+from sentinel.redteam.evaluator import EvaluationReport, Evaluator
+from sentinel.redteam.generator import EchoGenerator, Generator, OllamaGenerator, OpenAIGenerator
+from sentinel.redteam.harness import (
+    Oracle,
+    OracleVerdict,
+    RedTeamScenarioHarness,
+    ScenarioAttempt,
+    ScenarioResult,
+    ScenarioStep,
+    SessionStore,
+)
+from sentinel.redteam.orchestrator import RedTeamOrchestrator
+from sentinel.redteam.probe import (
+    DirectInjectionProbe,
+    Probe,
+    RoleplayJailbreakProbe,
+    SystemPromptExtractionProbe,
 )
 
 from .coding_agent import CodingAgentFuzzer, CodingAgentPayloads
-from .injection_plugins import InjectionPluginRegistry, SQLInjectionPlugin, ShellInjectionPlugin, SSRFPlugin
-from .harmful_plugins import HarmfulContentPlugin, HarmPluginRegistry, CompetitorMentionPlugin
 from .compliance_mapper import ComplianceMapper
-from .playbook_engine import PlaybookEngine, PlaybookLoader, ReportGenerator, GradingEngine
+from .harmful_plugins import CompetitorMentionPlugin, HarmfulContentPlugin, HarmPluginRegistry
+from .injection_plugins import (
+    InjectionPluginRegistry,
+    ShellInjectionPlugin,
+    SQLInjectionPlugin,
+    SSRFPlugin,
+)
+from .playbook_engine import GradingEngine, PlaybookEngine, PlaybookLoader, ReportGenerator
 
 __all__ = [
     # Core
@@ -45,6 +73,8 @@ __all__ = [
     "Evaluator", "EvaluationReport",
     "RedTeamAnalyzer", "AnalysisResult",
     "Attempt", "AttemptStatus",
+    "RedTeamScenarioHarness", "SessionStore", "Oracle", "OracleVerdict",
+    "ScenarioStep", "ScenarioAttempt", "ScenarioResult",
     # Probes (base)
     "Probe", "DirectInjectionProbe", "SystemPromptExtractionProbe", "RoleplayJailbreakProbe",
     # Detectors (base)

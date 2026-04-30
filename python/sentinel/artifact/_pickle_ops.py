@@ -86,11 +86,12 @@ class PickleAnalysis:
     # ── Advanced analysis engines ────────────────────────────────
     has_setstate_gadget: bool = False        # BUILD opcode with dangerous __setstate__
     has_obj_pop_bypass: bool = False         # OBJ+POP invisibility attack
+    suspicious_global_mutations: list[DangerousImport] = field(default_factory=list)
     non_standard_imports: list = field(default_factory=list)  # Imports outside stdlib+allowlist
     has_non_standard_import: bool = False
     interpretation_errors: list[str] = field(default_factory=list)
+    parse_error: str | None = None
     # Internal structural counters (set by analyzer, used by post-walk passes)
     _get_count: int = 0
     _put_count: int = 0
     _memo_size: int = 0
-

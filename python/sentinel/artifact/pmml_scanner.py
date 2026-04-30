@@ -1,8 +1,10 @@
 """PMML XML model scanner."""
 from __future__ import annotations
+
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -11,6 +13,8 @@ DANGEROUS_EXTENSIONS = ["script", "exec", "eval", "system", "shell", "python", "
 
 
 class PMMLScanner:
+    """Scan PMML XML model files for code injection and XXE threats."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

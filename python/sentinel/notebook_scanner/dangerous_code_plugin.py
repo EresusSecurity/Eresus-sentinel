@@ -11,6 +11,7 @@ import yaml
 
 from sentinel.finding import Finding, Severity
 from sentinel.notebook_scanner.parser import NotebookCell
+from sentinel.rules import get_rules_dir
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ _NOTEBOOK_FP_PATTERNS = {
     "asyncio.subprocess", "compileall", "antigravity", "code",
 }
 
-_RULES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "rules"
+_RULES_DIR = get_rules_dir()
 _PATTERN_FILE = _RULES_DIR / "dangerous_code_patterns.yaml"
 
 # Severity mapping

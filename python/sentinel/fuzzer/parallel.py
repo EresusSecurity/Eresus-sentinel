@@ -5,13 +5,24 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 
-from .base import Generator, Mutator, Payload, PayloadCategory, FuzzResult
-from .scoring import ScoringEngine, DetectionScore
+from .base import FuzzResult, Generator, Mutator, Payload, PayloadCategory
+from .scoring import DetectionScore, ScoringEngine
 
 logger = logging.getLogger(__name__)
+
+# Allowlist of sentinel scanner modules that may be dynamically loaded in workers.
+# This prevents arbitrary module loading via the multiprocessing interface.
+_ALLOWED_SCANNER_MODULES: frozenset[str] = frozenset({
+    "sentinel.artifact.pickle_scanner",
+    "sentinel.artifact.safetensors_validator",
+    "sentinel.artifact.gguf_analyzer",
+    "sentinel.artifact.torch_scanner",
+    "sentinel.firewall.input.prompt_injection",
+    "sentinel.firewall.input.secrets_scanner",
+})
 
 
 @dataclass
@@ -31,11 +42,35 @@ def _worker_generate(args: tuple) -> bytes:
 
 
 def _worker_scan(args: tuple) -> dict:
-    """Worker function for parallel scanning."""
+    """Worker function for parallel scanning.
+    
+    Only modules in _ALLOWED_SCANNER_MODULES may be loaded to prevent
+    arbitrary code execution via the multiprocessing interface.
+    """
     data, name, scanner_module, scanner_fn_name = args
+
+    if scanner_module not in _ALLOWED_SCANNER_MODULES:
+        return {
+            "name": name,
+            "detected": False,
+            "findings_count": 0,
+            "crashed": True,
+            "error": f"Module '{scanner_module}' is not in the scanner allowlist",
+            "time_ms": 0.0,
+        }
 
     import importlib
     mod = importlib.import_module(scanner_module)
+    # Only allow attribute names that look like valid identifiers to prevent attr injection
+    if not scanner_fn_name.isidentifier():
+        return {
+            "name": name,
+            "detected": False,
+            "findings_count": 0,
+            "crashed": True,
+            "error": f"Invalid function name: {scanner_fn_name!r}",
+            "time_ms": 0.0,
+        }
     scanner_fn = getattr(mod, scanner_fn_name)
 
     t0 = time.perf_counter()
@@ -83,7 +118,7 @@ class ParallelFuzzer:
         """Generate samples in parallel using multiprocessing."""
         import random
         rng = random.Random(seed)
-        workers = self._config.workers or mp.cpu_count()
+        self._config.workers or mp.cpu_count()
 
         seeds = [rng.randint(0, 2**64 - 1) for _ in range(count)]
 

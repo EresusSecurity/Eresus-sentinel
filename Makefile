@@ -249,6 +249,36 @@ publish: build ## Publish to PyPI
 	@$(PYTHON) -m twine upload dist/*
 	@echo "$(GREEN)✓ Published $(PKG_NAME) v$(PKG_VERSION) to PyPI$(RESET)"
 
+.PHONY: release
+release: check test build ## Full pre-release gate: lint + tests + build + twine check
+	@echo "$(BLUE)▸ Release gate: checking dist packages...$(RESET)"
+	@$(PYTHON) -m twine check dist/*
+	@echo "$(GREEN)✓ Release gate passed — dist packages ready$(RESET)"
+
+.PHONY: completions
+completions: ## Copy pre-built shell completions into scripts/completions/
+	@echo "$(BLUE)▸ Shell completion files are in scripts/completions/$(RESET)"
+	@ls scripts/completions/ 2>/dev/null || echo "  (none yet)"
+
+.PHONY: install-completions
+install-completions: ## Install shell completions for the current user
+	@echo "$(BLUE)▸ Installing shell completions...$(RESET)"
+	@if [ -f scripts/completions/sentinel.bash ]; then \
+		mkdir -p "$$HOME/.bash_completion.d"; \
+		cp scripts/completions/sentinel.bash "$$HOME/.bash_completion.d/sentinel"; \
+		echo "$(GREEN)  ✓ bash  →  ~/.bash_completion.d/sentinel$(RESET)"; \
+	fi
+	@if [ -f scripts/completions/sentinel.zsh ]; then \
+		mkdir -p "$$HOME/.zsh/completions"; \
+		cp scripts/completions/sentinel.zsh "$$HOME/.zsh/completions/_sentinel"; \
+		echo "$(GREEN)  ✓ zsh   →  ~/.zsh/completions/_sentinel$(RESET)"; \
+	fi
+	@if [ -f scripts/completions/sentinel.fish ]; then \
+		mkdir -p "$$HOME/.config/fish/completions"; \
+		cp scripts/completions/sentinel.fish "$$HOME/.config/fish/completions/sentinel.fish"; \
+		echo "$(GREEN)  ✓ fish  →  ~/.config/fish/completions/sentinel.fish$(RESET)"; \
+	fi
+
 # ============================================================================
 # Documentation
 # ============================================================================
@@ -267,6 +297,39 @@ docs-build: ## Build documentation site
 # ============================================================================
 # Utilities
 # ============================================================================
+
+.PHONY: rust-check
+rust-check: ## Compile-check the sentinel-pickle Rust crate
+	@echo "$(BLUE)▸ cargo check (sentinel-pickle)...$(RESET)"
+	@cd rust/sentinel-pickle && PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo check 2>&1
+	@echo "$(GREEN)✓ Rust crate OK$(RESET)"
+
+.PHONY: rust-test
+rust-test: ## Run Rust unit tests for sentinel-pickle
+	@echo "$(BLUE)▸ cargo test (sentinel-pickle)...$(RESET)"
+	@cd rust/sentinel-pickle && PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test 2>&1
+	@echo "$(GREEN)✓ Rust tests OK$(RESET)"
+
+.PHONY: fuzz-seed-corpus
+fuzz-seed-corpus: ## Generate Python-side corpus seeds for all Rust fuzz targets
+	@echo "$(BLUE)▸ Generating fuzz corpus seeds (Python generators → corpus/)...$(RESET)"
+	@$(PYTHON) scripts/gen_fuzz_corpus.py --seeds 8
+	@echo "$(GREEN)✓ Corpus seeds written$(RESET)"
+
+.PHONY: fuzz-ci
+fuzz-ci: fuzz-seed-corpus ## Seed corpus then run all fuzz targets for 60 s each (CI smoke run)
+	@echo "$(BLUE)▸ cargo-fuzz CI run (60 s per target)...$(RESET)"
+	@which cargo-fuzz >/dev/null 2>&1 || cargo install cargo-fuzz
+	@cd rust/sentinel-pickle && for target in fuzz_scanner fuzz_opcode_sequence fuzz_policy fuzz_all_formats fuzz_gguf fuzz_tokenizer; do \
+		echo "  Fuzzing $$target..."; \
+		PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo +nightly fuzz run $$target -- \
+			-max_len=65536 -max_total_time=60 -print_final_stats=1 2>&1 || exit 1; \
+	done
+	@echo "$(GREEN)✓ Fuzz CI complete$(RESET)"
+
+.PHONY: doctor
+doctor: ## Run system health check
+	@$(PYTHON) -m sentinel.cli doctor
 
 .PHONY: version
 version: ## Show current version

@@ -41,6 +41,11 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
+async def _strip_server_header(_: Any, response: Any) -> None:
+    """Avoid leaking the Python/aiohttp version from the proxy surface."""
+    response.headers.pop("Server", None)
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # DATA TYPES
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -611,7 +616,8 @@ class MessageInspector:
 
     def _sanitize_response(self, msg: dict, findings: list[ProxyFinding]) -> dict:
         """Create a sanitized copy of the response."""
-        import copy, re
+        import copy
+        import re
         sanitized = copy.deepcopy(msg)
 
         critical = [f for f in findings if f.severity == "CRITICAL"]
@@ -952,7 +958,7 @@ class MCPProxy:
         MCP server, inspects response, and returns to client.
         """
         try:
-            from aiohttp import web, ClientSession
+            from aiohttp import ClientSession, web
         except ImportError:
             logger.error("aiohttp required for HTTP proxy mode: pip install aiohttp")
             return
@@ -985,7 +991,7 @@ class MCPProxy:
                     }) as resp:
                         resp_body = await resp.read()
                         self._breaker.record_success()
-                except Exception as e:
+                except Exception:
                     self._breaker.record_failure()
                     return web.json_response(
                         {"error": {"code": -32603, "message": "Upstream error"}},
@@ -1005,6 +1011,7 @@ class MCPProxy:
             )
 
         app = web.Application()
+        app.on_response_prepare.append(_strip_server_header)
         app.router.add_post("/", _handle_request)
         app.router.add_post("/mcp", _handle_request)
         app.router.add_post("/v1/mcp", _handle_request)

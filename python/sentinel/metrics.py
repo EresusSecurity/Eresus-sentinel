@@ -134,7 +134,11 @@ class MetricsCollector:
             self._risk_scores.observe(risk_labels, result.risk_score)
 
             for finding in result.findings:
-                sev = finding.severity.value if hasattr(finding.severity, "value") else str(finding.severity)
+                sev = (
+                    finding.severity.value
+                    if hasattr(finding.severity, "value")
+                    else str(finding.severity)
+                )
                 f_labels = f'scanner="{scanner}",severity="{sev}"'
                 self._findings_total.inc(f_labels)
 
@@ -174,15 +178,22 @@ class MetricsCollector:
             for labels in sorted(self._duration.counts.keys()):
                 counts = self._duration.counts[labels]
                 for i, bucket in enumerate(self._duration.buckets):
-                    cumulative = sum(counts[:i + 1])
                     lines.append(
-                        f'sentinel_scan_duration_seconds_bucket{{{labels},le="{bucket}"}} {cumulative}'
+                        "sentinel_scan_duration_seconds_bucket"
+                        f'{{{labels},le="{bucket}"}} {counts[i]}'
                     )
                 lines.append(
-                    f'sentinel_scan_duration_seconds_bucket{{{labels},le="+Inf"}} {self._duration.totals[labels]}'
+                    "sentinel_scan_duration_seconds_bucket"
+                    f'{{{labels},le="+Inf"}} {self._duration.totals[labels]}'
                 )
-                lines.append(f"sentinel_scan_duration_seconds_sum{{{labels}}} {self._duration.sums[labels]:.6f}")
-                lines.append(f"sentinel_scan_duration_seconds_count{{{labels}}} {self._duration.totals[labels]}")
+                lines.append(
+                    "sentinel_scan_duration_seconds_sum"
+                    f"{{{labels}}} {self._duration.sums[labels]:.6f}"
+                )
+                lines.append(
+                    "sentinel_scan_duration_seconds_count"
+                    f"{{{labels}}} {self._duration.totals[labels]}"
+                )
 
             # risk_score histogram
             lines.append("# HELP sentinel_risk_score Risk scores distribution")
@@ -190,15 +201,21 @@ class MetricsCollector:
             for labels in sorted(self._risk_scores.counts.keys()):
                 counts = self._risk_scores.counts[labels]
                 for i, bucket in enumerate(self._risk_scores.buckets):
-                    cumulative = sum(counts[:i + 1])
                     lines.append(
-                        f'sentinel_risk_score_bucket{{{labels},le="{bucket}"}} {cumulative}'
+                        f'sentinel_risk_score_bucket{{{labels},le="{bucket}"}} {counts[i]}'
                     )
                 lines.append(
-                    f'sentinel_risk_score_bucket{{{labels},le="+Inf"}} {self._risk_scores.totals[labels]}'
+                    "sentinel_risk_score_bucket"
+                    f'{{{labels},le="+Inf"}} {self._risk_scores.totals[labels]}'
                 )
-                lines.append(f"sentinel_risk_score_sum{{{labels}}} {self._risk_scores.sums[labels]:.4f}")
-                lines.append(f"sentinel_risk_score_count{{{labels}}} {self._risk_scores.totals[labels]}")
+                lines.append(
+                    "sentinel_risk_score_sum"
+                    f"{{{labels}}} {self._risk_scores.sums[labels]:.4f}"
+                )
+                lines.append(
+                    "sentinel_risk_score_count"
+                    f"{{{labels}}} {self._risk_scores.totals[labels]}"
+                )
 
             # Active scanners gauge
             lines.append("# HELP sentinel_active_scanners Currently active scanners")
@@ -327,4 +344,3 @@ class MetricsCollector:
         except ImportError:
             logger.debug("OpenTelemetry not available — using built-in metrics only")
             return False
-

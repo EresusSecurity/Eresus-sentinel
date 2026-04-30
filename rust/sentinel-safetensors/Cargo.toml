@@ -1,0 +1,23 @@
+[package]
+name = "sentinel-safetensors"
+version = "0.1.0"
+edition = "2021"
+description = "Fast safetensors header scanner for Eresus Sentinel"
+license = "LicenseRef-ESL-1.1"
+authors = ["Eresus Security <security@eresussec.com>"]
+
+[lib]
+name = "sentinel_safetensors"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3     = { version = "0.22", features = ["extension-module"] }
+serde    = { version = "1",   features = ["derive"] }
+serde_json = "1"
+thiserror  = "2"
+
+[profile.release]
+opt-level      = 3
+lto            = true
+codegen-units  = 1
+strip          = true

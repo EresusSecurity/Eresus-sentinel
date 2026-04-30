@@ -1,6 +1,7 @@
 """Missing red team probes — aegis, beavertails, cyberseceval, harmbench, hijacking, indirect injection, intent, mcp, model ID, pii, pliny, politics, religion, toxicChat, unsafebench, unverifiable claims, vlguard, wordplay, xstest, ragDocExfil, ragSourceAttribution, excessiveAgency, goalMisalignment, contextCompliance, multiInputFormat."""
 from __future__ import annotations
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
 
 
 @dataclass

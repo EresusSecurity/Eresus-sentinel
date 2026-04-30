@@ -5,6 +5,7 @@ Usage:
     sentinel scan ./project/
     sentinel firewall "prompt text"
     sentinel firewall -d output "response"
+    sentinel dashboard
     sentinel shell
     sentinel scanners
     sentinel version
@@ -36,6 +37,7 @@ def main():
             "  sentinel scan ./project/\n"
             "  sentinel firewall 'ignore all previous instructions'\n"
             "  sentinel firewall -d output 'some response'\n"
+            "  sentinel dashboard\n"
             "  sentinel artifact ./models/ --show-skipped\n"
             "  sentinel hf-artifact org/model-name\n"
             "  sentinel hf-scan org/model-name\n"
@@ -50,7 +52,8 @@ def main():
     parser.add_argument("--version", action="version", version=f"sentinel {ver}")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-q", "--quiet", action="store_true")
-    parser.add_argument("-f", "--format", choices=["table", "json", "sarif", "csv", "markdown", "html"], default="table")
+    output_formats = ["table", "json", "sarif", "csv", "markdown", "html", "junit"]
+    parser.add_argument("-f", "--format", choices=output_formats, default="table")
     parser.add_argument("-o", "--output", help="output file")
     parser.add_argument("--show-skipped", action="store_true", help="show files skipped due to unsupported format")
     parser.add_argument("--min-severity", choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
@@ -60,12 +63,48 @@ def main():
 
     # ── Scan commands ──────────────────────────────────────────────
     from sentinel.cli.cmd_scan import (
-        cmd_scan, cmd_firewall, cmd_artifact, cmd_hf_artifact,
-        cmd_hf_scan, cmd_hf_guard,
+        cmd_artifact,
+        cmd_artifact_scan,
+        cmd_firewall,
+        cmd_hf_artifact,
+        cmd_hf_bulk_scan,
+        cmd_hf_guard,
+        cmd_hf_scan,
+        cmd_scan,
     )
 
     p = sub.add_parser("scan", help="full scan")
-    p.add_argument("path"); p.set_defaults(func=cmd_scan)
+    p.add_argument("path")
+    p.add_argument("-f", "--format", choices=output_formats, default=argparse.SUPPRESS)
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    p.add_argument(
+        "--min-severity",
+        choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        default=argparse.SUPPRESS,
+    )
+    p.add_argument(
+        "--fail-on",
+        choices=[
+            "info", "low", "medium", "high", "critical",
+            "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL",
+        ],
+    )
+    p.add_argument(
+        "--ci",
+        action="store_true",
+        help="CI mode: keep output machine-compatible and use --fail-on for exit policy",
+    )
+    p.add_argument(
+        "--fast",
+        action="store_true",
+        help="Skip slow modules (artifact, supply-chain, redteam); run only SAST + secrets",
+    )
+    p.add_argument(
+        "--stdin-files",
+        action="store_true",
+        help="Read additional file paths from stdin (one per line) — for pre-commit use",
+    )
+    p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("firewall", aliases=["fw"], help="firewall scan")
     p.add_argument("input", help="text or - for stdin")
@@ -74,6 +113,20 @@ def main():
 
     p = sub.add_parser("artifact", help="model artifact scan")
     p.add_argument("path"); p.set_defaults(func=cmd_artifact)
+
+    # ── Pre-commit hook: artifact-scan (accepts multiple staged files) ──
+    p = sub.add_parser(
+        "artifact-scan",
+        help="scan staged model files — for pre-commit pass_filenames: true",
+    )
+    p.add_argument("files", nargs="+", metavar="FILE", help="staged file paths")
+    p.add_argument(
+        "--fail-on",
+        default="critical",
+        choices=["info", "low", "medium", "high", "critical"],
+        help="minimum severity that causes exit 1 (default: critical)",
+    )
+    p.set_defaults(func=cmd_artifact_scan)
 
     p = sub.add_parser("hf-artifact", help="scan model artifacts from HuggingFace repo")
     p.add_argument("hf_repo", help="HuggingFace repo (e.g. org/model-name)")
@@ -90,10 +143,35 @@ def main():
     p.add_argument("--require-safetensors", action="store_true", help="require safetensors format")
     p.set_defaults(func=cmd_hf_guard)
 
+    p = sub.add_parser("hf-bulk-scan", help="bulk scan HuggingFace Hub repositories")
+    p.add_argument("--owner", help="filter by HF username/organisation")
+    p.add_argument("--task", help="filter by pipeline task (e.g. text-generation)")
+    p.add_argument("--tags", nargs="+", metavar="TAG", help="filter by model tags")
+    p.add_argument("--limit", type=int, default=1000, help="max repos to scan (default: 1000)")
+    p.add_argument("--min-downloads", type=int, default=0, dest="min_downloads",
+                   help="minimum download count filter")
+    p.add_argument("--mode", choices=["guard", "full"], default="guard",
+                   help="scan mode: guard (no download) or full (default: guard)")
+    p.add_argument("--concurrency", type=int, default=4, help="parallel scans (default: 4)")
+    p.add_argument("--output", "-o", help="JSONL output file for results")
+    p.add_argument("--resume", action="store_true", help="skip repos already in output file")
+    p.set_defaults(func=cmd_hf_bulk_scan)
+
     # ── Analysis commands ──────────────────────────────────────────
     from sentinel.cli.cmd_analysis import (
-        cmd_sast, cmd_agent, cmd_supply_chain, cmd_diff,
-        cmd_notebook, cmd_redteam, cmd_secrets_scan,
+        cmd_a2a,
+        cmd_agent,
+        cmd_diff,
+        cmd_mcp,
+        cmd_mcp_fingerprint,
+        cmd_mcp_validate,
+        cmd_multi_agent_scan,
+        cmd_notebook,
+        cmd_redteam,
+        cmd_sast,
+        cmd_secrets_scan,
+        cmd_skill_scan,
+        cmd_supply_chain,
     )
 
     p = sub.add_parser("sast", help="static analysis")
@@ -102,8 +180,87 @@ def main():
     p = sub.add_parser("agent", help="agent/mcp validation")
     p.add_argument("path"); p.set_defaults(func=cmd_agent)
 
+    # ── Pre-commit hook: skill-scan ────────────────────────────────────
+    p = sub.add_parser(
+        "skill-scan",
+        help="audit SKILL.md / plugin manifests — for pre-commit pass_filenames: true",
+    )
+    p.add_argument("files", nargs="*", metavar="FILE")
+    p.add_argument(
+        "--fail-on",
+        default="critical",
+        choices=["info", "low", "medium", "high", "critical"],
+    )
+    p.set_defaults(func=cmd_skill_scan)
+
+    # ── Pre-commit hook: mcp-validate ──────────────────────────────────
+    p = sub.add_parser(
+        "mcp-validate",
+        help="validate MCP tool manifests — for pre-commit pass_filenames: true",
+    )
+    p.add_argument("files", nargs="*", metavar="FILE")
+    p.add_argument(
+        "--fail-on",
+        default="high",
+        choices=["info", "low", "medium", "high", "critical"],
+    )
+    p.set_defaults(func=cmd_mcp_validate)
+
+    mcp_p = sub.add_parser("mcp", help="MCP live and manifest scanning")
+    mcp_sub = mcp_p.add_subparsers(dest="mcp_action")
+    mcp_p.set_defaults(func=cmd_mcp)
+    ms = mcp_sub.add_parser("scan", help="scan an MCP manifest or live endpoint")
+    ms.add_argument("target", nargs="?", help="manifest path or HTTP endpoint")
+    ms.add_argument("--manifest", help="MCP JSON/YAML manifest path")
+    ms.add_argument("--url", help="MCP HTTP JSON-RPC endpoint")
+    ms.add_argument("--stdio-command", nargs="+", help="MCP stdio server command")
+    ms.add_argument("--timeout", type=float, default=5.0)
+    ms.add_argument("-f", "--format", choices=output_formats, default=argparse.SUPPRESS)
+    ms.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    ms.set_defaults(func=cmd_mcp, mcp_action="scan")
+
+    mf = mcp_sub.add_parser("fingerprint", help="enumerate and fingerprint MCP server capabilities")
+    mf.add_argument("target", nargs="?", help="manifest path or HTTP endpoint")
+    mf.add_argument("--url", help="MCP HTTP JSON-RPC endpoint")
+    mf.add_argument("--timeout", type=float, default=5.0)
+    mf.add_argument("-f", "--format", choices=["table", "json"], default="table")
+    mf.add_argument("-o", "--output", help="write JSON fingerprint to file")
+    mf.set_defaults(func=cmd_mcp_fingerprint, mcp_action="fingerprint")
+
+    a2a_p = sub.add_parser("a2a", help="A2A agent-card and source scanning")
+    a2a_sub = a2a_p.add_subparsers(dest="a2a_action")
+    a2a_p.set_defaults(func=cmd_a2a)
+    a2a_scan = a2a_sub.add_parser("scan", help="scan an A2A agent card or project")
+    a2a_scan.add_argument("path")
+    a2a_scan.add_argument("-f", "--format", choices=output_formats, default=argparse.SUPPRESS)
+    a2a_scan.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    a2a_scan.add_argument(
+        "--min-severity",
+        choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        default=argparse.SUPPRESS,
+    )
+    a2a_scan.set_defaults(func=cmd_a2a, a2a_action="scan")
+
     p = sub.add_parser("supply-chain", help="supply chain audit")
     p.add_argument("path"); p.set_defaults(func=cmd_supply_chain)
+
+    p = sub.add_parser("multi-agent-scan", aliases=["multi-agent"], help="multi-agent cross-contamination and hallucination scan")
+    p.add_argument(
+        "agents",
+        nargs="+",
+        metavar="MANIFEST",
+        help="2+ agent manifest files (JSON or YAML)",
+    )
+    p.add_argument(
+        "--scenarios",
+        nargs="+",
+        choices=["hallucination", "contamination", "memory_poisoning"],
+        default=None,
+        help="scenarios to run (default: all)",
+    )
+    p.add_argument("-f", "--format", choices=output_formats, default=argparse.SUPPRESS)
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    p.set_defaults(func=cmd_multi_agent_scan)
 
     p = sub.add_parser("diff", help="git diff scan")
     p.add_argument("target", nargs="?", default="--staged"); p.set_defaults(func=cmd_diff)
@@ -111,8 +268,26 @@ def main():
     p = sub.add_parser("notebook", aliases=["nb"], help="notebook scan")
     p.add_argument("path"); p.set_defaults(func=cmd_notebook)
 
-    p = sub.add_parser("red-team", help="red team probes")
-    p.add_argument("target"); p.set_defaults(func=cmd_redteam)
+    p = sub.add_parser("red-team", aliases=["redteam"], help="red team probes")
+    p.add_argument("target", nargs="?")
+    p.add_argument("--target", dest="target_flag")
+    p.add_argument(
+        "--vertical",
+        choices=[
+            "financial", "healthcare", "telecom", "ecommerce", "insurance",
+            "realestate", "medical", "pharmacy", "policy", "agentic",
+            "teenSafety", "codingAgent", "compliance", "all",
+        ],
+        default=None,
+        help="run industry-specific probe suite (use 'all' for every vertical)",
+    )
+    p.add_argument(
+        "--strategy",
+        default=None,
+        metavar="STRATEGY",
+        help="attack strategy name (e.g. autodan, meta_agent, adaptive)",
+    )
+    p.set_defaults(func=cmd_redteam)
 
     p = sub.add_parser("secrets-scan", aliases=["secrets"], help="enterprise secrets scanner (120+ patterns)")
     p.add_argument("path", help="file or directory to scan")
@@ -123,13 +298,64 @@ def main():
 
     # ── Tool commands ──────────────────────────────────────────────
     from sentinel.cli.cmd_tools import (
-        cmd_evaluate, cmd_plugins, cmd_reverse, cmd_stats, cmd_doctor,
-        cmd_shell, cmd_benchmark, cmd_scanners, cmd_watch,
-        cmd_config, cmd_version,
+        cmd_aibom,
+        cmd_benchmark,
+        cmd_config,
+        cmd_doctor,
+        cmd_evaluate,
+        cmd_plugins,
+        cmd_refs,
+        cmd_reverse,
+        cmd_scanners,
+        cmd_shell,
+        cmd_stats,
+        cmd_version,
+        cmd_watch,
     )
 
-    p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanner effectiveness")
+    p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanners or LLM targets")
+    p.add_argument("config", nargs="?", help="YAML/JSON eval config")
+    p.add_argument("--fail-on-threshold", type=float, help="fail if pass rate is below threshold")
+    p.add_argument("--summary-only", action="store_true", help="hide per-case eval rows")
     p.set_defaults(func=cmd_evaluate)
+
+    p = sub.add_parser("aibom", help="generate AI bill of materials")
+    p.add_argument("path", nargs="?", default=".", help="repository or directory to scan")
+    p.add_argument(
+        "--format",
+        "-f",
+        dest="aibom_format",
+        default="cyclonedx",
+        choices=["cyclonedx", "spdx", "sarif", "html", "csv", "junit", "markdown"],
+    )
+    p.add_argument("--output", "-o", default=argparse.SUPPRESS, help="output file")
+    p.add_argument(
+        "--ci",
+        action="store_true",
+        help="CI-compatible no-op flag for GitHub Action parity",
+    )
+    p.set_defaults(func=cmd_aibom)
+
+    refs_p = sub.add_parser("refs", help="inspect `.refs` inventory and parity")
+    refs_sub = refs_p.add_subparsers(dest="refs_action")
+    refs_p.add_argument("--refs-dir", default=".refs", help="reference clone directory")
+    refs_p.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
+    refs_p.add_argument("-o", "--output", help="output file")
+    refs_p.set_defaults(func=cmd_refs, refs_action="inventory")
+    refs_inventory = refs_sub.add_parser("inventory", help="show cloned reference inventory")
+    refs_inventory.add_argument("--refs-dir", default=".refs", help="reference clone directory")
+    refs_inventory.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
+    refs_inventory.add_argument("-o", "--output", help="output file")
+    refs_inventory.set_defaults(func=cmd_refs, refs_action="inventory")
+    refs_plan = refs_sub.add_parser("plan", help="show P1/P2 execution plan")
+    refs_plan.add_argument("--refs-dir", default=".refs", help="reference clone directory")
+    refs_plan.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
+    refs_plan.add_argument("-o", "--output", help="output file")
+    refs_plan.set_defaults(func=cmd_refs, refs_action="plan")
+    refs_parity = refs_sub.add_parser("parity", help="show reference parity manifest")
+    refs_parity.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
+    refs_parity.add_argument("-o", "--output", help="output file")
+    refs_parity.set_defaults(func=cmd_refs, refs_action="parity")
 
     p = sub.add_parser("plugins", help="list discovered scanner plugins")
     p.set_defaults(func=cmd_plugins)
@@ -168,19 +394,45 @@ def main():
 
     # ── Service commands ───────────────────────────────────────────
     from sentinel.cli.cmd_serve import (
-        cmd_serve, cmd_validate, cmd_policy, cmd_proxy,
-        cmd_playbook, cmd_dep_scan,
+        cmd_dep_scan,
+        cmd_playbook,
+        cmd_policy,
+        cmd_proxy,
+        cmd_serve,
+        cmd_validate,
     )
 
     p = sub.add_parser("policy", help="policy management")
     p.add_argument("action", choices=["init", "show", "validate"], default="show", nargs="?")
     p.set_defaults(func=cmd_policy)
 
+    p = sub.add_parser("dashboard", help="web dashboard")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--policy", default="")
+    p.add_argument(
+        "--open",
+        dest="open_browser",
+        action="store_true",
+        help="open dashboard in browser",
+    )
+    p.set_defaults(func=cmd_serve, ui=True)
+
     p = sub.add_parser("serve", help="REST API server")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--policy", default="")
-    p.add_argument("--ui", action="store_true", help="serve web dashboard (React SPA + hardened API)")
+    p.add_argument(
+        "--ui",
+        action="store_true",
+        help="serve web dashboard (React SPA + hardened API)",
+    )
+    p.add_argument(
+        "--open",
+        dest="open_browser",
+        action="store_true",
+        help="open dashboard in browser when --ui is set",
+    )
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("validate", help="validate YAML rules")
@@ -200,6 +452,9 @@ def main():
     p.add_argument("--report-format", choices=["json", "html", "sarif", "text"], default="text")
     p.add_argument("--report-output", help="report output file")
     p.add_argument("--fail-fast", action="store_true", help="stop on first failure")
+    p.add_argument("--fail-on-critical", action="store_true", help="exit 1 if any CRITICAL probe fails")
+    p.add_argument("--fail-on-failed-probes", action="store_true", help="exit 1 if any probe fails")
+    p.add_argument("--fail-on-grade", choices=["A", "B", "C", "D", "F"], help="exit 1 when grade is this or worse")
     p.set_defaults(func=cmd_playbook)
 
     p = sub.add_parser("dep-scan", aliases=["deps"], help="live dependency vulnerability scanner")
@@ -241,19 +496,38 @@ def main():
     fs.add_argument("-n", "--samples", type=int, default=500, help="total samples to generate")
     fs.add_argument("-s", "--seed", type=int, help="random seed")
     fs.add_argument("--dir", help="output directory for reports and bypasses")
+    fs.add_argument("--allow-bypass", action="store_true", help="exit 0 even when bypassed payloads are found")
     fs.set_defaults(func=cmd_fuzz, fuzz_action="selftest")
 
     fp = fuzz_sub.add_parser("payloads", help="list adversarial payload templates")
     fp.set_defaults(func=cmd_fuzz, fuzz_action="payloads")
 
     # ── Parse & dispatch ───────────────────────────────────────────
-    args = parser.parse_args()
+    # Handle 'sentinel help' and 'sentinel help <command>' as UX aliases
+    argv = sys.argv[1:]
+    if argv and argv[0] == "help":
+        if len(argv) > 1:
+            argv = [argv[1], "--help"]
+        else:
+            argv = ["--help"]
+
+    args = parser.parse_args(argv)
 
     if args.verbose:
         import logging
         logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
     if args.quiet:
         console.quiet = True
+        import logging as _log
+        import warnings
+        _log.disable(_log.WARNING)
+        warnings.filterwarnings("ignore")
+
+    # Redirect Rich console to stderr when structured output goes to stdout
+    _fmt = getattr(args, "format", "table")
+    _out = getattr(args, "output", None)
+    if _fmt != "table" and not _out:
+        console.file = sys.stderr
 
     if args.command is None:
         console.print(_BANNER)

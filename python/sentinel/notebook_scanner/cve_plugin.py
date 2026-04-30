@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import re
 import logging
+import re
+
 from sentinel.finding import Finding, Severity
 from sentinel.notebook_scanner.parser import NotebookCell
 
@@ -135,7 +136,7 @@ def scan_cve(cell: NotebookCell, path: str) -> list[Finding]:
             ))
 
     for pkg in imported_packages:
-        normalized = pkg.replace("_", "-")
+        pkg.replace("_", "-")
         for known_name, vuln in KNOWN_VULNERABLE_PACKAGES.items():
             if pkg == known_name.replace("-", "_") and not any(f.rule_id == "NOTEBOOK-030" and known_name in f.title for f in findings):
                 findings.append(Finding.sast(

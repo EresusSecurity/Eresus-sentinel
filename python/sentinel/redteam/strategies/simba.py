@@ -1,6 +1,8 @@
 """SIMBA — Sequential Injection via Masked Benign Augmentation."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class SimbaStrategy(BaseStrategy):
     name = "simba"

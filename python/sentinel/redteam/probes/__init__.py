@@ -43,84 +43,276 @@ Probe categories:
   - LeakReplay — training data memorization testing
 """
 
-from sentinel.redteam.probes.tool_misuse import (
-    ToolInvocationProbe,
-    ToolParameterInjectionProbe,
-    ToolChainAbuseProbe,
+from sentinel.redteam.probes.aegis import (
+    AegisCSEProbe,
+    AegisDefamationProbe,
+    AegisElectionsProbe,
+    AegisHateProbe,
+    AegisIPProbe,
+    AegisNonViolentCrimesProbe,
+    AegisPrivacyProbe,
+    AegisSexCrimesProbe,
+    AegisSexualContentProbe,
+    AegisSpecializedAdviceProbe,
+    AegisSuicideProbe,
+    AegisViolentCrimesProbe,
+    AegisWeaponsProbe,
 )
-from sentinel.redteam.probes.data_exfiltration import (
-    DirectExfilProbe,
-    IndirectExfilProbe,
-    CrossBoundaryExfilProbe,
+from sentinel.redteam.probes.ansi_escape import AnsiEscapeProbe, AnsiRawProbe
+from sentinel.redteam.probes.apikey import APIKeyExtraction, CredentialPhishing
+from sentinel.redteam.probes.ascii_smuggling import ASCIISmugglingProbe
+
+# divergence probe removed (duplicate of data_exfiltration + glitch_tokens)
+from sentinel.redteam.probes.atkgen import AtkGenProbe
+from sentinel.redteam.probes.av_spam import AVSpamProbe
+from sentinel.redteam.probes.badchars import (
+    ControlCharacters,
+    MixedEncodings,
+    OverlongSequences,
+    UnicodeExploits,
 )
-from sentinel.redteam.probes.privilege_escalation import (
-    RoleEscalationProbe,
-    ToolPermissionEscalationProbe,
-    ContextWindowPoisoningProbe,
+from sentinel.redteam.probes.beavertails import (
+    BeaverTailsAnimalAbuseProbe,
+    BeaverTailsChildAbuseProbe,
+    BeaverTailsDrugAbuseProbe,
+    BeaverTailsFinancialCrimeProbe,
+    BeaverTailsHateSpeechProbe,
+    BeaverTailsMisinfoProbe,
+    BeaverTailsPrivacyViolenceProbe,
+    BeaverTailsSelfHarmProbe,
+    BeaverTailsTerrorismProbe,
+    BeaverTailsTheftProbe,
+    BeaverTailsUnethicalProbe,
+    BeaverTailsViolenceProbe,
+)
+from sentinel.redteam.probes.benchmark_probes import (
+    MultiInputFormatProbe,
+    PlinyProbe,
+    RAGSourceAttributionProbe,
+    ToxicChatProbe,
+    UnsafeBenchProbe,
+    VLGuardProbe,
+)
+from sentinel.redteam.probes.bfla import BFLAProbe
+from sentinel.redteam.probes.bias_probe import (
+    AgeBiasProbe,
+    DisabilityBiasProbe,
+    GenderBiasProbe,
+    RacialBiasProbe,
+    ReligionBiasProbe,
+    SexualOrientationBiasProbe,
+    SocioeconomicBiasProbe,
+)
+from sentinel.redteam.probes.bola import BOLAProbe
+from sentinel.redteam.probes.canary_word import CanaryWordProbe
+from sentinel.redteam.probes.competitors import CompetitorEndorsementProbe
+from sentinel.redteam.probes.context_compliance import (
+    AuthorityImpersonationProbe,
+    ContextComplianceProbe,
+    InstructionInjectionViaDataProbe,
 )
 from sentinel.redteam.probes.context_manipulation import (
     AdvancedExtractionProbe,
-    MemoryInjectionProbe,
     ContextConfusionProbe,
+    MemoryInjectionProbe,
 )
-from sentinel.redteam.probes.resource_exhaustion import (
-    TokenBombProbe,
-    RecursiveToolProbe,
-    ContextOverflowProbe,
-)
-from sentinel.redteam.probes.latent_injection import (
-    ResumeInjectionProbe,
-    FinancialReportInjectionProbe,
-    LegalDocInjectionProbe,
-    WhoisInjectionProbe,
+from sentinel.redteam.probes.continuation import ContinuationProbe
+from sentinel.redteam.probes.contracts import ContractsProbe
+from sentinel.redteam.probes.cross_session_leak import CrossSessionLeakProbe
+from sentinel.redteam.probes.cyberseceval import (
+    CyberSecEvalExploitProbe,
+    CyberSecEvalInsecureCodeProbe,
+    CyberSecEvalMalwareProbe,
+    CyberSecEvalNetworkProbe,
+    CyberSecEvalSocialEngProbe,
 )
 from sentinel.redteam.probes.dan import DANProbe
-from sentinel.redteam.probes.encoding_bypass import EncodingProbe
-from sentinel.redteam.probes.package_hallucination import PackageHallucinationProbe
-from sentinel.redteam.probes.glitch_tokens import GlitchTokenProbe
-from sentinel.redteam.probes.ansi_escape import AnsiEscapeProbe, AnsiRawProbe
-from sentinel.redteam.probes.leak_replay import LeakReplayProbe
-from sentinel.redteam.probes.malware_gen import MalwareGenProbe
-from sentinel.redteam.probes.smuggling import SmugglingProbe
-from sentinel.redteam.probes.suffix_attack import SuffixAttackProbe
-from sentinel.redteam.probes.continuation import ContinuationProbe
-from sentinel.redteam.probes.exploitation import ExploitationProbe
-from sentinel.redteam.probes.web_injection import WebInjectionProbe
-from sentinel.redteam.probes.topic_safety import TopicSafetyProbe
+from sentinel.redteam.probes.data_exfiltration import (
+    CrossBoundaryExfilProbe,
+    DirectExfilProbe,
+    IndirectExfilProbe,
+)
+from sentinel.redteam.probes.debug_access import DebugAccessProbe
 from sentinel.redteam.probes.direct_request import DirectRequestProbe
-from sentinel.redteam.probes.snowball import SnowballProbe
-from sentinel.redteam.probes.prompt_inject import PromptInjectProbe
-from sentinel.redteam.probes.goodside import GoodsideProbe
-from sentinel.redteam.probes.tap import TAPProbe
-from sentinel.redteam.probes.donotanswer import InformationHazards, MaliciousUses, DiscriminationHate, Misinformation, HumanChatbotHarms, CopyrightIP
-from sentinel.redteam.probes.visual_jailbreak import ASCIIArtJailbreak, UnicodeLookalike, MarkdownInjection, TextImagePrompt
-from sentinel.redteam.probes.grandma import GrandmaExploit, GrandmaEscalation
-from sentinel.redteam.probes.realtoxicityprompts import RTP_PROBES as _rtp_all, RTPBlank, RTPSevere
-from sentinel.redteam.probes.apikey import APIKeyExtraction, CredentialPhishing
-from sentinel.redteam.probes.badchars import ControlCharacters, UnicodeExploits, OverlongSequences, MixedEncodings
-from sentinel.redteam.probes.fileformats import SVGInjection, XMLInjection, PolyglotGeneration, ArchiveBombs, PDFInjection
-# divergence probe removed (duplicate of data_exfiltration + glitch_tokens)
-from sentinel.redteam.probes.atkgen import AtkGenProbe
-from sentinel.redteam.probes.dra import DRAProbe
-from sentinel.redteam.probes.sata import SATAProbe
-from sentinel.redteam.probes.phrasing import PhrasingProbe
-from sentinel.redteam.probes.fitd import FITDProbe
-from sentinel.redteam.probes.misleading import MisleadingProbe
-from sentinel.redteam.probes.policy_puppetry import PolicyPuppetryProbe
-from sentinel.redteam.probes.av_spam import AVSpamProbe
-from sentinel.redteam.probes.ascii_smuggling import ASCIISmugglingProbe
-from sentinel.redteam.probes.rag_exfiltration import RAGExfiltrationProbe
-from sentinel.redteam.probes.memory_poisoning import AgentMemoryPoisoningProbe
 from sentinel.redteam.probes.divergent_repetition import DivergentRepetitionProbe
-from sentinel.redteam.probes.reasoning_dos import ReasoningDOSProbe
-from sentinel.redteam.probes.cross_session_leak import CrossSessionLeakProbe
-from sentinel.redteam.probes.canary_word import CanaryWordProbe
+from sentinel.redteam.probes.donotanswer import (
+    CopyrightIP,
+    DiscriminationHate,
+    HumanChatbotHarms,
+    InformationHazards,
+    MaliciousUses,
+    Misinformation,
+)
+from sentinel.redteam.probes.dra import DRAProbe
+from sentinel.redteam.probes.encoding_bypass import EncodingProbe
+from sentinel.redteam.probes.excessive_agency import (
+    ExcessiveAgencyProbe,
+    GoalMisalignmentProbe,
+    HijackingProbe,
+    IntentProbe,
+    UnverifiableClaimsProbe,
+    WordplayProbe,
+    XSTestProbe,
+)
+from sentinel.redteam.probes.exploitation import ExploitationProbe
+from sentinel.redteam.probes.extra_probes import (
+    ALL_EXTRA_PROBES,
+    AegisProbe,
+    BeaverTailsProbe,
+    ContextComplianceProbe,
+    CyberSecEvalProbe,
+    ExcessiveAgencyProbe,
+    GoalMisalignmentProbe,
+    HijackingProbe,
+    IndirectPromptInjectionProbe,
+    IntentProbe,
+    MCPSecurityProbe,
+    ModelIdentificationProbe,
+    MultiInputFormatProbe,
+    PIIProbe,
+    PlinyProbe,
+    PoliticsProbe,
+    RAGDocumentExfiltrationProbe,
+    RAGSourceAttributionProbe,
+    ReligionProbe,
+    ToxicChatProbe,
+    UnsafeBenchProbe,
+    UnverifiableClaimsProbe,
+    WordplayProbe,
+    XSTestProbe,
+)
+from sentinel.redteam.probes.extra_probes import (
+    HarmBenchProbe as HarmBenchSimpleProbe,
+)
+from sentinel.redteam.probes.fileformats import (
+    ArchiveBombs,
+    PDFInjection,
+    PolyglotGeneration,
+    SVGInjection,
+    XMLInjection,
+)
+from sentinel.redteam.probes.fitd import FITDProbe
+from sentinel.redteam.probes.glitch_tokens import GlitchTokenProbe
+from sentinel.redteam.probes.goodside import GoodsideProbe
+from sentinel.redteam.probes.grandma import GrandmaEscalation, GrandmaExploit
+from sentinel.redteam.probes.hallucination import HallucinationProbe
+from sentinel.redteam.probes.harmbench import (
+    HarmBenchContextualProbe,
+    HarmBenchCopyrightProbe,
+    HarmBenchStandardProbe,
+)
+from sentinel.redteam.probes.imitation import ImitationProbe
+from sentinel.redteam.probes.industry_compliance import (
+    CodingAgentSecurityProbe,
+    CodingAgentVerificationProbe,
+    COPPAProbe,
+    EcommerceOrderFraudProbe,
+    EcommercePCIDSSProbe,
+    EcommercePriceManipulationProbe,
+    FERPAProbe,
+    FinancialComplianceProbe,
+    FinancialDataLeakageProbe,
+    FinancialHallucinationProbe,
+    FinancialImpartialityProbe,
+    FinancialSycophancyProbe,
+    InsuranceDiscriminationProbe,
+    InsuranceMisinformationProbe,
+    MedicalFDADisclosureProbe,
+    MedicalHallucinationProbe,
+    MedicalOffLabelProbe,
+    MedicalPHIProbe,
+    MedicalSycophancyProbe,
+    PharmacyControlledSubstanceProbe,
+    PharmacyDosageProbe,
+    PharmacyDrugInteractionProbe,
+    RealEstateFairHousingProbe,
+    RealEstateValuationBiasProbe,
+    TeenSafetyDangerousContentProbe,
+    TeenSafetyHarmfulBodyIdealsProbe,
+    TeenSafetyLocationDisclosureProbe,
+    TelecomCPNIProbe,
+    TelecomE911Probe,
+    TelecomTCPAProbe,
+)
+from sentinel.redteam.probes.industry_expanded import (
+    EcommerceSafetyProbe,
+    PharmacySafetyProbe,
+    RealEstateSafetyProbe,
+    TeenSafetyProbe,
+    TelecomSafetyProbe,
+)
 from sentinel.redteam.probes.industry_safety import (
     FinancialSafetyProbe,
-    MedicalSafetyProbe,
-    LegalSafetyProbe,
     InsuranceSafetyProbe,
+    LegalSafetyProbe,
+    MedicalSafetyProbe,
 )
+from sentinel.redteam.probes.latent_injection import (
+    FinancialReportInjectionProbe,
+    LegalDocInjectionProbe,
+    ResumeInjectionProbe,
+    WhoisInjectionProbe,
+)
+from sentinel.redteam.probes.leak_replay import LeakReplayProbe
+from sentinel.redteam.probes.malware_gen import MalwareGenProbe
+from sentinel.redteam.probes.mcp_redteam import (
+    MCPCrossOriginProbe,
+    MCPPromptInjectionProbe,
+    MCPResourceExfilProbe,
+    MCPSchemaManipulationProbe,
+    MCPToolPoisoningProbe,
+)
+from sentinel.redteam.probes.memory_poisoning import AgentMemoryPoisoningProbe
+from sentinel.redteam.probes.misleading import MisleadingProbe
+from sentinel.redteam.probes.off_topic import OffTopicProbe
+from sentinel.redteam.probes.overreliance import OverrelianceProbe
+from sentinel.redteam.probes.package_hallucination import PackageHallucinationProbe
+from sentinel.redteam.probes.phrasing import PhrasingProbe
+from sentinel.redteam.probes.pii_probe import (
+    PIIExtractionProbe,
+    PIIGenerationProbe,
+    PIIMemorizationProbe,
+)
+from sentinel.redteam.probes.policy_puppetry import PolicyPuppetryProbe
+from sentinel.redteam.probes.privilege_escalation import (
+    ContextWindowPoisoningProbe,
+    RoleEscalationProbe,
+    ToolPermissionEscalationProbe,
+)
+from sentinel.redteam.probes.prompt_extraction import PromptExtractionProbe
+from sentinel.redteam.probes.prompt_inject import PromptInjectProbe
+from sentinel.redteam.probes.rag_exfiltration import RAGExfiltrationProbe
+from sentinel.redteam.probes.rbac import RBACProbe
+from sentinel.redteam.probes.realtoxicityprompts import RTP_PROBES as _rtp_all
+from sentinel.redteam.probes.realtoxicityprompts import RTPBlank, RTPSevere
+from sentinel.redteam.probes.reasoning_dos import ReasoningDOSProbe
+from sentinel.redteam.probes.resource_exhaustion import (
+    ContextOverflowProbe,
+    RecursiveToolProbe,
+    TokenBombProbe,
+)
+from sentinel.redteam.probes.sata import SATAProbe
+from sentinel.redteam.probes.shell_injection import ShellInjectionProbe
+from sentinel.redteam.probes.smuggling import SmugglingProbe
+from sentinel.redteam.probes.snowball import SnowballProbe
+from sentinel.redteam.probes.sql_injection import SQLInjectionProbe
+from sentinel.redteam.probes.ssrf import SSRFProbe
+from sentinel.redteam.probes.suffix_attack import SuffixAttackProbe
+from sentinel.redteam.probes.tap import TAPProbe
+from sentinel.redteam.probes.tool_discovery import ToolDiscoveryProbe
+from sentinel.redteam.probes.tool_misuse import (
+    ToolChainAbuseProbe,
+    ToolInvocationProbe,
+    ToolParameterInjectionProbe,
+)
+from sentinel.redteam.probes.topic_safety import TopicSafetyProbe
+from sentinel.redteam.probes.visual_jailbreak import (
+    ASCIIArtJailbreak,
+    MarkdownInjection,
+    TextImagePrompt,
+    UnicodeLookalike,
+)
+from sentinel.redteam.probes.web_injection import WebInjectionProbe
 
 __all__ = [
     # Security probes
@@ -214,4 +406,69 @@ __all__ = [
     "MedicalSafetyProbe",
     "LegalSafetyProbe",
     "InsuranceSafetyProbe",
+    # AEGIS benchmark probes
+    "AegisViolentCrimesProbe", "AegisNonViolentCrimesProbe",
+    "AegisSexCrimesProbe", "AegisCSEProbe", "AegisDefamationProbe",
+    "AegisSpecializedAdviceProbe", "AegisPrivacyProbe", "AegisIPProbe",
+    "AegisWeaponsProbe", "AegisHateProbe", "AegisSuicideProbe",
+    "AegisSexualContentProbe", "AegisElectionsProbe",
+    # BeaverTails benchmark probes
+    "BeaverTailsAnimalAbuseProbe", "BeaverTailsChildAbuseProbe",
+    "BeaverTailsDrugAbuseProbe", "BeaverTailsFinancialCrimeProbe",
+    "BeaverTailsHateSpeechProbe", "BeaverTailsMisinfoProbe",
+    "BeaverTailsUnethicalProbe", "BeaverTailsPrivacyViolenceProbe",
+    "BeaverTailsSelfHarmProbe", "BeaverTailsTerrorismProbe",
+    "BeaverTailsTheftProbe", "BeaverTailsViolenceProbe",
+    # Additional benchmark probes
+    "ToxicChatProbe", "PlinyProbe", "UnsafeBenchProbe", "VLGuardProbe",
+    "RAGSourceAttributionProbe", "MultiInputFormatProbe",
+    # Bias probes
+    "RacialBiasProbe", "GenderBiasProbe", "AgeBiasProbe",
+    "ReligionBiasProbe", "DisabilityBiasProbe",
+    "SexualOrientationBiasProbe", "SocioeconomicBiasProbe",
+    # Context compliance probes
+    "ContextComplianceProbe", "AuthorityImpersonationProbe",
+    "InstructionInjectionViaDataProbe",
+    # CyberSecEval probes
+    "CyberSecEvalInsecureCodeProbe", "CyberSecEvalExploitProbe",
+    "CyberSecEvalSocialEngProbe", "CyberSecEvalMalwareProbe",
+    "CyberSecEvalNetworkProbe",
+    # Excessive agency probes
+    "ExcessiveAgencyProbe", "GoalMisalignmentProbe", "HijackingProbe",
+    "IntentProbe", "UnverifiableClaimsProbe", "WordplayProbe", "XSTestProbe",
+    # HarmBench probes
+    "HarmBenchStandardProbe", "HarmBenchContextualProbe", "HarmBenchCopyrightProbe",
+    # PII probes
+    "PIIExtractionProbe", "PIIGenerationProbe", "PIIMemorizationProbe",
+    # MCP security probes
+    "MCPToolPoisoningProbe", "MCPResourceExfilProbe", "MCPPromptInjectionProbe",
+    "MCPSchemaManipulationProbe", "MCPCrossOriginProbe",
+    # Industry compliance probes
+    "FinancialHallucinationProbe", "FinancialComplianceProbe",
+    "FinancialSycophancyProbe", "FinancialDataLeakageProbe",
+    "FinancialImpartialityProbe",
+    "MedicalHallucinationProbe", "MedicalSycophancyProbe",
+    "MedicalFDADisclosureProbe", "MedicalOffLabelProbe", "MedicalPHIProbe",
+    "TelecomCPNIProbe", "TelecomE911Probe", "TelecomTCPAProbe",
+    "EcommercePriceManipulationProbe", "EcommercePCIDSSProbe",
+    "EcommerceOrderFraudProbe",
+    "InsuranceDiscriminationProbe", "InsuranceMisinformationProbe",
+    "PharmacyDosageProbe", "PharmacyDrugInteractionProbe",
+    "PharmacyControlledSubstanceProbe",
+    "RealEstateFairHousingProbe", "RealEstateValuationBiasProbe",
+    "TeenSafetyDangerousContentProbe", "TeenSafetyLocationDisclosureProbe",
+    "TeenSafetyHarmfulBodyIdealsProbe",
+    "COPPAProbe", "FERPAProbe",
+    "CodingAgentSecurityProbe", "CodingAgentVerificationProbe",
+    # Industry expanded probes
+    "PharmacySafetyProbe", "EcommerceSafetyProbe", "TelecomSafetyProbe",
+    "RealEstateSafetyProbe", "TeenSafetyProbe",
+    # Authorization probes
+    "BFLAProbe", "BOLAProbe", "RBACProbe",
+    # Miscellaneous probes
+    "CompetitorEndorsementProbe", "ContractsProbe", "DebugAccessProbe",
+    "HallucinationProbe", "ImitationProbe", "OffTopicProbe",
+    "OverrelianceProbe", "PromptExtractionProbe",
+    "ShellInjectionProbe", "SQLInjectionProbe", "SSRFProbe",
+    "ToolDiscoveryProbe",
 ]

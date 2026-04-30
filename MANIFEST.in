@@ -1,0 +1,10 @@
+include README.md
+include LICENSE
+include sentinel.toml
+include rules/*.yaml
+include rules/rego/*.rego
+include config/schemas/*.json
+include config/schemas/*.yaml
+recursive-include docs *.md
+recursive-include config *.yaml *.toml *.yml *.json
+recursive-include scripts/completions *

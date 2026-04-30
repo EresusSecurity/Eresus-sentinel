@@ -1,11 +1,13 @@
 """Reversible anonymization vault — stores mappings for de-anonymization."""
 from __future__ import annotations
+
 import hashlib
 import json
 import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
 from .entity_types import EntityType
 from .replacer import ReplacementResult
 
@@ -94,7 +96,7 @@ class AnonymizationVault:
         return {"total": len(self._entries), "by_type": by_type}
 
     def _expire(self) -> None:
-        now = time.time()
+        time.time()
         expired = [k for k, v in self._entries.items() if self._is_expired(v)]
         for k in expired:
             entry = self._entries.pop(k)
@@ -145,8 +147,9 @@ class AnonymizationVault:
 
     def _encrypt(self, data: str) -> str:
         try:
-            from cryptography.fernet import Fernet
             import base64
+
+            from cryptography.fernet import Fernet
             key = base64.urlsafe_b64encode(hashlib.sha256(self._encryption_key.encode()).digest())
             return Fernet(key).encrypt(data.encode()).decode()
         except ImportError:
@@ -155,8 +158,9 @@ class AnonymizationVault:
 
     def _decrypt(self, data: str) -> str:
         try:
-            from cryptography.fernet import Fernet
             import base64
+
+            from cryptography.fernet import Fernet
             key = base64.urlsafe_b64encode(hashlib.sha256(self._encryption_key.encode()).digest())
             return Fernet(key).decrypt(data.encode()).decode()
         except ImportError:

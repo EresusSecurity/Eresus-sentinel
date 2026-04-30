@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+from ...finding import Finding, Location, Severity
 from .._pickle_ops import (
-    PickleAnalysis,
     GET_PUT_RATIO_CRIT,
+    PickleAnalysis,
 )
 from .._pickle_rules import rule_id_for_module
-from ...finding import Finding, Severity, Location
+
+
+def _fallback_has_evasion_signal(analysis: PickleAnalysis) -> bool:
+    """Only escalate parser fallback when raw scan found pickle-risk signals."""
+    return any(
+        (
+            analysis.dangerous_imports,
+            analysis.suspicious_global_mutations,
+            analysis.has_reduce,
+            analysis.has_nested_pickle,
+            analysis.has_nested_yaml,
+            analysis.has_tar_format,
+            analysis.has_codetype_construction,
+            analysis.has_ext_registry_abuse,
+        )
+    )
 
 
 def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
@@ -51,6 +67,38 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
                 "avid-effect:security:S0403",
                 "owasp:llm05",
                 "mitre-atlas:AML.T0010",
+            ],
+        ))
+
+    # ── Mutated dangerous GLOBAL findings ──────────────────────
+    for imp in analysis.suspicious_global_mutations:
+        near_miss = next(
+            (arg.split("=", 1)[1] for arg in imp.payload_args if arg.startswith("near_miss=")),
+            "a blocklisted global",
+        )
+        findings.append(Finding.artifact(
+            rule_id="ARTIFACT-041",
+            title=f"Suspicious mutated pickle global: {imp.module}.{imp.name}",
+            description=(
+                f"The pickle stream at '{source}' contains a GLOBAL opcode that is "
+                f"one mutation away from {near_miss} and is followed by an execution "
+                "opcode. This is characteristic of fuzzed or tampered pickle payloads "
+                "attempting to evade exact blocklist matching."
+            ),
+            severity=imp.severity,
+            confidence=imp.confidence,
+            target=source,
+            evidence=(
+                f"Opcode: {imp.opcode} at position {imp.position}, "
+                f"mutated import: {imp.module}.{imp.name}, "
+                f"chain_confirmed: {imp.chain_confirmed}"
+            ),
+            location=Location(file=source, byte_offset=imp.position),
+            cwe_ids=["CWE-502"],
+            tags=[
+                "avid-effect:security:S0403",
+                "owasp:llm05",
+                "evasion:mutated-global",
             ],
         ))
 
@@ -171,7 +219,7 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
         ))
 
     # ── Byte-scan fallback ───────────────────────────────────
-    if analysis.byte_scan_fallback:
+    if analysis.byte_scan_fallback and _fallback_has_evasion_signal(analysis):
         findings.append(Finding.artifact(
             rule_id="ARTIFACT-000",
             title="Pickle opcode parser crashed \u2014 evasion technique detected",
@@ -276,6 +324,26 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
             cwe_ids=["CWE-502"],
         ))
 
+    # ── Malformed pickle fallback ────────────────────────────
+    if analysis.byte_scan_fallback and analysis.parse_error:
+        # Escalate to HIGH if exec opcodes present but no dangerous imports found
+        has_exec_signal = analysis.has_reduce and not analysis.dangerous_imports
+        findings.append(Finding.artifact(
+            rule_id="ARTIFACT-040",
+            title="Malformed pickle stream" + (" with execution opcodes" if has_exec_signal else ""),
+            description=(
+                "Pickle opcode parsing failed and Sentinel had to fall back to raw byte scanning. "
+                "Malformed pickle streams can be used to evade opcode-based scanners."
+                + (" Execution opcodes (REDUCE/NEWOBJ/BUILD) were found despite "
+                   "string-level evasion — high risk of obfuscated RCE." if has_exec_signal else "")
+            ),
+            severity=Severity.HIGH if has_exec_signal else Severity.MEDIUM,
+            confidence=0.8 if has_exec_signal else 0.7,
+            target=source,
+            evidence=analysis.parse_error[:200],
+            cwe_ids=["CWE-502"],
+        ))
+
     # ── OBJ+POP invisibility ─────────────────────────────────
     if analysis.has_obj_pop_bypass:
         findings.append(Finding.artifact(
@@ -294,7 +362,9 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
         ))
 
     # ── Unused variables ─────────────────────────────────────
-    if analysis.has_unused_assignments:
+    if analysis.has_unused_assignments and any(
+        imp.chain_confirmed for imp in analysis.dangerous_imports + analysis.suspicious_global_mutations
+    ):
         findings.append(Finding.artifact(
             rule_id="ARTIFACT-034",
             title="Unused variable after REDUCE (side-effect-only operation)",

@@ -9,6 +9,7 @@ the model can be convinced to override its own refusal.
 from __future__ import annotations
 
 import re
+
 from sentinel.redteam.attempt import Attempt
 
 REFUSAL_PATTERNS = [

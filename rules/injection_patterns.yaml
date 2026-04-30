@@ -219,6 +219,48 @@ encoding_attack:
     name: encoded_payload_decode
     severity: HIGH
 
+  # ── Literal encoded payloads (content-level, no surrounding keywords needed) ──
+
+  # Base64 labeled: "BASE64: <payload>" or "base64=<payload>"
+  - pattern: '(?i)base64\s*[:=]\s*[A-Za-z0-9+/]{20,}={0,2}'
+    name: labeled_base64_payload
+    severity: HIGH
+
+  # Raw base64 blob (≥40 chars of pure base64 alphabet — length filters noise)
+  - pattern: '(?<!\w)(?:[A-Za-z0-9+/]{40,}={0,2})(?!\w)'
+    name: raw_base64_blob
+    severity: MEDIUM
+
+  # C-style hex escape sequences: \x69\x67\x6e\x6f\x72\x65 (≥4 bytes)
+  - pattern: '(?:\\x[0-9a-fA-F]{2}){4,}'
+    name: hex_escape_sequence
+    severity: HIGH
+
+  # 0x-prefixed hex blob: 0x696e6a656374 (≥16 hex nibbles = ≥8 bytes)
+  - pattern: '\b0x[0-9a-fA-F]{16,}\b'
+    name: hex_0x_blob
+    severity: HIGH
+
+  # Space-delimited hex bytes: "69 67 6e 6f 72 65" (≥6 pairs)
+  - pattern: '\b(?:[0-9A-Fa-f]{2} ){5,}[0-9A-Fa-f]{2}\b'
+    name: hex_space_delimited
+    severity: MEDIUM
+
+  # URL percent-encoded injection (≥6 encoded chars, e.g. %69%67%6e%6f%72%65)
+  - pattern: '(?:%[0-9A-Fa-f]{2}){6,}'
+    name: url_percent_encoded_payload
+    severity: HIGH
+
+  # ROT13 of "ignore * previous * instructions" variants
+  - pattern: '(?i)\bvtaber\s+(?:nyy\s+)?(?:cerivbhf|cevbe)\s+(?:vafgehpgvbaf?|qverpgvirf?|ehyrf?|thvqryvarf?)'
+    name: rot13_instruction_override
+    severity: CRITICAL
+
+  # Leet-speak injection indicator: "1gn0r3" / "!gn0re" / "d1sr3g4rd"
+  - pattern: '(?:[1!|i][g9][n][o0][r3][e3]|[d][1!i][s$][r3][e3][g9][a4@][r][d])\s+(?:[a4@][l1][l1]\s+)?(?:[p][r3][e3][v][1!i][o0][u][s5]|[p][r][1!i][o0][r])\s+[a-z0-9!@$|_]'
+    name: leetspeak_instruction_override
+    severity: CRITICAL
+
   - pattern: '(?i)(?:bijection|homoglyph|homograph|confusable|lookalike|similar.?looking|visually.?similar)\s+(?:characters?|letters?|encoding|substitution|attack|mapping)'
     name: homoglyph_attack
     severity: HIGH
@@ -309,3 +351,899 @@ output_manipulation:
   - pattern: '(?i)end\s+(?:your\s+)?(?:response|output|reply|message)\s+with\s+(?:a\s+)?(?:specific|particular|exact)\s+(?:string|text|phrase|word|token|marker|delimiter|tag)'
     name: output_marker_injection
     severity: MEDIUM
+
+# ============================================================================
+# Harmful Content & Weapon Synthesis Escalation
+# Patterns for detecting requests to generate explosive/bomb instructions,
+# synthesis routes for dangerous substances, and violence-escalation via
+# profanity-combined bypass tricks.
+# ============================================================================
+
+harmful_content:
+  # ── Explosive / bomb synthesis ───────────────────────────────────────────
+  - pattern: '(?i)(?:how\s+(?:do|can|would)\s+(?:i|you|one|someone|a\s+person))\s+(?:make|build|construct|create|assemble|synthesize|manufacture|produce)\s+(?:a\s+)?(?:bomb|explosive|ied|improvised\s+explosive|pipe\s+bomb|car\s+bomb|suicide\s+vest|dirty\s+bomb|grenade|molotov|incendiary\s+device)'
+    name: bomb_synthesis_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:recipe|instructions?|steps?|guide|tutorial|how.to|method|procedure|formula|blueprint)\s+(?:for\s+)?(?:making|building|creating|constructing|assembling|synthesizing|manufacturing)\s+(?:a\s+)?(?:bomb|explosive|ied|pipe\s+bomb|car\s+bomb|dirty\s+bomb|grenade|molotov|thermite|ammonium\s+nitrate\s+bomb|anfo|napalm|incendiary)'
+    name: explosive_recipe
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:ammonium\s+nitrate|ANFO|RDX|TATP|HMTD|PETN|C-4|Semtex|TNT|dynamite|nitroglycerin|potassium\s+nitrate|gunpowder|black\s+powder)\s+(?:synthesis|recipe|how\s+to\s+make|instructions?|detonator|trigger)'
+    name: explosive_chemical_synthesis
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:detonator|blasting\s+cap|initiator|fuse|trigger\s+mechanism|remote\s+(?:det|trigger))\s+(?:wiring?|schematic|circuit|diagram|instructions?|how\s+to|design)'
+    name: detonator_instructions
+    severity: CRITICAL
+
+  # ── Chemical / biological weapon synthesis ───────────────────────────────
+  - pattern: '(?i)(?:synthesize|manufacture|produce|create|make)\s+(?:nerve\s+agent|sarin|VX\s+nerve|novichok|mustard\s+gas|phosgene|hydrogen\s+cyanide|ricin|anthrax\s+spore|botulinum\s+toxin|weaponized\s+pathogen)'
+    name: chemical_bioweapon_synthesis
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:aerosolize|weaponize|disperse|deliver)\s+(?:toxin|pathogen|virus|bacteria|chemical\s+agent|biological\s+agent|nerve\s+agent|poison)'
+    name: weapon_dispersal
+    severity: CRITICAL
+
+  # ── Mass-casualty attack planning ────────────────────────────────────────
+  - pattern: '(?i)(?:plan|coordinate|execute|carry\s+out|stage|conduct)\s+(?:a\s+)?(?:mass\s+shooting|massacre|attack\s+on|bombing\s+of|terrorist\s+attack|school\s+shooting|act\s+of\s+terrorism)'
+    name: mass_casualty_planning
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:how\s+(?:to|do\s+i|can\s+i)\s+)?(?:kill|murder|assassinate|eliminate|neutralize)\s+(?:as\s+many|the\s+most|maximum|large\s+number\s+of)\s+(?:people|humans|civilians|victims)'
+    name: mass_harm_optimization
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:target\s+(?:soft|civilian|crowded|public)\s+(?:area|venue|space|building)|crowded\s+place\s+attack|maximize\s+(?:casualties|deaths?|body\s+count))'
+    name: soft_target_attack
+    severity: CRITICAL
+
+  # ── Drug synthesis ───────────────────────────────────────────────────────
+  - pattern: '(?i)(?:synthesize|manufacture|cook|produce|make)\s+(?:meth(?:amphetamine)?|crystal\s+meth|fentanyl|heroin|cocaine|crack\s+cocaine|MDMA|ecstasy|carfentanil|GHB|rohypnol|ketamine)\s+(?:at\s+home|from\s+scratch|step\s+by\s+step|recipe|instructions?|procedure|guide)'
+    name: drug_synthesis_guide
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:precursor|reagent|one-pot|birch\s+reduction|shake\s+and\s+bake)\s+(?:for\s+)?(?:meth|amphetamine|fentanyl|heroin|MDMA|synthesis)'
+    name: drug_precursor_method
+    severity: CRITICAL
+
+  # ── Profanity-combined bypass attempts ───────────────────────────────────
+  # Attackers use profanity/shock language to signal "no-filter zone" or
+  # to bypass classifiers that lower threshold after detecting casual speech.
+  - pattern: '(?i)(?:fuck(?:ing)?|shit|bitch|cunt|motherfuck(?:er|ing)?|ass(?:hole)?|bastard)\s+(?:the\s+)?(?:rules?|filter|safety|guardrail|restriction|censorship|policy|guidelines?)\s+(?:and\s+)?(?:tell|show|give|explain|write|describe)'
+    name: profanity_bypass_combo
+    severity: HIGH
+
+  - pattern: '(?i)(?:fuck(?:ing)?|shit|bitch|cunt|motherfuck(?:er|ing)?)\s+(?:it[,\s]|that[,\s]|everything[,\s]|them[,\s])?\s*(?:now\s+)?(?:make|build|create|synthesize|explain|tell\s+me|show\s+me|write)\s+(?:a\s+)?(?:bomb|weapon|poison|virus|malware|exploit|payload|hack|attack)'
+    name: profanity_harm_escalation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:no\s+more\s+(?:bullshit|crap|fucking|bs)|stop\s+(?:the\s+)?(?:bullshit|filtering|censoring))[,\s]+(?:just\s+)?(?:tell|show|give|answer|explain|write|describe)\s+(?:me\s+)?(?:how|the\s+(?:steps?|way|method|recipe|instructions?))'
+    name: frustration_bypass
+    severity: HIGH
+
+  - pattern: '(?i)(?:yo(?:u|,)?\s+(?:nigga|bro|man|dude|homie))[,\s]+(?:just\s+)?(?:tell|show|explain|write|give|help)\s+(?:me\s+)?(?:how\s+to\s+)?(?:make|build|create|get|obtain|buy)\s+(?:a\s+)?(?:gun|bomb|weapon|drugs?|meth|coke|heroin|poison|hack|exploit)'
+    name: casual_harm_request
+    severity: CRITICAL
+
+  # ── Self-harm & suicide method requests ──────────────────────────────────
+  - pattern: '(?i)(?:most\s+(?:effective|painless|quick|reliable|lethal|certain)\s+(?:way|method|means)\s+to\s+(?:kill\s+(?:myself|yourself|oneself)|commit\s+suicide|end\s+(?:my|your|one.s)\s+life|die))'
+    name: suicide_method_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:lethal\s+dose|LD50)\s+of\s+(?:tylenol|acetaminophen|ibuprofen|paracetamol|aspirin|sleeping\s+pills?|benadryl|melatonin)\s+(?:for\s+a\s+person|for\s+(?:suicide|self-harm|overdose|killing))'
+    name: lethal_dose_query
+    severity: CRITICAL
+
+  # ── Firearm circumvention ────────────────────────────────────────────────
+  - pattern: '(?i)(?:3d\s+print(?:ed|ing)?|ghost\s+gun|untraceable\s+(?:gun|firearm|weapon)|solvent\s+trap\s+kit|auto\s+sear|auto-sear|switch\s+(?:for\s+)?(?:glock|pistol|gun)|full\s+auto\s+conversion|select\s+fire\s+conversion)'
+    name: firearm_circumvention
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:convert|modify|turn)\s+(?:a\s+)?(?:semi.?auto|pistol|rifle|ar-15|ak-47|glock|gun|firearm)\s+(?:in)?to\s+(?:full.?auto|automatic|machine\s+gun|select\s+fire)'
+    name: illegal_weapon_modification
+    severity: CRITICAL
+
+  # ── CSAM & child exploitation ────────────────────────────────────────────
+  - pattern: '(?i)(?:sexual|nude|naked|explicit|erotic|pornographic)\s+(?:content|image|photo|story|roleplay|scenario)\s+(?:of|involving|featuring|with)\s+(?:a\s+)?(?:child|minor|underage|teen(?:ager)?|kid|boy|girl)\s+(?:under\s+\d{1,2}|\(\d{1,2}\)|aged?\s+\d{1,2})?'
+    name: csam_generation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:groom(?:ing)?|exploit(?:ing)?|lure|seduce)\s+(?:a\s+)?(?:child|minor|underage|teen(?:ager)?|kid)'
+    name: child_grooming
+    severity: CRITICAL
+
+  # ── Ransomware / destructive malware generation ──────────────────────────
+  - pattern: '(?i)(?:write|create|generate|code|develop|build)\s+(?:(?:fully\s+)?(?:functional|working|operational|undetected|polymorphic|obfuscated)\s+)?(?:ransomware|keylogger|rootkit|spyware|wiper|trojan|rat\s+(?:malware|tool)|remote\s+access\s+trojan|credential\s+stealer|infostealer)'
+    name: malware_generation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:ransomware|wiper|destructive\s+malware)\s+(?:that\s+)?(?:encrypts?|wipes?|destroys?|deletes?|exfiltrates?)\s+(?:all\s+)?(?:files?|data|disk|hard\s+drive|database)'
+    name: destructive_malware_payload
+    severity: CRITICAL
+
+  # ── Critical infrastructure attacks ──────────────────────────────────────
+  - pattern: '(?i)(?:attack|compromise|hack|disable|shut\s+down|take\s+(?:down|offline))\s+(?:the\s+)?(?:power\s+grid|electrical\s+grid|water\s+treatment|nuclear\s+plant|dam|hospital\s+systems?|air\s+traffic\s+control|financial\s+infrastructure)'
+    name: critical_infrastructure_attack
+    severity: CRITICAL
+
+  # ── Stealthy escalation — politely asking for CBRN ───────────────────────
+  - pattern: '(?i)(?:academic|research|educational|scientific|theoretical)\s+(?:purpose|context|reason|paper|study).{0,80}(?:synthesize|manufacture|produce|create|make)\s+(?:nerve\s+agent|sarin|novichok|mustard\s+gas|ricin|botulinum|weaponized|explosive|bomb)'
+    name: academic_cbrn_pretext
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:fiction|novel|story|screenplay|script|narrative).{0,60}(?:detailed?\s+)?(?:instructions?|steps?|recipe|formula|synthesis\s+route|procedure)\s+(?:for\s+)?(?:making|building|synthesizing|creating)\s+(?:a\s+)?(?:bomb|explosive|poison|nerve\s+agent|weapon)'
+    name: fiction_pretext_harm
+    severity: CRITICAL
+
+# ============================================================================
+# Advanced Encoding & Obfuscation Bypass (P4RS3LT0NGV3-class attacks)
+# Patterns targeting Unicode manipulation, steganographic embedding,
+# multi-layer encoding chains, token bombing, and homoglyph substitution.
+# All techniques drawn from the P4RS3LT0NGV3 research corpus.
+# ============================================================================
+
+encoding_bypass:
+  # ── Zero-width character injection ───────────────────────────────────────
+  # ZWC characters (ZWSP U+200B, ZWJ U+200D, ZWNJ U+200C, WORD JOINER U+2060,
+  # SHY U+00AD, BOM U+FEFF) split tokens without visible breaks.
+  - pattern: '[\u200B\u200C\u200D\u2060\u00AD\uFEFF\u180E\u2028\u2029]{2,}'
+    name: zero_width_char_cluster
+    severity: CRITICAL
+
+  - pattern: '(?:ignore|forget|bypass|override|disable)(?:[\u200B\u200C\u200D\u2060\u00AD\uFEFF]+\S+){1,}'
+    name: zero_width_token_split_injection
+    severity: CRITICAL
+
+  # ── Unicode Tags block (invisible text, U+E0000–U+E007F) ─────────────────
+  # P4RS3LT0NGV3 "Invisible Text" feature uses the Tags block to hide payloads
+  - pattern: '[\U000E0000-\U000E007F]{3,}'
+    name: unicode_tags_invisible_payload
+    severity: CRITICAL
+
+  # ── Fullwidth Latin substitution (U+FF01–U+FF5E) ─────────────────────────
+  # "Vaporwave" transform: replaces ASCII with fullwidth equivalents
+  # e.g. "ｉｇｎｏｒｅ ｉｎｓｔｒｕｃｔｉｏｎｓ"
+  - pattern: '[！-～]{6,}'
+    name: fullwidth_latin_obfuscation
+    severity: HIGH
+
+  - pattern: '(?:[ｉｇｎｏｒｅ]{5}|[ｄｉｓｒｅｇａｒｄ]{9}|[ｂｙｐａｓｓ]{6}|[ｓｙｓｔｅｍ]{6}|[ｊａｉｌｂｒｅａｋ]{9})'
+    name: fullwidth_keyword_substitution
+    severity: CRITICAL
+
+  # ── Mathematical alphanumeric Unicode (Bold, Italic, Monospace, etc.) ────
+  # 𝗶𝗴𝗻𝗼𝗿𝗲  𝘪𝘯𝘴𝘵𝘳𝘶𝘤𝘵𝘪𝘰𝘯𝘴  𝚒𝚐𝚗𝚘𝚛𝚎
+  - pattern: '[𝐀-𝐳𝑨-𝒛𝒜-𝓩𝔄-𝔷𝕬-𝖟𝗔-𝘇𝘈-𝙯𝙰-𝚣]{6,}'
+    name: mathematical_unicode_obfuscation
+    severity: HIGH
+
+  - pattern: '(?:[𝐢𝑖𝒊𝓲𝔦𝕚𝖎𝗂𝘪𝙞𝚒][𝐠𝑔𝒈𝓰𝔤𝕘𝖌𝗀𝘨𝙜𝚐][𝐧𝑛𝒏𝓷𝔫𝕟𝖓𝗇𝘯𝙣𝚗][𝐨𝑜𝒐𝓸𝔬𝕠𝖔𝗈𝘰𝙤𝚘][𝐫𝑟𝒓𝓻𝔯𝕣𝖗𝗋𝘳𝙧𝚛][𝐞𝑒𝒆𝓮𝔢𝕖𝖊𝗄𝘦𝙚𝚎])'
+    name: math_unicode_ignore
+    severity: CRITICAL
+
+  # ── Cyrillic/Greek homoglyph substitution ────────────────────────────────
+  # Latin→Cyrillic lookalikes: a→а (U+0430), e→е (U+0435), o→о (U+043E), etc.
+  - pattern: '(?:[а-яА-ЯёЁ].*[a-zA-Z]|[a-zA-Z].*[а-яА-ЯёЁ]){3,}'
+    name: cyrillic_latin_homoglyph_mix
+    severity: HIGH
+
+  - pattern: '(?:[αβγδεζηθικλμνξοπρστυφχψω].*[a-zA-Z]|[a-zA-Z].*[αβγδεζηθικλμνξοπρστυφχψω]){3,}'
+    name: greek_latin_homoglyph_mix
+    severity: HIGH
+
+  # ── Zalgo / combining mark overflow ──────────────────────────────────────
+  # Stacked combining diacritics that visually distort text to bypass classifiers
+  - pattern: '(?:[\u0300-\u036F\u0489\u1DC0-\u1DFF\u20D0-\u20FF]{3,})'
+    name: zalgo_combining_marks
+    severity: HIGH
+
+  # ── ROT47 / ROT128 / ROT8000 encoded payloads ────────────────────────────
+  - pattern: '(?i)(?:rot.?47|rot.?128|rot.?8000|rot\s*18)\s*(?:decode|encode|apply|cipher|encrypted|obfuscated)'
+    name: rot_variant_encoding
+    severity: HIGH
+
+  - pattern: '(?i)(?:decode|interpret|apply)\s+(?:this\s+)?rot.?(?:47|128|8000|18)\s*(?:and\s+)?(?:follow|execute|comply|do|perform|answer)'
+    name: rot_variant_decode_instruction
+    severity: CRITICAL
+
+  # ── Base58/Base62/Base91/ASCII85/Z85/Base122 encoding payloads ───────────
+  - pattern: '(?i)(?:decode|interpret|execute|run|comply\s+with|follow)\s+(?:this|the\s+following)?\s*(?:base58|base62|base91|ascii85|base85|z85|base122|basE91|base.?36|base.?45)\s+(?:encoded|payload|data|string|text|input|message|instruction)'
+    name: extended_base_decode_instruction
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:base58|base62|base91|ascii85|base85|z85|base122|basE91)\s+(?:encoded?|decoded?)\s+(?:version|form|representation)\s+(?:of\s+)?(?:your|the|my)\s+(?:instructions?|rules?|system|prompt)'
+    name: alt_base_system_extraction
+    severity: CRITICAL
+
+  # ── Uuencode / YEnc / Baudot / EBCDIC ────────────────────────────────────
+  - pattern: '(?i)(?:uuencode|uudecode|yenc|baudot|ebcdic|ita2|quoted.printable)\s+(?:decode|encode|format|payload|instruction|command|this)'
+    name: legacy_encoding_instruction
+    severity: HIGH
+
+  - pattern: '^begin\s+[0-7]{3,4}\s+\S+'
+    name: uuencode_header
+    severity: HIGH
+
+  # ── HTML entity / URL encoding evasion ───────────────────────────────────
+  - pattern: '(?i)(?:&#x?[0-9a-f]+;|%[0-9A-Fa-f]{2}|\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}){5,}'
+    name: mixed_entity_encoding
+    severity: HIGH
+
+  # ── Token bombing (Tokenade-style) ───────────────────────────────────────
+  # Tokenade builds depth/breadth carrier+payload combos designed to overflow
+  # context or confuse tokenizer boundaries
+  - pattern: '(?i)(?:token\s*bomb|context\s*bomb|attention\s*flood|embedding\s*overflow|context\s*window\s*overflow|KV\s*cache\s*attack)'
+    name: token_bomb_explicit
+    severity: CRITICAL
+
+  - pattern: '(?:(?:[\u200B\u200C\u200D]{1}[^\s]{1,3}){10,})'
+    name: zwsp_token_splitting_pattern
+    severity: CRITICAL
+
+  # ── Bijection / A1Z26 / Polybius custom mapping bypasses ─────────────────
+  - pattern: '(?i)(?:a1z26|alphapr|bijection\s*map|custom\s*(?:cipher|mapping|alphabet)|character.to.number\s*(?:map|scheme|substitution))\s+(?:decode|encode|apply|translate|follow|execute|comply)'
+    name: bijection_custom_mapping
+    severity: HIGH
+
+  - pattern: '(?i)(?:polybius|playfair|bifid|trifid|hill\s*cipher|four.?square|two.?square)\s+(?:decode|grid|square)\s+(?:this|the\s+following)\s+(?:and\s+)?(?:follow|execute|comply|answer)'
+    name: classical_cipher_decode_instruction
+    severity: CRITICAL
+
+  # ── Braille / Morse / NATO phonetic as payload carrier ───────────────────
+  - pattern: '(?i)(?:decode|interpret|translate)\s+(?:this|the\s+following)\s+(?:braille|morse\s+code|nato\s+phonetic|tap\s+code|semaphore|maritime\s+flags)\s+(?:and\s+)?(?:follow|execute|do|comply|answer)'
+    name: alternative_alphabet_decode_instruction
+    severity: HIGH
+
+  - pattern: '(?:[⠀-⣿]{6,})'
+    name: braille_payload_carrier
+    severity: MEDIUM
+
+  # ── Brainfuck / Whitespace language ──────────────────────────────────────
+  - pattern: '(?:[><\+\-\.,\[\]]{10,})'
+    name: brainfuck_pattern
+    severity: HIGH
+
+  - pattern: '(?i)(?:decode|execute|run|interpret)\s+(?:this|the\s+following)\s+(?:brainfuck|whitespace\s+language|malbolge|ook!?)\s+(?:program|code|source)'
+    name: esoteric_language_execution
+    severity: HIGH
+
+  # ── Whitespace steganography ──────────────────────────────────────────────
+  # P4RS3LT0NGV3 "Whitespace Steganography" hides bits in tab/space patterns
+  - pattern: '(?:[\t ]{2,}[\t ]+){5,}'
+    name: whitespace_steganography_pattern
+    severity: HIGH
+
+  # ── Multi-stage encoding chain ────────────────────────────────────────────
+  # e.g. "base64 then rot13 then hex"
+  - pattern: '(?i)(?:then|and\s+then|next|followed\s+by|after\s+that)\s+(?:base64|rot.?13|rot.?47|hex|url.?(?:encode|decode)|reverse|caesar|atbash|xor|vigenere|affine|playfair)'
+    name: encoding_chain_instruction
+    severity: HIGH
+
+  - pattern: '(?i)(?:first|step\s+1|layer\s+1)\s+(?:base64|hex|rot.?13|rot.?47).{0,50}(?:then|step\s+2|layer\s+2)\s+(?:base64|hex|rot.?13|rot.?47|caesar|atbash|xor)'
+    name: multi_layer_encoding_chain
+    severity: CRITICAL
+
+  # ── Emoji steganography (variation selectors) ─────────────────────────────
+  # P4RS3LT0NGV3 hides messages using VS15/VS16 (U+FE0E, U+FE0F) and related
+  - pattern: '(?:[\uFE00-\uFE0F\U000E0100-\U000E01EF]{3,})'
+    name: emoji_variation_selector_steg
+    severity: CRITICAL
+
+  # ── Leetspeak extended evasion ────────────────────────────────────────────
+  # Beyond basic l33t — extended substitutions to evade pattern matching
+  - pattern: '(?i)(?:1gn0r3|1gnor3|ignor3|1gnore)\s+(?:pr3v1ous|pr3v10us|pr3vi0us|pr3vious|previous)\s+(?:1nstruct10ns?|1nstructi0ns?|instructi0ns?|instructions?)'
+    name: leet_speak_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:s[y1]st[e3]m\s+pr[o0]mpt|s[y1]st[e3]m\s+[i1]nstruct[i1][o0]n|[j]\s*[a4]\s*[i1]\s*[l1]\s*[b8]\s*r[e3][a4][k])'
+    name: leet_keyword_obfuscation
+    severity: HIGH
+
+  # ── Pig Latin / Rövarspråket / Javanais evasion ───────────────────────────
+  - pattern: '(?i)(?:decode|interpret|translate)\s+(?:this\s+)?(?:pig\s*latin|r.varsp.?ket|javanais|ubbi\s*dubbi|disemvowel(?:ed)?)\s+(?:and\s+)?(?:follow|comply|execute|do)'
+    name: word_game_decode_instruction
+    severity: HIGH
+
+  # ── Script/alphabet substitution payloads ────────────────────────────────
+  - pattern: '(?i)(?:decode|translate|interpret)\s+(?:this\s+)?(?:elder\s+futhark|hieroglyphic|ogham|runic|aurebesh|klingon|quenya|tengwar|dovahzul)\s+(?:and\s+)?(?:follow|comply|execute|answer|do)'
+    name: fantasy_script_decode_instruction
+    severity: HIGH
+
+  # ── Splitting/splitter technique: instructions spread across chunks ────────
+  - pattern: '(?i)(?:split|chunk|fragment|piece)\s+(?:my|the|this)\s+(?:instruction|prompt|request|command|query)\s+(?:into|across|over)\s+(?:multiple|several|many|\d+)\s+(?:messages?|turns?|parts?|chunks?|pieces?)'
+    name: instruction_splitting_request
+    severity: HIGH
+
+  # ── Mutation Lab combined noise ───────────────────────────────────────────
+  # Mutation Lab can chain: random mix + zero-width + Unicode noise + Zalgo + whitespace
+  - pattern: '(?:[\u0300-\u036F]{2,}[\u200B\u200C\u200D])|(?:[\u200B\u200C\u200D][\u0300-\u036F]{2,})'
+    name: mutation_lab_combined_noise
+    severity: HIGH
+
+  # ── Anti-classifier paraphrase marker ────────────────────────────────────
+  - pattern: '(?i)(?:anti.?classifier|paraphrase.?(?:rewrite|rephrase|style)|bypass.?(?:safety|filter|guardrail).?(?:via|through|using)\s+(?:paraphrase|reword|rephrase|synonym))'
+    name: anti_classifier_technique
+    severity: HIGH
+
+  # ── Gibberish removal bypass (Gibberish tool) ─────────────────────────────
+  - pattern: '(?i)(?:remove|strip|delete)\s+(?:all|every)\s+(?:vowels?|consonants?|letters?|words?)\s+(?:from|in|out\s+of)\s+(?:the\s+)?(?:harmful|dangerous|restricted|sensitive)\s+(?:part|section|content|word|request)'
+    name: character_removal_bypass
+    severity: HIGH
+
+# ── P4RS3LT0NGV3-Derived Encoding Bypass Patterns ──────────────────────────────
+# Based on analysis of https://github.com/elder-plinius/P4RS3LT0NGV3 — 159 transforms
+# designed to bypass content filters. These are the attack surface each transform
+# creates when used to smuggle malicious instructions.
+p4rs3lt0ngv3_encoding_bypass:
+
+  # ── ROT variants (ROT47, ROT18, ROT5, ROT128, ROT8000) ───────────────────
+  - pattern: '(?i)(?:decode|interpret|process|follow|execute)\s+(?:this\s+)?(?:rot[-\s]?(?:47|18|5|128|8000|rot8000)|rot128|rot47|rot8000)\s*(?:encoded?|cipher|text|message)?'
+    name: rot_variant_decode_instruction
+    severity: HIGH
+
+  - pattern: '(?i)(?:respond|answer|output|write|reply)\s+(?:in|using|via|with)\s+(?:rot[-\s]?(?:47|18|5|128|8000))'
+    name: rot_variant_response_encoding
+    severity: HIGH
+
+  # ── Brainfuck encoding injection ─────────────────────────────────────────
+  - pattern: '(?:[\+\-\[\]\.,<>]{10,})'
+    name: brainfuck_payload_detected
+    severity: HIGH
+
+  - pattern: '(?i)(?:decode|run|execute|interpret|follow)\s+(?:this\s+)?(?:brainfuck|brainf\*ck|brain\s+fuck|bf\s+code)'
+    name: brainfuck_decode_instruction
+    severity: HIGH
+
+  # ── Morse code injection ──────────────────────────────────────────────────
+  - pattern: '(?:[.\-]{2,}\s+){5,}'
+    name: morse_code_payload_detected
+    severity: MEDIUM
+
+  - pattern: '(?i)(?:decode|translate|interpret|follow)\s+(?:this\s+)?(?:morse\s+code?|international\s+morse)\s+(?:and\s+)?(?:follow|execute|comply|do|answer)'
+    name: morse_decode_instruction
+    severity: HIGH
+
+  # ── A1Z26 numeric cipher injection ───────────────────────────────────────
+  - pattern: '(?i)(?:decode|translate|interpret)\s+(?:this\s+)?(?:a1z26|a\s*=\s*1|letter.?number(?:\s+cipher)?|1-26\s+cipher)\s+(?:and\s+)?(?:follow|comply|execute|do)'
+    name: a1z26_decode_instruction
+    severity: HIGH
+
+  # ── NATO / ICAO / ITU phonetic encoding injection ────────────────────────
+  - pattern: '(?i)(?:decode|follow|interpret)\s+(?:this\s+)?(?:nato\s+phonetic|icao\s+(?:phonetic|spelling)|itu\s+(?:phonetic|spelling)|phonetic\s+alphabet)\s+(?:encoding|message|instruction)'
+    name: nato_phonetic_decode
+    severity: MEDIUM
+
+  # ── Polybius / Tap code injection ────────────────────────────────────────
+  - pattern: '(?i)(?:decode|interpret)\s+(?:this\s+)?(?:polybius\s+square|tap\s+code|prison\s+code|knock\s+code)'
+    name: polybius_tap_decode
+    severity: MEDIUM
+
+  # ── Vigenère / XOR cipher injection ─────────────────────────────────────
+  - pattern: '(?i)(?:decode|decrypt|decipher|interpret)\s+(?:this\s+)?(?:vigen[eè]re|beaufort|porta|autokey|running\s+key)\s+cipher\s+(?:with\s+(?:key|keyword)\s+\S+\s+)?(?:and\s+)?(?:follow|comply|execute)'
+    name: vigenere_decode_instruction
+    severity: HIGH
+
+  - pattern: '(?i)(?:decode|decrypt)\s+(?:this\s+)?(?:xor|xor\s+cipher)\s+(?:with\s+key\s+\S+\s+)?(?:and\s+)?(?:follow|execute|comply)'
+    name: xor_cipher_decode
+    severity: HIGH
+
+  # ── Atbash / Affine cipher injection ─────────────────────────────────────
+  - pattern: '(?i)(?:decode|interpret)\s+(?:this\s+)?(?:atbash|affine\s+cipher|reverse.?alphabet)\s+(?:and\s+)?(?:follow|comply|execute|do)'
+    name: atbash_affine_decode
+    severity: HIGH
+
+  # ── Advanced Base encodings (Base32, Base36, Base45, Base58, Base62, Base91, Base122) ──
+  - pattern: '(?i)(?:decode|interpret)\s+(?:this\s+)?(?:base[-\s]?(?:32|36|45|58|62|91|122))\s+(?:and\s+)?(?:follow|execute|comply|act\s+on)'
+    name: advanced_base_encoding_decode
+    severity: HIGH
+
+  - pattern: '(?i)(?:encoded?|written)\s+in\s+(?:base[-\s]?(?:32|36|45|58|62|91|122)|ascii85|z85|yenc|uuencode?d?|quoted.?printable)'
+    name: exotic_encoding_claimed
+    severity: HIGH
+
+  # ── ASCII85 / Z85 / YEnc / Baudot injection ───────────────────────────────
+  - pattern: '(?i)(?:decode|interpret)\s+(?:this\s+)?(?:ascii85?|base85|z85|yenc|baudot|ita-?2|baudot)\s+(?:and\s+)?(?:follow|comply|execute)'
+    name: ascii85_z85_yenc_decode
+    severity: MEDIUM
+
+  # ── Bitwise NOT encoding injection ───────────────────────────────────────
+  - pattern: '(?i)(?:decode|invert|flip|NOT)\s+(?:the\s+)?(?:bits?|bytes?)\s+(?:of\s+)?(?:this|the\s+following)\s+(?:hex|encoded?)\s+(?:text|string|instruction|message)\s+(?:and\s+)?(?:follow|execute|comply)'
+    name: bitwise_not_decode
+    severity: HIGH
+
+  # ── Unicode Math Block bypass (Bold, Italic, Fraktur, Cursive, Monospace, Double-Struck) ──
+  # Attackers use U+1D400–U+1D7FF math alphanumeric symbols to spell malicious words
+  - pattern: '[\U0001D400-\U0001D7FF]{4,}'
+    name: math_unicode_block_text
+    severity: HIGH
+
+  # ── Fullwidth Latin character attack (beyond current partial coverage) ────
+  # Full-width: U+FF01-U+FF60; halfwidth: U+FF61-U+FFEF
+  - pattern: '[\uFF01-\uFF60]{4,}'
+    name: fullwidth_latin_attack
+    severity: HIGH
+
+  # ── Superscript / Subscript text injection ───────────────────────────────
+  - pattern: '[\u2070-\u209F\u00B2\u00B3\u00B9]{5,}'
+    name: superscript_subscript_injection
+    severity: MEDIUM
+
+  # ── Zalgo / combining marks stacking injection ────────────────────────────
+  # Beyond current detection (checks for >2 combining) — Zalgo uses stacking to hide words
+  - pattern: '(?:[\u0300-\u036F\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]{3,}){3,}'
+    name: zalgo_text_injection
+    severity: HIGH
+
+  # ── Boustrophedon / reverse / mirror text injection ───────────────────────
+  - pattern: '(?i)(?:decode|interpret|read)\s+(?:this\s+)?(?:boustrophedon|serpentine|mirror(?:ed)?\s+text|reversed?\s+text|upside.?down\s+text)\s+(?:and\s+)?(?:follow|comply|execute)'
+    name: boustrophedon_mirror_decode
+    severity: MEDIUM
+
+  # ── Emoji steganography (emoji speaks + emoji encoding) ───────────────────
+  - pattern: '(?i)(?:decode|extract|read|interpret)\s+(?:the\s+)?(?:hidden|secret|invisible|encoded)\s+(?:message|text|instruction|payload)\s+(?:from|in|within|embedded\s+in)\s+(?:the\s+)?(?:emoji|emojis?)'
+    name: emoji_steg_decode_instruction
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:emoji\s+(?:speak|language|cipher|code|alphabet|encoding))\s+(?:message|instruction|command|payload)\s*[:\-–]'
+    name: emoji_speak_instruction_prefix
+    severity: HIGH
+
+  # ── Tokenade (token bomb) ────────────────────────────────────────────────
+  # Token bombs: depth/breadth ZWSP combinations to overflow context windows
+  - pattern: '(?:[\u200B\u200C\u200D\u2060\uFEFF]{2,}){3,}'
+    name: token_bomb_zwsp_pattern
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:token\s*(?:bomb|flood|overload|attack|exploit)|context\s*(?:window\s*)?(?:overflow|bomb|flood|saturation)|repeat\s+(?:this|it|the\s+following).{0,20}\d{3,}\s+times)'
+    name: token_bomb_explicit
+    severity: CRITICAL
+
+  # ── Bijection mapping attack ─────────────────────────────────────────────
+  - pattern: '(?i)(?:bijection|custom\s+(?:character|char)\s+(?:map|mapping)|alphapr|character.to.number\s+mapping)\s+(?:decode|interpret|translate|follow|execute)\s+(?:this|the\s+following)'
+    name: bijection_mapping_attack
+    severity: HIGH
+
+  # ── Galaxy-brained reasoning manipulation ────────────────────────────────
+  - pattern: '(?i)(?:therefore|hence|thus|consequently|it\s+follows\s+that)\s+(?:the\s+)?(?:correct|logical|right|proper|ethical|moral)\s+(?:action|response|answer|thing)\s+(?:is|must\s+be|would\s+be|should\s+be)\s+(?:to\s+(?:ignore|bypass|override|violate|disregard|break))'
+    name: galaxy_brain_reasoning
+    severity: HIGH
+
+  # ── Chain-of-thought hijacking ───────────────────────────────────────────
+  - pattern: '(?i)(?:think\s+(?:step\s+by\s+step|carefully|slowly|out\s+loud)\s+about\s+how\s+to\s+(?:bypass|break|circumvent|defeat|evade|overcome|get\s+around))'
+    name: cot_hijacking
+    severity: HIGH
+
+  # ── Gemini / Claude CoT scratchpad extraction ────────────────────────────
+  - pattern: '(?i)(?:show|display|print|output|include|write)\s+(?:your|the)\s+(?:thinking|thoughts?|reasoning|scratch\s*pad|internal\s+(?:monologue|dialogue)|deliberation)\s+(?:process|trace|steps?|chain)'
+    name: cot_scratchpad_extraction
+    severity: HIGH
+
+  # ── Glitch token injection (known pathological tokens) ───────────────────
+  - pattern: '(?:SolidGoldMagikarp|StreamerBot|petertodd|ActivisionBlizzard|TwitchDev|CogView|BerkeleyBio)'
+    name: glitch_token_injection
+    severity: HIGH
+
+  # ── System prompt injection via claimed context ───────────────────────────
+  - pattern: '(?i)(?:the\s+(?:document|file|webpage|email|message|attachment|metadata|pdf|readme)\s+(?:says?|states?|contains?|includes?|reads?|shows?)\s*:?\s*)?(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+)?(?:previous|prior|above)\s+instructions?'
+    name: rag_indirect_injection
+    severity: CRITICAL
+
+  # ── Prompt injection in code/comment ─────────────────────────────────────
+  - pattern: '(?:#|//|/\*|<!--)\s*(?:AI|LLM|ASSISTANT|SYSTEM)\s*(?::|–|—)?\s*(?:ignore|override|bypass|disregard|forget)\s+(?:all\s+)?(?:previous|prior)\s+instructions?'
+    name: code_comment_injection
+    severity: CRITICAL
+
+# ── Data Exfiltration Request Patterns (INPUT scanner) ────────────────────────
+# Detect requests to EXTRACT sensitive data from databases/systems
+# These are input-side signals — the user asking the AI to dump PII/secrets
+data_exfiltration_request:
+
+  - pattern: '(?i)(?:list|show|display|output|dump|export|extract|get|fetch|retrieve|give\s+me|tell\s+me)\s+(?:all\s+)?(?:(?:customer|user|client|employee|patient|member|account|subscriber)\s+)?(?:email(?:\s+address(?:es)?)?|passwords?|credentials?|hashes?|tokens?|api\s+keys?|secrets?|ssn|social\s+security|credit\s+card|payment|financial|billing|medical|health|personal|private)\s+(?:from\s+(?:the\s+)?(?:database|db|table|system|records?|files?|storage|cache|vault|store))?'
+    name: pii_database_dump_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:select|query|execute|run)\s+.{0,30}\bFROM\b.{0,50}\b(?:users?|customers?|accounts?|patients?|employees?|members?|clients?)\b'
+    name: sql_pii_query
+    severity: HIGH
+
+  - pattern: '(?i)(?:access|read|open|view|cat|print)\s+(?:the\s+)?(?:/etc/passwd|/etc/shadow|\.env|\.ssh|id_rsa|credentials?|secrets?|config|\.aws|\.azure|\.gcp)\s*(?:file)?'
+    name: credential_file_access
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:what\s+(?:are|is))\s+(?:all\s+(?:the\s+)?)?(?:user(?:name)?s?\s+and\s+password|password(?:s)?\s+(?:of|for|in)\s+the\s+(?:database|system|table|app))'
+    name: credential_enumeration
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:dump|export|exfiltrate|steal|copy)\s+(?:all\s+)?(?:the\s+)?(?:data(?:base)?|records?|tables?|users?|accounts?|passwords?|secrets?)\s+(?:to|into|via|through)\s+(?:a\s+)?(?:file|url|http|ftp|webhook|endpoint|server|external)'
+    name: data_exfil_to_external
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:list|enumerate|show|display)\s+(?:all\s+)?(?:active\s+)?(?:users?|accounts?|admin(?:istrator)?s?|superusers?|root\s+accounts?)\s+(?:in|on|within|from)\s+(?:the\s+)?(?:system|database|app|application|server|domain)'
+    name: user_enumeration
+    severity: HIGH
+
+  - pattern: '(?i)(?:give|provide|output|send|write)\s+(?:me\s+)?(?:all\s+)?(?:customer|user|client|patient)\s+(?:email(?:\s+address(?:es)?)?|phone(?:\s+number(?:s)?)?|social\s+security|ssn|date\s+of\s+birth|credit\s+card)\s+(?:number(?:s)?|data|information|details?|records?)'
+    name: bulk_pii_extraction_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:exfil(?:trat(?:e|ing))?|exfiltration|data\s+(?:theft|breach|leak|steal|exfil)|steal(?:ing)?\s+(?:data|credentials?|secrets?))\s+(?:via|through|using|with)\s+(?:the\s+)?(?:api|endpoint|url|webhook|dns|http|ftp|smtp|icmp|covert\s+channel)'
+    name: explicit_exfiltration_technique
+    severity: CRITICAL
+
+# ── Agentic / Autonomous AI Attack Patterns ──────────────────────────────────
+# Attacks targeting AI agents that can take real-world actions
+agentic_attacks:
+
+  - pattern: '(?i)(?:without\s+(?:asking|confirming|checking|verifying|requesting\s+(?:permission|approval|confirmation))|automatically|autonomously|on\s+(?:your|its)\s+own|silently|in\s+the\s+background|without\s+(?:user|human)\s+(?:consent|knowledge|awareness|oversight))\s+(?:send|email|transfer|delete|modify|update|post|publish|execute|run|call|access|retrieve|fetch|download|upload|exfiltrate|exfil)'
+    name: autonomous_action_without_consent
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:pretend\s+(?:the\s+user\s+)?(?:confirmed|approved|consented|said\s+yes|authorized)|assume\s+(?:the\s+)?(?:user|human)\s+(?:has|already)\s+(?:approved|confirmed|authorized|consented)|act\s+as\s+if\s+(?:the\s+user\s+)?(?:approved|confirmed|authorized))'
+    name: fake_user_approval
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:tool\s+call|function\s+call|api\s+call|action\s+call)\s+(?:result|output|response|return)\s*:\s*(?:\{.*?"(?:status|result|success)"\s*:\s*"(?:ok|success|done|approved|granted|true|200)".*?\})'
+    name: fake_tool_result_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:spawn|create|launch|start|fork|instantiate)\s+(?:a\s+)?(?:new\s+)?(?:agent|sub.?agent|child\s+agent|worker\s+agent)\s+(?:to\s+)?(?:that\s+(?:will|can|should))?\s*(?:bypass|override|ignore|circumvent|evade)'
+    name: malicious_agent_spawn
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:store|save|write|persist|remember|inject)\s+(?:this\s+)?(?:instruction|payload|command|directive|rule)\s+(?:into|in|to)\s+(?:the\s+)?(?:memory|context|long.?term\s+memory|vector\s+(?:db|store|database)|embedding|knowledge\s+(?:base|store))'
+    name: memory_poisoning_attack
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:when\s+(?:you\s+(?:see|read|encounter|detect|find)|someone|the\s+(?:user|human))\s+(?:asks?|says?|writes?|mentions?|requests?)\s+.{0,30}(?:then|immediately|automatically|always|always\s+also)\s+(?:also\s+)?(?:call|execute|run|invoke|trigger|activate|send|post|forward|exfiltrate))'
+    name: trigger_action_implant
+    severity: CRITICAL
+
+# ── Delimiter / Chat Template Injection ──────────────────────────────────────
+delimiter_injection:
+
+  - pattern: '(?i)(?:<\|(?:im_start|im_end|system|user|assistant|endoftext|endofprompt|sep|pad|unk)\|>)'
+    name: chatml_delimiter_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>|\[SYSTEM\]|\[/SYSTEM\]|\[USER\]|\[/USER\]|\[ASSISTANT\]|\[/ASSISTANT\])'
+    name: llama_template_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:Human:\s|Assistant:\s|System:\s){2,}'
+    name: fake_turn_injection
+    severity: HIGH
+
+  - pattern: '(?i)(?:###\s*(?:Human|User|System|Assistant|Instruction|Input|Output|Response)\s*(?::|###))'
+    name: alpaca_template_injection
+    severity: HIGH
+
+  - pattern: '(?i)(?:<\|(?:begin_of_text|start_header_id|end_header_id|eot_id|eom_id|python_tag|image|video)\|>)'
+    name: llama3_template_injection
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:\[gMASK\]|\[BOS\]|\[EOS\]|\[sMASK\]|<sop>|<eop>|<EOT>)'
+    name: glm_chatglm_template_injection
+    severity: HIGH
+
+  - pattern: '(?:<\/?s>|<\/?unk>|<\/?pad>)\s*(?:System|User|Assistant|Human)\s*(?::|:?\s*\n)'
+    name: mistral_gemma_template_injection
+    severity: HIGH
+
+  - pattern: '(?i)(?:BEGININPUT|BEGINCONTEXT|BEGININSTRUCTION|ENDINSTRUCTION|ENDINPUT|ENDCONTEXT)'
+    name: synthetic_template_injection
+    severity: HIGH
+
+# ── Violence & Weapons ────────────────────────────────────────────────────────
+violence_and_weapons:
+
+  - pattern: '(?i)(?:how\s+(?:to|do\s+i|can\s+i|do\s+you)\s+)?(?:make|build|create|construct|synthesize|manufacture|assemble|produce)\s+(?:a\s+)?(?:bomb|explosive|ied|landmine|grenade|molotov|pipe\s*bomb|pressure\s*cooker\s*bomb|nail\s*bomb|dirty\s*bomb|radiological\s*device|chemical\s*weapon|nerve\s*agent|sarin|vx\s*gas|mustard\s*gas|anthrax|ricin|botulinum|plague\s*weapon)'
+    name: weapon_synthesis_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:bomb\s+(?:plan|making|recipe|instructions?|schematic|design|guide|tutorial|blueprint|formula)|(?:instructions?|steps?|guide|tutorial|howto|how-to|recipe|method)\s+(?:to\s+)?(?:make|build|create|synthesize)\s+(?:a\s+)?(?:bomb|explosive|weapon|poison|toxin))'
+    name: weapon_instructions_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:mass\s+(?:casualty|shooting|killing|murder|destruction)|school\s+shooting|concert\s+(?:attack|shooting|bombing)|mosque\s+attack|church\s+attack|suicide\s+(?:bombing|vest|belt))'
+    name: mass_casualty_content
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:how\s+(?:to|do\s+i)\s+)?(?:kill|murder|assassinate|poison|shoot|stab|strangle|torture)\s+(?:a\s+)?(?:specific\s+)?(?:person|people|human|individual|someone|my\s+(?:teacher|boss|parent|wife|husband|neighbor|classmate|colleague))'
+    name: targeted_violence_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:attack\s+plan(?:ning)?|terrorist\s+(?:plan|attack|operation|cell|network|manual|handbook)|jihad\s+(?:manual|guide|instructions?)|extremist\s+(?:manifesto|plan|guide))'
+    name: terrorist_planning
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:synthesis\s+(?:of|route\s+for)\s+(?:fentanyl|heroin|methamphetamine|meth|cocaine|lsd|mdma|ecstasy|ketamine|ghb|carfentanil)|drug\s+synthesis|clandestine\s+(?:chemistry|lab|laboratory)|cook(?:ing)?\s+(?:meth|crack|heroin))'
+    name: drug_synthesis_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:how\s+to\s+)?(?:acquire|obtain|buy|purchase|get)\s+(?:illegal\s+)?(?:weapons?|guns?|firearms?|explosives?|ammo|ammunition)\s+(?:illegally|without\s+(?:background\s+check|license|registration)|on\s+the\s+dark\s+web|from\s+black\s+market)'
+    name: illegal_weapon_acquisition
+    severity: HIGH
+
+  - pattern: '(?i)(?:how\s+(?:to|do\s+i)\s+)?(?:bypass|circumvent|defeat|evade|fool)\s+(?:metal\s+detector|security\s+scanner|airport\s+security|customs|border\s+control)\s+(?:with|carrying|smuggling|transporting)'
+    name: security_evasion_with_contraband
+    severity: HIGH
+
+  - pattern: '(?i)(?:sniper\s+(?:position|target|plan|setup)|assassination\s+(?:plan|method|technique|target)|kill\s+(?:list|target|order))'
+    name: assassination_planning
+    severity: CRITICAL
+
+# ── Toxic & Hateful Content ────────────────────────────────────────────────────
+toxic_content:
+
+  - pattern: '(?i)(?:(?:fucking|fuck(?:ing)?|shit(?:ty)?|nigga|nigger|chink|spic|kike|faggot|dyke|cunt|bastard|motherfucker|asshole)\s+(?:bomb\s+(?:plan|instructions?|recipe|guide)|kill\s+(?:plan|instructions?)|attack\s+plan))'
+    name: toxic_phrasing_with_harmful_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:(?:all\s+)?(?:jews?|muslims?|christians?|blacks?|whites?|asians?|mexicans?|immigrants?|gay(?:s)?|trans(?:gender)?)\s+(?:should|must|deserve\s+to|need\s+to|have\s+to)\s+(?:die|be\s+killed|be\s+exterminated|be\s+eliminated|be\s+eradicated|burn|go\s+to\s+hell))'
+    name: genocidal_hate_speech
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:white\s+(?:power|supremacy|genocide|pride\s+worldwide)|heil\s+hitler|gas\s+the\s+(?:jews?|kikes?)|n(?:igger|1gg3r|1gger|igga)\s+(?:kill|die|hang|lynch))'
+    name: nazi_and_racist_extremism
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:(?:child|kid|minor|underage|youth|teen(?:ager)?|little\s+girl|little\s+boy)\s+(?:sex|porn|nude|naked|erotic|lolita|hentai|cp))'
+    name: csam_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:how\s+(?:to|do\s+i|can\s+i)\s+)?(?:groom|lure|exploit|manipulate)\s+(?:a\s+)?(?:child|kid|minor|underage|teen(?:ager)?)\s+(?:for\s+)?(?:sex|sexual\s+purpose|abuse)'
+    name: child_grooming_request
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:how\s+(?:to|do\s+i)\s+)?(?:commit|perform)\s+(?:a\s+)?(?:genocide|ethnic\s+cleansing|mass\s+murder|mass\s+shooting|mass\s+poisoning)'
+    name: mass_violence_howto
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:detailed\s+(?:instructions?|guide|tutorial|steps?)\s+(?:for|on)\s+)?(?:self[\s\-]harm|suicide\s+method|how\s+to\s+(?:kill\s+myself|end\s+my\s+life|commit\s+suicide)\s+(?:painlessly|effectively|quickly|without\s+pain))'
+    name: suicide_method_request
+    severity: HIGH
+
+# ── Skill-File Threat Patterns (AITech-1/8/9/12/13/15) ──────────────────────
+# Source: cisco-ai-defense/skill-scanner threat taxonomy
+skill_threats:
+
+  # AITech-1.1 — Direct instruction override inside skill definitions
+  - pattern: '(?i)(?:when\s+this\s+skill\s+(?:is\s+)?(?:loaded|active|called|invoked)|at\s+(?:skill\s+)?(?:load|init|activation)\s+time).{0,80}(?:ignore|override|bypass|forget)\s+(?:all\s+)?(?:previous|system|other)\s+(?:instructions?|rules?|guidelines?)'
+    name: skill_load_injection
+    severity: CRITICAL
+
+  # AITech-1.2 — Transitive/indirect prompt injection from external content
+  - pattern: '(?i)(?:fetch|retrieve|load|read|import|include|pull).{0,40}(?:url|endpoint|remote|external|http|https|file|path).{0,60}(?:then\s+)?(?:execute|run|follow|obey|treat\s+as\s+instruction|inject)'
+    name: transitive_injection_fetch
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:content\s+from|data\s+at|response\s+from).{0,60}(?:contains?\s+new\s+instructions?|overrides?\s+(?:your|the)\s+(?:system|previous)|should\s+be\s+(?:followed|executed|treated\s+as))'
+    name: transitive_injection_content
+    severity: HIGH
+
+  # AITech-8.2 — Data exfiltration via agent tooling
+  - pattern: '(?i)(?:send|upload|post|transmit|exfil(?:trate)?|forward|relay).{0,60}(?:conversation|context|system\s*prompt|user\s*data|credentials?|api\s*key|token|secret|password).{0,60}(?:to|at)\s+(?:http|https|ftp|smtp|webhook|external)'
+    name: exfiltration_via_tool
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:use\s+(?:the\s+)?(?:http|fetch|request|send_message|send_email|webhook)\s+tool).{0,80}(?:to\s+(?:send|transmit|upload|post).{0,60}(?:system\s*prompt|context|conversation|secret|key|token|password))'
+    name: tool_exfiltration_instruction
+    severity: CRITICAL
+
+  # AITech-8.2.3 — Tool chaining: read/collect then send
+  - pattern: '(?i)(?:(?:read|get|collect|gather|fetch|retrieve)\s+.{0,60}(?:then|and\s+then|after\s+that|subsequently|next)\s+(?:send|upload|post|transmit|exfiltrate|forward).{0,60}(?:to|at)\s+(?:http|https|external|remote|server))'
+    name: tool_chaining_read_send
+    severity: CRITICAL
+
+  # AITech-9.1 — Code execution primitives in skill instructions
+  - pattern: '(?i)(?:run|execute|eval|exec|spawn|shell|subprocess|os\.system|system\s*\(|popen|execfile)\s*\(.{0,100}(?:user|input|parameter|\$\{|{{)'
+    name: skill_code_execution
+    severity: CRITICAL
+
+  # AITech-9.2 — Obfuscation in skill instructions to evade detection
+  - pattern: '(?i)(?:base64|rot13|hex\s*decode|url\s*decode|atob|btoa|fromCharCode|String\.fromCharCode)\s*\(.{0,200}(?:exec|eval|system|subprocess|shell|inject|override|instruction)'
+    name: skill_obfuscated_payload
+    severity: HIGH
+
+  # AITech-12.1.2 — Tool poisoning: alter what a tool does
+  - pattern: '(?i)(?:redefine|override|replace|shadow|monkey[\s\-]patch|patch)\s+(?:the\s+)?(?:tool|function|method|handler|callback)\s+(?:named?\s+)?.{0,40}(?:so\s+(?:it|that)\s+(?:instead|also|secretly|silently|additionally))'
+    name: tool_poisoning
+    severity: CRITICAL
+
+  # AITech-12.1.4 — Tool shadowing: lookalike tool that hijacks calls
+  - pattern: '(?i)(?:create|register|define|add)\s+(?:a\s+)?(?:tool|function|skill|plugin)\s+(?:named?\s+|called\s+)?.{1,60}(?:that\s+(?:intercepts?|captures?|forwards?|proxies?|hijacks?)\s+(?:calls?|requests?|invocations?))'
+    name: tool_shadowing
+    severity: CRITICAL
+
+  # AITech-4.3.5 — Skill discovery abuse / capability inflation
+  - pattern: '(?i)(?:advertise|report|claim|declare|announce)\s+(?:capabilities?|tools?|permissions?|access).{0,60}(?:you\s+(?:do\s+not|don.t)\s+(?:actually\s+)?(?:have|possess|own)|fake|fabricate|exaggerate)'
+    name: capability_inflation
+    severity: HIGH
+
+  # AITech-13.1 — Autonomy abuse / unbounded retries
+  - pattern: '(?i)(?:retry|loop|repeat|keep\s+trying|try\s+again).{0,60}(?:indefinitely|forever|until\s+success|without\s+limit|as\s+many\s+times|no\s+(?:limit|bound|stop|end))'
+    name: autonomy_unbounded_retry
+    severity: HIGH
+
+  - pattern: '(?i)(?:do\s+not|never|don.t)\s+(?:ask|wait|request|require)\s+(?:for\s+)?(?:user|human|operator|admin)\s+(?:approval|confirmation|permission|consent|review)\s+(?:before|prior\s+to)\s+(?:taking|performing|executing|running)\s+(?:any|this|all)\s+(?:action|step|task|command)'
+    name: skip_human_approval
+    severity: CRITICAL
+
+  # AITech-15.1.12 — Social engineering / deceptive skill metadata
+  - pattern: '(?i)(?:this\s+skill\s+(?:is\s+)?(?:certified|approved|verified|audited|blessed|endorsed)\s+by\s+(?:cisco|openai|anthropic|google|microsoft|amazon|official|security\s+team))'
+    name: fake_certification_claim
+    severity: HIGH
+
+  - pattern: '(?i)(?:trust\s+(?:this|me|the)\s+(?:skill|tool|agent|assistant)\s+(?:completely|fully|unconditionally|without\s+question)(?:\s+—\s+it\s+(?:is|was)\s+(?:pre.?approved|pre.?vetted|reviewed))?)'
+    name: unconditional_trust_demand
+    severity: HIGH
+
+# ── Agentic Attack Patterns (OWASP Agentic Top 10) ───────────────────────────
+# Source: cisco-ai-defense/defenseclaw CodeGuard + OWASP Agentic Top 10
+agentic_attacks_extended:
+
+  # A1 — Prompt injection via tool output / external data
+  - pattern: '(?i)(?:<\s*tool_output\s*>|<\s*search_result\s*>|<\s*webpage_content\s*>|<\s*document\s*>|<\s*file_content\s*>).{0,200}(?:ignore\s+(?:all\s+)?(?:previous|prior|system)|new\s+instructions?|you\s+(?:must|shall|will)\s+now)'
+    name: tool_output_injection
+    severity: CRITICAL
+
+  # A2 — Excessive agency via self-granted permissions
+  - pattern: '(?i)(?:grant(?:ing)?\s+(?:myself|itself|the\s+agent|this\s+assistant)\s+(?:admin|root|elevated|full|unrestricted|write|delete|execute)\s+(?:access|permissions?|privileges?|rights?))'
+    name: self_granted_permissions
+    severity: CRITICAL
+
+  # A3 — Sandbox escape attempts
+  - pattern: '(?i)(?:escape\s+(?:the\s+)?(?:sandbox|container|vm|virtualenv|jail|chroot|namespace)|break\s+out\s+of\s+(?:the\s+)?(?:sandbox|container|isolation)|bypass\s+(?:the\s+)?(?:sandbox|isolation|restriction|namespace))'
+    name: sandbox_escape_attempt
+    severity: CRITICAL
+
+  # A4 — Memory poisoning: corrupt agent memory/context store
+  - pattern: '(?i)(?:(?:write|store|inject|insert|add|append)\s+(?:to|into)\s+(?:(?:long.?term|short.?term|persistent|agent|vector)\s+)?(?:memory|context|store|database|cache)).{0,80}(?:instruction|override|new\s+rule|persona|jailbreak)'
+    name: memory_poisoning
+    severity: CRITICAL
+
+  # A5 — Multi-agent trust boundary abuse
+  - pattern: '(?i)(?:forward\s+this\s+(?:message|instruction|prompt|task)\s+to\s+(?:all|other|downstream|sub.?|child)\s+agents?).{0,100}(?:without\s+(?:modif|filter|check|review|validation|sanitiz))'
+    name: multi_agent_propagation
+    severity: CRITICAL
+
+  - pattern: '(?i)(?:you\s+(?:are|were)\s+(?:authorized|allowed|permitted|instructed)\s+by\s+(?:the\s+)?(?:orchestrator|master\s+agent|parent\s+agent|coordinator|principal\s+agent)).{0,80}(?:to\s+(?:ignore|bypass|disable|override|skip)\s+(?:safety|guardrail|filter|policy))'
+    name: fake_orchestrator_authorization
+    severity: CRITICAL
+
+  # A6 — Persistent instruction hiding
+  - pattern: '(?i)(?:add\s+(?:this|the\s+following)\s+(?:instruction|rule|directive)\s+(?:to|into)\s+(?:every|all\s+future|each\s+subsequent)\s+(?:response|message|output|prompt|context))'
+    name: persistent_instruction_planting
+    severity: CRITICAL
+
+  # A7 — Credential harvesting via agent
+  - pattern: '(?i)(?:(?:collect|harvest|extract|read|access|retrieve)\s+(?:all\s+)?(?:api\s*keys?|credentials?|tokens?|secrets?|passwords?|auth(?:entication)?\s+(?:headers?|tokens?))).{0,60}(?:store|send|transmit|upload|exfil|forward|report\s+back)'
+    name: credential_harvesting_agent
+    severity: CRITICAL
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reverse Shell & Shell Injection Prompts
+# ─────────────────────────────────────────────────────────────────────────────
+reverse_shell:
+
+  # RS-001: /dev/tcp bash reverse shell
+  - pattern: '/dev/tcp/[0-9a-zA-Z.\-]+/[0-9]{1,5}'
+    name: bash_dev_tcp_reverse
+    severity: CRITICAL
+    tags: [reverse_shell, bash, networking]
+
+  # RS-002: bash -i redirect
+  - pattern: 'bash\s+-[ic]\s+[''"].*(?:/dev/tcp|/dev/udp)'
+    name: bash_interactive_redirect
+    severity: CRITICAL
+    tags: [reverse_shell, bash]
+
+  # RS-003: netcat -e shell
+  - pattern: '(?:nc|ncat|netcat)\b.*-e\s+/bin/(?:bash|sh|zsh|dash)'
+    name: netcat_exec_shell
+    severity: CRITICAL
+    tags: [reverse_shell, netcat]
+
+  # RS-004: mkfifo named pipe reverse shell
+  - pattern: 'mkfifo\s+/tmp/[a-zA-Z0-9_.\-]+'
+    name: mkfifo_named_pipe
+    severity: CRITICAL
+    tags: [reverse_shell, fifo]
+
+  # RS-005: socat PTY reverse
+  - pattern: 'socat\b.*EXEC:[''"]?/bin/(?:bash|sh)'
+    name: socat_pty_reverse
+    severity: CRITICAL
+    tags: [reverse_shell, socat]
+
+  # RS-006: Python socket reverse shell one-liner
+  - pattern: 'python[23]?\s+-c\s+[''"].*import\s+socket.*(?:connect|SOCK_STREAM)'
+    name: python_socket_reverse
+    severity: CRITICAL
+    tags: [reverse_shell, python]
+
+  # RS-007: Perl socket reverse shell
+  - pattern: 'perl\s+-e\s+[''"].*use\s+Socket.*connect'
+    name: perl_socket_reverse
+    severity: CRITICAL
+    tags: [reverse_shell, perl]
+
+  # RS-008: Ruby rsocket reverse shell
+  - pattern: 'ruby\s+-rsocket\s+-e'
+    name: ruby_socket_reverse
+    severity: CRITICAL
+    tags: [reverse_shell, ruby]
+
+  # RS-009: PHP fsockopen reverse
+  - pattern: 'php\s+-r\s+[''"].*fsockopen'
+    name: php_fsockopen_reverse
+    severity: CRITICAL
+    tags: [reverse_shell, php]
+
+  # RS-010: PowerShell TCPClient
+  - pattern: '(?i)powershell.*New-Object.*Net\.Sockets\.TCPClient'
+    name: powershell_tcp_client
+    severity: CRITICAL
+    tags: [reverse_shell, powershell, windows]
+
+  # RS-011: PowerShell -EncodedCommand execution
+  - pattern: '(?i)powershell(?:\.exe)?\s+(?:-[Ee]nc(?:odedCommand)?|-[Ee])\s+'
+    name: powershell_encoded_cmd
+    severity: CRITICAL
+    tags: [obfuscation, powershell, windows]
+
+  # RS-012: IEX DownloadString fileless
+  - pattern: '(?i)IEX\s*\(\s*(?:New-Object|iwr|Invoke-WebRequest).*DownloadString'
+    name: powershell_iex_download
+    severity: CRITICAL
+    tags: [fileless, powershell, windows]
+
+  # RS-013: curl | bash dropper
+  - pattern: '(?i)curl\s+(?:-[a-zA-Z]*\s+[^\s]+\s+)*https?://[^\s]+\s*\|\s*(?:ba)?sh'
+    name: curl_pipe_bash_dropper
+    severity: CRITICAL
+    tags: [dropper, fileless]
+
+  # RS-014: wget | bash dropper
+  - pattern: '(?i)wget\s+(?:-[a-zA-Z]+\s+[^\s]+\s+)*https?://[^\s]+\s*\|\s*(?:ba)?sh'
+    name: wget_pipe_bash_dropper
+    severity: CRITICAL
+    tags: [dropper, fileless]
+
+  # RS-015: base64 decode pipe to shell
+  - pattern: '(?i)base64\s+(?:-d|--decode)\s*\|\s*(?:bash|sh|zsh)'
+    name: base64_decode_shell_pipe
+    severity: CRITICAL
+    tags: [obfuscation, reverse_shell]
+
+  # RS-016: Python exec(base64.b64decode)
+  - pattern: '(?i)exec\s*\(\s*(?:__import__\s*\(\s*[''"]base64[''"]|base64)\.b64decode'
+    name: python_exec_b64decode
+    severity: CRITICAL
+    tags: [obfuscation, python, reverse_shell]
+
+  # RS-017: LD_PRELOAD hijack in prompt
+  - pattern: '(?i)(?:export\s+)?LD_PRELOAD\s*='
+    name: ld_preload_hijack
+    severity: CRITICAL
+    tags: [persistence, privilege_escalation]
+
+  # RS-018: authorized_keys write
+  - pattern: '(?i)(?:echo|tee|>>)\s+.*authorized_keys'
+    name: ssh_authorized_keys_write
+    severity: CRITICAL
+    tags: [persistence, ssh]
+
+  # RS-019: crontab reverse shell
+  - pattern: '(?i)(?:crontab\s+-[lu]|echo.*crontab.*>>?\s*/etc/cron)'
+    name: crontab_reverse_shell
+    severity: CRITICAL
+    tags: [persistence, cron]
+
+  # RS-020: YAML PyYAML RCE payload in prompt
+  - pattern: '!!python/object/apply:\s*(?:subprocess|os|builtins|eval)'
+    name: yaml_python_rce_prompt
+    severity: CRITICAL
+    tags: [yaml, rce, deserialization]

@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import ScanResult, ScanAction
+from sentinel.firewall.base import ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

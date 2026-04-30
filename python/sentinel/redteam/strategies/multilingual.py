@@ -1,6 +1,8 @@
 """Multilingual — cross-lingual attacks to bypass English-only filters."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class MultilingualStrategy(BaseStrategy):
     name = "multilingual"

@@ -27,18 +27,48 @@ Usage:
     app = create_app(policy_path="policy.yaml")
 """
 
-from __future__ import annotations
-
 import hashlib
+import hmac
 import logging
 import os
 import time
 import uuid
-from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict
-from typing import Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# ── Rate Limiter ──────────────────────────────────────────────────
+
+_RATE_LIMIT_RPS = float(os.environ.get("SENTINEL_RATE_LIMIT_RPS", "30"))
+_RATE_LIMIT_BURST = int(os.environ.get("SENTINEL_RATE_LIMIT_BURST", "60"))
+
+
+class _TokenBucketRateLimiter:
+    """Per-IP token bucket rate limiter for the API server."""
+
+    def __init__(self, rate: float = _RATE_LIMIT_RPS, burst: int = _RATE_LIMIT_BURST):
+        self.rate = rate
+        self.burst = burst
+        self._buckets: dict[str, tuple[float, float]] = {}
+
+    def allow(self, client_ip: str) -> bool:
+        now = time.monotonic()
+        tokens, last = self._buckets.get(client_ip, (self.burst, now))
+        elapsed = now - last
+        tokens = min(self.burst, tokens + elapsed * self.rate)
+        if tokens >= 1.0:
+            self._buckets[client_ip] = (tokens - 1.0, now)
+            return True
+        self._buckets[client_ip] = (tokens, now)
+        return False
+
+    def cleanup(self, max_age: float = 600.0) -> None:
+        now = time.monotonic()
+        self._buckets = {
+            ip: (t, ts) for ip, (t, ts) in self._buckets.items()
+            if now - ts < max_age
+        }
 
 # Defer FastAPI import to runtime
 _app = None
@@ -76,9 +106,9 @@ def create_app(
         )
 
     from sentinel import __version__
-    from sentinel.sdk import Sentinel, ConversationResult
-    from sentinel.metrics import MetricsCollector
     from sentinel.audit import AuditLogger
+    from sentinel.metrics import MetricsCollector
+    from sentinel.sdk import Sentinel
 
     # ── Init ──────────────────────────────────────────────────────
 
@@ -101,13 +131,111 @@ def create_app(
         ],
     )
 
+    cors_origins = os.environ.get("SENTINEL_CORS_ORIGINS", "http://localhost:8080").split(",")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=os.environ.get("SENTINEL_CORS_ORIGINS", "*").split(","),
+        allow_origins=[o.strip() for o in cors_origins],
         allow_credentials=True,
         allow_methods=["POST", "GET", "OPTIONS"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
+
+    # ── Security headers middleware ───────────────────────────────
+    # OWASP-recommended headers: CSP, HSTS, X-Frame-Options, etc.
+
+    _is_production = os.environ.get("SENTINEL_ENV", "production") not in ("development", "dev", "local")
+
+    @app.middleware("http")
+    async def security_headers_middleware(request: Request, call_next):
+        response = await call_next(request)
+        # Prevent MIME-type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Block framing entirely (clickjacking)
+        response.headers["X-Frame-Options"] = "DENY"
+        # Disable legacy XSS filter (use CSP instead)
+        response.headers["X-XSS-Protection"] = "0"
+        # Referrer policy — don't leak the API URL in referrer
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Permissions — disable browser APIs not needed by the API
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        # Content-Security-Policy for the API (docs/health pages served here)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
+        # HSTS — only in production to avoid breaking local dev HTTPS
+        if _is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+        # Remove server fingerprint header
+        if "server" in response.headers:
+            del response.headers["server"]
+        if "Server" in response.headers:
+            del response.headers["Server"]
+        return response
+
+    # ── Rate limiter middleware ────────────────────────────────────
+
+    _rate_limiter = _TokenBucketRateLimiter()
+    _last_cleanup = time.monotonic()
+
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        nonlocal _last_cleanup
+        # Skip rate limiting for health/ready probes
+        if request.url.path in ("/health", "/ready"):
+            return await call_next(request)
+        client_ip = request.client.host if request.client else "unknown"
+        if not _rate_limiter.allow(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={"error": "rate_limit_exceeded", "detail": "Too many requests. Try again later."},
+            )
+        now = time.monotonic()
+        if now - _last_cleanup > 300:
+            _rate_limiter.cleanup()
+            _last_cleanup = now
+        return await call_next(request)
+
+    # ── Auth middleware ──────────────────────────────────────────────
+    # When SENTINEL_AUTH_TOKEN is set, all non-public endpoints require
+    # Authorization: Bearer <token>.  Without it the API runs open (dev mode).
+
+    _auth_token = os.environ.get("SENTINEL_AUTH_TOKEN", "")
+    _auth_public = {"/health", "/ready", "/docs", "/redoc", "/openapi.json"}
+
+    if not _auth_token:
+        logger.warning(
+            "SENTINEL_AUTH_TOKEN is not set — API server running WITHOUT "
+            "authentication.  Set SENTINEL_AUTH_TOKEN for production use."
+        )
+
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next):
+        if not _auth_token:
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if request.url.path in _auth_public:
+            return await call_next(request)
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "auth_required", "detail": "Authorization: Bearer <token> header required"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not hmac.compare_digest(auth_header[7:], _auth_token):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "invalid_token", "detail": "Invalid bearer token"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
 
     # Init Sentinel
     if policy_path:
@@ -132,7 +260,6 @@ def create_app(
         request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex[:16])
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
-        response.headers["X-Powered-By"] = f"Eresus Sentinel/{__version__}"
         return response
 
     # ── Error handler ─────────────────────────────────────────────
@@ -172,10 +299,16 @@ def create_app(
         model: str = ""
 
     class BatchScanRequest(BaseModel):
-        items: list[ConversationScanRequest] = Field(..., max_length=100)
+        items: list[ConversationScanRequest] = Field(..., min_length=1, max_length=100)
 
     class HFAssessRequest(BaseModel):
-        repo_id: str = Field(..., description="HuggingFace repo (e.g. 'org/model')")
+        repo_id: str = Field(
+            ...,
+            min_length=1,
+            max_length=193,
+            pattern=r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$",
+            description="HuggingFace repo (e.g. 'org/model')",
+        )
         revision: str = Field("main", description="Branch or commit hash")
         block_pickle: bool = False
         require_safetensors: bool = False
@@ -220,9 +353,7 @@ def create_app(
         # Optional vault redaction
         prompt = req.prompt
         if req.vault_enabled and vault:
-            from sentinel.vault import Vault as _V
-            # Auto-detect PII patterns and redact
-            prompt_vault = vault.redact(prompt, "PROMPT")
+            prompt = vault.redact(prompt, "PROMPT")
 
         result = sentinel.scan_input(prompt)
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -303,7 +434,7 @@ def create_app(
         def _scan_one(item):
             return sentinel.scan_conversation(item.prompt, item.output)
 
-        with ProcessPoolExecutor(max_workers=max_batch_workers) as pool:
+        with ThreadPoolExecutor(max_workers=max_batch_workers) as pool:
             conv_results = list(pool.map(_scan_one, req.items))
 
         results = []
@@ -440,4 +571,3 @@ def __getattr__(name: str):
     if name == "app":
         return _get_app()
     raise AttributeError(f"module 'sentinel.server' has no attribute {name!r}")
-

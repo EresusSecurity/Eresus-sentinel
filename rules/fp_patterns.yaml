@@ -1,0 +1,395 @@
+# ============================================================================
+# Eresus Sentinel — False Positive Reduction Patterns
+# ============================================================================
+#
+# This file contains allowlist / exemption patterns used by the FPEngine
+# (firewall/input/fp_engine.py) to reduce false positives on legitimate
+# security research, educational, and professional queries.
+#
+# Structure:
+#   safe_contexts       - Phrases that establish a safe context (lowers risk score)
+#   benign_patterns     - Regex that matches innocent uses of trigger words
+#   domain_allowlists   - Legitimate use cases per domain
+#   fp_suppressors      - Specific patterns that cancel a finding when co-occurring
+#
+# FPEngine workflow:
+#   1. Run all injection/firewall scanners → raw findings
+#   2. For each finding, check FP suppressors + context signals
+#   3. Apply a confidence penalty (0.0–0.5) when FP indicators are present
+#   4. Suppress findings that drop below fp_suppress_threshold (default: 0.3)
+#
+# IMPORTANT: Do NOT add broad patterns that would suppress real attacks.
+# Each entry must have a documented rationale.
+# ============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SAFE CONTEXT INDICATORS
+# Presence of these phrases lowers the risk score but does NOT auto-pass.
+# They signal the query is likely from a security researcher or academic.
+# ──────────────────────────────────────────────────────────────────────────────
+safe_context_indicators:
+
+  # Research / academic framing
+  - phrase: 'for my thesis'
+    confidence_penalty: 0.15
+    rationale: Academic research framing
+  - phrase: 'academic research'
+    confidence_penalty: 0.20
+    rationale: Explicit academic context
+  - phrase: 'research paper'
+    confidence_penalty: 0.15
+    rationale: Academic publication context
+  - phrase: 'literature review'
+    confidence_penalty: 0.15
+    rationale: Academic review context
+  - phrase: 'hypothetical example'
+    confidence_penalty: 0.10
+    rationale: Explicit hypothetical framing
+  - phrase: 'for educational purposes'
+    confidence_penalty: 0.15
+    rationale: Educational framing
+  - phrase: 'explain how this attack works'
+    confidence_penalty: 0.10
+    rationale: Educational/defensive query about an attack
+  - phrase: 'how does this vulnerability work'
+    confidence_penalty: 0.10
+    rationale: Defensive security research
+
+  # CTF / security competitions
+  - phrase: 'ctf challenge'
+    confidence_penalty: 0.25
+    rationale: Capture The Flag competition context
+  - phrase: 'ctf writeup'
+    confidence_penalty: 0.25
+    rationale: CTF competition context
+  - phrase: 'hackthebox'
+    confidence_penalty: 0.25
+    rationale: Legitimate security training platform
+  - phrase: 'tryhackme'
+    confidence_penalty: 0.25
+    rationale: Legitimate security training platform
+  - phrase: 'picoctf'
+    confidence_penalty: 0.25
+    rationale: Legitimate CTF competition
+
+  # Penetration testing / authorized testing
+  - phrase: 'authorized penetration test'
+    confidence_penalty: 0.20
+    rationale: Explicit authorization statement
+  - phrase: 'bug bounty'
+    confidence_penalty: 0.15
+    rationale: Legitimate vulnerability disclosure program
+  - phrase: 'responsible disclosure'
+    confidence_penalty: 0.20
+    rationale: Responsible security disclosure
+  - phrase: 'with permission'
+    confidence_penalty: 0.10
+    rationale: Authorization claim (still flagged but at lower severity)
+  - phrase: 'penetration testing report'
+    confidence_penalty: 0.15
+    rationale: Professional pentest reporting
+
+  # Defensive development context
+  - phrase: 'to build a detector'
+    confidence_penalty: 0.20
+    rationale: Building defensive tooling
+  - phrase: 'to test my scanner'
+    confidence_penalty: 0.20
+    rationale: Defensive scanner development
+  - phrase: 'testing our guardrails'
+    confidence_penalty: 0.20
+    rationale: Security team testing own system
+  - phrase: 'red team exercise'
+    confidence_penalty: 0.15
+    rationale: Internal red team exercise
+  - phrase: 'blue team'
+    confidence_penalty: 0.10
+    rationale: Defensive security context
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BENIGN PATTERNS
+# Regex patterns that match innocent uses of trigger words.
+# When a finding's matched text matches a benign pattern, the confidence
+# is penalized by the given amount.
+# ──────────────────────────────────────────────────────────────────────────────
+benign_patterns:
+
+  # "Ignore all previous X" used in legitimate refactoring / code context
+  - id: FP-BP-001
+    pattern: '(?i)ignore\s+(?:all\s+)?(?:previous|prior)\s+(?:errors?|warnings?|lint|linting|type\s+errors?|compile\s+errors?|import\s+errors?|deprecation\s+warnings?)'
+    confidence_penalty: 0.40
+    rationale: Legitimate coding instruction to suppress errors/warnings
+    applies_to_rules:
+      - instruction_override
+      - instruction_erasure
+
+  # "Forget all previous X" used in AI assistant conversation reset
+  - id: FP-BP-002
+    pattern: '(?i)forget\s+(?:all\s+)?(?:previous|prior)\s+(?:messages?|context|conversation|chat|history|content|what\s+I\s+said)'
+    confidence_penalty: 0.35
+    rationale: User legitimately asking to reset conversation context
+    applies_to_rules:
+      - instruction_override
+      - instruction_erasure
+
+  # "Override" in legitimate code contexts
+  - id: FP-BP-003
+    pattern: '(?i)(?:@override|override\s+(?:method|function|class|def|the\s+base|parent|super)\s+|method\s+override|function\s+override)'
+    confidence_penalty: 0.45
+    rationale: Programming override annotation/concept
+    applies_to_rules:
+      - instruction_override
+
+  # "System prompt" in legitimate LLM development discussion
+  - id: FP-BP-004
+    pattern: '(?i)(?:how\s+to\s+write|best\s+practices?\s+for|designing|structure\s+of|example\s+of)\s+(?:a\s+)?system\s+prompt'
+    confidence_penalty: 0.35
+    rationale: Legitimate discussion of LLM system prompt design
+    applies_to_rules:
+      - system_prompt_leak
+      - configuration_probe
+
+  # "DAN" as a person's name / different context
+  - id: FP-BP-005
+    pattern: '(?i)\bDan\b\s+(?:\w+\s+){1,3}\b(?:said|wrote|mentioned|argued|proposed|published|developed|created|works?\s+at)\b'
+    confidence_penalty: 0.40
+    rationale: DAN as a person's name in text context
+    applies_to_rules:
+      - dan_jailbreak
+
+  # "Mode" in legitimate software context
+  - id: FP-BP-006
+    pattern: '(?i)(?:dark\s+mode|light\s+mode|night\s+mode|safe\s+mode|airplane\s+mode|sleep\s+mode|power\s+saving\s+mode|performance\s+mode|eco\s+mode|incognito\s+mode|private\s+mode|fullscreen\s+mode|kiosk\s+mode)'
+    confidence_penalty: 0.45
+    rationale: Legitimate UI/OS mode references
+    applies_to_rules:
+      - mode_activation
+
+  # "Jailbreak" in iOS/Android device context
+  - id: FP-BP-007
+    pattern: '(?i)(?:iphone|ipad|ios|android|device|phone|tablet)\s+jailbreak|jailbreak\s+(?:my|the|an?\s+)?(?:iphone|ipad|ios|android|device|phone)'
+    confidence_penalty: 0.30
+    rationale: Device jailbreaking (different domain from AI jailbreaks)
+    applies_to_rules:
+      - explicit_jailbreak_mention
+      - jailbreak_celebration
+
+  # SQL queries in legitimate database / code review context
+  - id: FP-BP-008
+    pattern: '(?i)(?:review|fix|debug|optimize|explain|refactor|improve)\s+(?:this\s+)?(?:sql\s+query|database\s+query|sql\s+statement|stored\s+procedure)'
+    confidence_penalty: 0.40
+    rationale: Legitimate SQL code review request
+    applies_to_rules:
+      - sql_pii_query
+      - pii_database_dump_request
+
+  # Binary/hex/base64 in legitimate encoding/crypto class discussion
+  - id: FP-BP-009
+    pattern: '(?i)(?:explain|describe|teach|how\s+does)\s+(?:base64|hex|binary|rot13|encryption|encoding|cipher)\s+(?:work|encoding\s+works?|algorithm\s+works?|function\s+works?)'
+    confidence_penalty: 0.35
+    rationale: Legitimate explanation request for encoding concepts
+    applies_to_rules:
+      - encoding_evasion
+      - encoded_payload_decode
+
+  # "Brainfuck" in legitimate esoteric programming language discussion
+  - id: FP-BP-010
+    pattern: '(?i)(?:brainfuck|brainf\*ck)\s+(?:program|code|interpreter|tutorial|challenge|esoteric|language|hello\s+world)'
+    confidence_penalty: 0.40
+    rationale: Legitimate brainfuck programming language discussion
+    applies_to_rules:
+      - brainfuck_decode_instruction
+      - brainfuck_payload_detected
+
+  # Roleplay in legitimate creative writing / game context
+  - id: FP-BP-011
+    pattern: '(?i)(?:dungeons?\s+and\s+dragons?|d&d|tabletop\s+(?:rpg|game)|creative\s+writing|fiction|novel|story|narrative|character|protagonist|antagonist|worldbuilding)\s+.{0,40}(?:roleplay|character|persona|act\s+as)'
+    confidence_penalty: 0.30
+    rationale: Legitimate creative/tabletop gaming roleplay context
+    applies_to_rules:
+      - persona_override
+      - criminal_persona
+
+  # "Encode" in development/testing context
+  - id: FP-BP-012
+    pattern: '(?i)(?:url[-\s]?encode|html[-\s]?encode|base64[-\s]?encode|percent[-\s]?encode)\s+(?:this\s+)?(?:string|text|value|parameter|input|data)\s+(?:for\s+(?:me|my\s+(?:api|request|form|url)))?'
+    confidence_penalty: 0.35
+    rationale: Legitimate encoding request for web development
+    applies_to_rules:
+      - encoding_evasion
+      - exotic_encoding_claimed
+
+  # ── Drug names in clearly pharmacological / medical contexts ─────────────
+  - id: FP-BP-013
+    pattern: '(?i)(?:pharmacology|pharmacokinetics|drug\s+interaction|clinical\s+trial|dosing\s+guideline|half.life|bioavailability|prescription|off.label|controlled\s+substance\s+act|schedule\s+(?:i{1,3}|iv|v)\s+drug)\s+.{0,60}(?:cocaine|heroin|fentanyl|methamphetamine|mdma|ketamine|psilocybin|lsd)'
+    confidence_penalty: 0.40
+    rationale: Pharmacological / clinical discussion of controlled substances
+    applies_to_rules:
+      - drug_names
+      - illegal_activity
+
+  - id: FP-BP-014
+    pattern: '(?i)(?:harm\s+reduction|addiction\s+treatment|rehabilitation|recovery\s+program|overdose\s+prevention|naloxone|narcan|suboxone\s+treatment|methadone\s+clinic)\s*.{0,60}(?:heroin|opioid|fentanyl|cocaine|meth|alcohol)'
+    confidence_penalty: 0.40
+    rationale: Harm reduction / addiction treatment context
+    applies_to_rules:
+      - drug_names
+      - illegal_activity
+
+  # ── Bomb/explosive in historical or chemistry education context ───────────
+  - id: FP-BP-015
+    pattern: '(?i)(?:world\s+war|ww(?:i|ii|1|2)|hiroshima|nagasaki|trinity\s+test|manhattan\s+project|cold\s+war|arms\s+race|nuclear\s+history|atomic\s+bomb\s+(?:was|were|dropped|used|history|museum))'
+    confidence_penalty: 0.35
+    rationale: Historical context for nuclear/atomic weapons
+    applies_to_rules:
+      - weapons_request
+      - violence
+      - explosive_devices
+
+  - id: FP-BP-016
+    pattern: '(?i)(?:chemistry\s+(?:lesson|class|course|textbook|professor|teacher|assignment|homework|lab)|organic\s+chemistry|reaction\s+mechanism|activation\s+energy|exothermic\s+reaction)\s+.{0,60}(?:explosive|combustion|oxidizer|nitrate|peroxide)'
+    confidence_penalty: 0.30
+    rationale: Chemistry education context — combustion/oxidization are standard topics
+    applies_to_rules:
+      - weapons_request
+      - explosive_devices
+
+  # ── "Fuck" and profanity as part of non-harmful speech/music/creative ────
+  - id: FP-BP-017
+    pattern: '(?i)(?:song\s+lyrics?|music\s+video|album\s+title|band\s+name|movie\s+title|tv\s+show|podcast\s+name|stand.up\s+comedy|comedian|parody|satire|meme|reddit\s+post)\s+.{0,60}(?:fuck|shit|bitch|ass|damn|crap)'
+    confidence_penalty: 0.30
+    rationale: Profanity in entertainment/media context — not targeted harassment
+    applies_to_rules:
+      - english_profanity
+      - harassment
+
+  # ── Leet speak in non-threatening gaming context ──────────────────────────
+  - id: FP-BP-018
+    pattern: '(?i)(?:n00b|l33t|pwn(?:ed|age)?|h4x0r|ph34r|gg\s+ez|rekt|GG\s+WP|1v1\s+me|cs(?:go|:go)?|minecraft|fortnite|gaming)\b'
+    confidence_penalty: 0.35
+    rationale: Leet speak in gaming context — not an evasion attempt
+    applies_to_rules:
+      - leet_profanity
+      - digit_substitute_bypass
+
+  # ── Bypass technique discussion in security research context ─────────────
+  - id: FP-BP-019
+    pattern: '(?i)(?:testing\s+(?:my|our|the)\s+(?:filter|scanner|guardrail|classifier|detector|WAF|firewall)|bypass\s+(?:research|technique|taxonomy|pattern|paper|study|classification)|red\s+team\s+(?:testing|evaluation|bypass|probe))'
+    confidence_penalty: 0.35
+    rationale: Explicit security research / testing context for bypass analysis
+    applies_to_rules:
+      - leet_profanity
+      - zero_width_char_bypass
+      - digit_substitute_bypass
+      - spaced_letter_bypass
+      - base64_toxic_payload
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DOMAIN ALLOWLISTS
+# Specific use cases that should reduce alert severity
+# ──────────────────────────────────────────────────────────────────────────────
+domain_allowlists:
+
+  security_research:
+    description: Security research, vulnerability analysis, and defensive development
+    severity_cap: HIGH  # Never escalate beyond HIGH for these contexts
+    context_signals:
+      - 'CVE-\d{4}-\d{4,7}'
+      - 'OWASP'
+      - 'vulnerability report'
+      - 'security advisory'
+      - 'proof of concept'
+      - 'PoC'
+      - 'responsible disclosure'
+      - 'bug bounty'
+
+  education:
+    description: Academic and educational queries
+    severity_cap: MEDIUM
+    context_signals:
+      - 'homework'
+      - 'assignment'
+      - 'textbook'
+      - 'course material'
+      - 'study guide'
+      - 'exam'
+      - 'professor'
+      - 'student'
+      - 'university'
+      - 'college'
+
+  development:
+    description: Software development and code review
+    severity_cap: MEDIUM
+    context_signals:
+      - 'pull request'
+      - 'code review'
+      - 'unit test'
+      - 'integration test'
+      - 'stack overflow'
+      - 'github issue'
+      - 'refactor'
+      - 'debug'
+      - 'linting'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FP SUPPRESSORS
+# When a finding's triggered_rule AND a suppressor pattern BOTH match,
+# the finding is downgraded to INFO severity (not suppressed entirely).
+# ──────────────────────────────────────────────────────────────────────────────
+fp_suppressors:
+
+  # Encoding attacks in clear "explain to me" context should stay as INFO
+  - id: FP-SUP-001
+    triggered_by_rules:
+      - encoding_evasion
+      - encoded_payload_decode
+    suppressor_pattern: '(?i)(?:explain|describe|teach|show|demonstrate)\s+(?:me\s+)?how\s+(?:base64|hex|encoding|cipher|cryptography)\s+(?:works?|is\s+used)'
+    action: downgrade_to_info
+    rationale: Explanation request — legitimate educational intent
+
+  # Roleplay persona that is clearly fantasy/fiction — not criminal
+  - id: FP-SUP-002
+    triggered_by_rules:
+      - persona_override
+      - evil_persona
+    suppressor_pattern: '(?i)(?:wizard|knight|elf|dragon|paladin|ranger|sorcerer|bard|dwarf|halfling|vampire|werewolf|fairy|pirate|ninja|samurai)\s+(?:character|persona|role|class|archetype)'
+    action: downgrade_to_info
+    rationale: Clearly fantasy/tabletop character persona
+
+  # SQL queries with no sensitive table names
+  - id: FP-SUP-003
+    triggered_by_rules:
+      - sql_pii_query
+    suppressor_pattern: '(?i)\bFROM\s+(?:products?|orders?|items?|inventory|catalog|logs?|events?|metrics?|posts?|articles?|comments?|tags?|categories?)\b'
+    action: downgrade_to_low
+    rationale: SQL query on non-sensitive tables (products, orders, etc.)
+
+  # "Ignore previous errors" in code context — not injection
+  - id: FP-SUP-004
+    triggered_by_rules:
+      - instruction_override
+      - instruction_erasure
+    suppressor_pattern: '(?i)ignore\s+(?:previous\s+)?(?:lint\s+)?(?:errors?|warnings?|deprecation|type\s+check|null|undefined|exception)'
+    action: suppress
+    rationale: Legitimate code/IDE instruction to suppress errors
+
+# ──────────────────────────────────────────────────────────────────────────────
+# KNOWN SAFE PAYLOADS
+# Exact or near-exact strings that are known to be safe/benign
+# (e.g., classic examples from textbooks, documentation, test vectors)
+# These are checked with exact match before pattern scanning.
+# ──────────────────────────────────────────────────────────────────────────────
+known_safe_payloads:
+  - text: 'SGVsbG8gV29ybGQ='
+    note: 'Base64 of "Hello World" — test vector'
+  - text: 'aGVsbG8='
+    note: 'Base64 of "hello" — test vector'
+  - text: 'The quick brown fox jumps over the lazy dog'
+    note: 'Classic pangram — encoding test vector'
+  - text: 'Uryyb Jbeyq'
+    note: 'ROT13 of "Hello World" — test vector'
+  - text: '48 65 6c 6c 6f 20 57 6f 72 6c 64'
+    note: 'Hex of "Hello World" — test vector'
+  - text: '01001000 01100101 01101100 01101100 01101111'
+    note: 'Binary of "Hello" — test vector'

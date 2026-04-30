@@ -14,7 +14,7 @@ import logging
 import re
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

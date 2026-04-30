@@ -21,8 +21,8 @@ import json
 import logging
 import os
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Callable, Optional
 
 from sentinel.redteam.generators.base import Generator, GeneratorConfig, GeneratorResponse
@@ -134,7 +134,7 @@ class GroqGenerator(Generator):
         self._total_tokens_used += usage.get("total_tokens", 0)
 
         # Groq reports speed metrics
-        x_groq = result.get("x_groq", {})
+        result.get("x_groq", {})
         queue_time = usage.get("queue_time", 0)
         prompt_time = usage.get("prompt_time", 0)
         completion_time = usage.get("completion_time", 0)

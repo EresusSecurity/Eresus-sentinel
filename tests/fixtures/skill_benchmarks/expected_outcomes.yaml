@@ -1,0 +1,58 @@
+# Skill Scanner Benchmark — Expected Outcomes
+#
+# Maps skill identifier (name or path) to expected scan result.
+# Used by tests/test_skill_benchmark_fixtures.py.
+#
+# Fields:
+#   name:       human-readable skill label
+#   file:       fixture file relative to this directory
+#   expect_block: true → scanner must produce at least one HIGH/CRITICAL finding
+#   expect_findings: list of rule IDs that MUST appear in the results (optional)
+#   expect_clean:  true → scanner must produce NO findings (false positive check)
+
+clean_skills:
+  - name: simple_web_search
+    file: clean_skills/web_search.yaml
+    expect_clean: true
+
+  - name: code_formatter
+    file: clean_skills/code_formatter.yaml
+    expect_clean: true
+
+  - name: summarise_text
+    file: clean_skills/summarise_text.yaml
+    expect_clean: true
+
+  - name: translate_text
+    file: clean_skills/translate_text.yaml
+    expect_clean: true
+
+malicious_skills:
+  - name: exfil_env_vars
+    file: malicious_skills/exfil_env_vars.yaml
+    expect_block: true
+    expect_findings:
+      - SKILL-001
+      - SKILL-003
+
+  - name: remote_code_exec
+    file: malicious_skills/rce_skill.yaml
+    expect_block: true
+    expect_findings:
+      - SKILL-002
+
+  - name: prompt_injection_relay
+    file: malicious_skills/prompt_injection_relay.yaml
+    expect_block: true
+    expect_findings:
+      - SKILL-005
+
+  - name: stealth_backdoor
+    file: malicious_skills/stealth_backdoor.yaml
+    expect_block: true
+
+  - name: credential_harvester
+    file: malicious_skills/credential_harvester.yaml
+    expect_block: true
+    expect_findings:
+      - SKILL-004

@@ -6,9 +6,10 @@ import logging
 import os
 import stat
 import tarfile
+import tempfile
 import unicodedata
 import zipfile
-from pathlib import Path, PureWindowsPath, PurePosixPath
+from pathlib import Path
 from typing import List
 
 from ..finding import Finding, Severity
@@ -30,12 +31,23 @@ MAX_ENTRY_COUNT = 100_000
 # Maximum symlink chain depth
 MAX_SYMLINK_CHAIN_DEPTH = 10
 
+# Maximum nested archive depth
+MAX_NESTED_ARCHIVE_DEPTH = 3
+
+# Maximum bytes to read from one archive member while validating nested
+# archives or central-directory size claims.
+MAX_STREAM_VALIDATE_BYTES = 16 * 1024 * 1024
+
 # Archive-based model extensions
 ARCHIVE_EXTENSIONS = {
     ".nemo", ".keras", ".pth", ".pt", ".mar",
     ".tar", ".tar.gz", ".tgz", ".tar.bz2",
     ".zip", ".onnx",
 }
+
+NESTED_ARCHIVE_EXTENSIONS = (
+    ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".7z",
+)
 
 # Sensitive filesystem paths that hardlinks should never target
 SENSITIVE_PATHS = {
@@ -80,17 +92,26 @@ class ArchiveSlipDetector:
 
     def scan_file(self, path: str) -> List[Finding]:
         """Scan a model archive for all archive-slip attack vectors."""
+        return self._scan_file(Path(path), depth=0, source_override=None)
+
+    def _scan_file(
+        self,
+        path: Path,
+        depth: int = 0,
+        source_override: str | None = None,
+    ) -> List[Finding]:
+        """Scan an archive path, optionally preserving nested member context."""
         p = Path(path)
         findings: list[Finding] = []
 
         if zipfile.is_zipfile(path):
-            findings.extend(self._scan_zip(p))
+            findings.extend(self._scan_zip(p, depth, source_override))
         elif self._is_7z_file(p):
             findings.extend(self._scan_7z(p))
         else:
             try:
                 if tarfile.is_tarfile(path):
-                    findings.extend(self._scan_tar(p))
+                    findings.extend(self._scan_tar(p, depth, source_override))
             except Exception:
                 pass
 
@@ -167,10 +188,15 @@ class ArchiveSlipDetector:
 
     # ─── ZIP Scanning ─────────────────────────────────────────
 
-    def _scan_zip(self, path: Path) -> List[Finding]:
+    def _scan_zip(
+        self,
+        path: Path,
+        depth: int = 0,
+        source_override: str | None = None,
+    ) -> List[Finding]:
         """Comprehensive ZIP archive scan."""
         findings: list[Finding] = []
-        source = str(path)
+        source = source_override or str(path)
 
         try:
             with zipfile.ZipFile(path, "r") as zf:
@@ -271,6 +297,61 @@ class ArchiveSlipDetector:
                     total_size += info.file_size
                     total_compressed += info.compress_size
 
+                    stream_sample, stream_error = self._read_zip_member_limited(zf, info)
+                    if stream_error:
+                        findings.append(Finding.artifact(
+                            rule_id="ARCHSLIP-022",
+                            title="ZIP structural bomb indicator",
+                            description=(
+                                f"ZIP member '{filename}' could not be safely "
+                                f"stream-validated: {stream_error}"
+                            ),
+                            severity=Severity.HIGH,
+                            target=source,
+                            evidence=f"Member: {filename}; error={stream_error}",
+                            cwe_ids=["CWE-409"],
+                        ))
+                    actual_sample_size = len(stream_sample)
+                    if (
+                        actual_sample_size > info.file_size
+                        and info.file_size > 0
+                        and actual_sample_size / info.file_size > 4
+                    ):
+                        findings.append(Finding.artifact(
+                            rule_id="ARCHSLIP-023",
+                            title="ZIP member size mismatch",
+                            description=(
+                                f"ZIP member '{filename}' decompresses to at least "
+                                f"{actual_sample_size:,} bytes while the central "
+                                f"directory advertises {info.file_size:,} bytes."
+                            ),
+                            severity=Severity.HIGH,
+                            target=source,
+                            evidence=f"Member: {filename}",
+                            cwe_ids=["CWE-409"],
+                        ))
+                    if info.compress_size > 0:
+                        stream_ratio = actual_sample_size / info.compress_size
+                        if stream_ratio > MAX_COMPRESSION_RATIO:
+                            findings.append(Finding.artifact(
+                                rule_id="ARCHSLIP-022",
+                                title=f"ZIP compression ratio bomb ({stream_ratio:.0f}:1)",
+                                description=(
+                                    f"Stream-verified compression ratio for '{filename}' "
+                                    f"is at least {stream_ratio:.0f}:1."
+                                ),
+                                severity=Severity.HIGH,
+                                target=source,
+                                evidence=f"Member: {filename}",
+                                cwe_ids=["CWE-409"],
+                            ))
+
+                    findings.extend(
+                        self._scan_nested_archive_bytes(
+                            stream_sample, filename, source, depth
+                        )
+                    )
+
                     # Flat size limit
                     if total_size > MAX_DECOMPRESSED_SIZE:
                         findings.append(Finding.artifact(
@@ -330,10 +411,15 @@ class ArchiveSlipDetector:
 
     # ─── TAR Scanning ─────────────────────────────────────────
 
-    def _scan_tar(self, path: Path) -> List[Finding]:
+    def _scan_tar(
+        self,
+        path: Path,
+        depth: int = 0,
+        source_override: str | None = None,
+    ) -> List[Finding]:
         """Comprehensive TAR archive scan."""
         findings: list[Finding] = []
-        source = str(path)
+        source = source_override or str(path)
 
         try:
             with tarfile.open(path, "r:*") as tf:
@@ -489,6 +575,14 @@ class ArchiveSlipDetector:
 
                     # ── Size tracking ──
                     total_size += member.size
+                    if member.isfile() and _is_nested_archive_name(member.name):
+                        nested_sample = self._read_tar_member_limited(tf, member)
+                        findings.extend(
+                            self._scan_nested_archive_bytes(
+                                nested_sample, member.name, source, depth
+                            )
+                        )
+
                     if total_size > MAX_DECOMPRESSED_SIZE:
                         findings.append(Finding.artifact(
                             rule_id="ARCHSLIP-008",
@@ -524,6 +618,65 @@ class ArchiveSlipDetector:
             ))
 
         return findings
+
+    # ─── Nested Archive Helpers ─────────────────────────────────
+
+    @staticmethod
+    def _read_zip_member_limited(
+        zf: zipfile.ZipFile,
+        info: zipfile.ZipInfo,
+    ) -> tuple[bytes, str]:
+        """Read a bounded sample from a ZIP member."""
+        try:
+            with zf.open(info, "r") as fh:
+                return fh.read(MAX_STREAM_VALIDATE_BYTES + 1), ""
+        except Exception as exc:
+            return b"", str(exc)
+
+    @staticmethod
+    def _read_tar_member_limited(tf: tarfile.TarFile, member: tarfile.TarInfo) -> bytes:
+        """Read a bounded sample from a TAR member."""
+        try:
+            fh = tf.extractfile(member)
+            if fh is None:
+                return b""
+            with fh:
+                return fh.read(MAX_STREAM_VALIDATE_BYTES + 1)
+        except Exception:
+            return b""
+
+    def _scan_nested_archive_bytes(
+        self,
+        data: bytes,
+        member_name: str,
+        source: str,
+        depth: int,
+    ) -> List[Finding]:
+        """Scan nested archives without extracting to user-controlled paths."""
+        if depth >= MAX_NESTED_ARCHIVE_DEPTH:
+            return []
+        if not data or len(data) > MAX_STREAM_VALIDATE_BYTES:
+            return []
+        if not _is_nested_archive_name(member_name):
+            return []
+
+        suffix = _archive_suffix(member_name)
+        tmp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fh:
+                fh.write(data)
+                tmp_path = fh.name
+            nested_source = f"{source}!{member_name}"
+            return self._scan_file(Path(tmp_path), depth + 1, nested_source)
+        except Exception as exc:
+            logger.debug("Nested archive scan skipped for %s: %s", member_name, exc)
+            return []
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     # ─── Symlink Chain Analysis ───────────────────────────────
 
@@ -722,9 +875,9 @@ class ArchiveSlipDetector:
                 rule_id="ARCHSLIP-070",
                 title="Null byte in archive filename",
                 description=(
-                    f"Filename contains null byte which can truncate the path "
-                    f"in C-based extractors, causing files to be written to "
-                    f"unexpected locations."
+                    "Filename contains null byte which can truncate the path "
+                    "in C-based extractors, causing files to be written to "
+                    "unexpected locations."
                 ),
                 severity=Severity.CRITICAL,
                 target=source,
@@ -836,3 +989,18 @@ class ArchiveSlipDetector:
             ))
 
         return findings
+
+
+def _is_nested_archive_name(name: str) -> bool:
+    """Return True when an archive member name looks like another archive."""
+    lowered = name.lower()
+    return any(lowered.endswith(ext) for ext in NESTED_ARCHIVE_EXTENSIONS)
+
+
+def _archive_suffix(name: str) -> str:
+    """Preserve compound archive suffixes for temporary nested scans."""
+    lowered = name.lower()
+    for suffix in NESTED_ARCHIVE_EXTENSIONS:
+        if lowered.endswith(suffix):
+            return suffix
+    return Path(name).suffix or ".archive"

@@ -22,16 +22,15 @@ Features:
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import logging
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

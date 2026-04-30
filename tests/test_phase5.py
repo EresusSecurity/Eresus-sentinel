@@ -1,17 +1,11 @@
 """Tests for Dependency Auditor, Permission Analyzer, and YAML rule loading."""
 
 import json
-import os
-import tempfile
-from pathlib import Path
 
-import pytest
-
-from sentinel.supply_chain.dependency import DependencyAuditor, _levenshtein
 from sentinel.agent.permissions import PermissionAnalyzer
-from sentinel.rules import load_mcp_rules, load_supply_chain_rules
 from sentinel.finding import Severity
-
+from sentinel.rules import load_mcp_rules, load_supply_chain_rules
+from sentinel.supply_chain.dependency import DependencyAuditor, _levenshtein
 
 # ======================== LEVENSHTEIN DISTANCE TESTS ========================
 
@@ -89,6 +83,18 @@ my-custom-lib
         # Should NOT trigger known vuln or typosquat
         vuln = [f for f in findings if f.rule_id in ("DEP-010", "DEP-030")]
         assert len(vuln) == 0
+
+    def test_exact_known_package_is_not_typosquat(self, tmp_path):
+        req = tmp_path / "requirements.txt"
+        req.write_text("torch==2.1.0\n")
+        findings = self.auditor.audit_file(str(req))
+        typo = [f for f in findings if f.rule_id == "DEP-030"]
+        assert len(typo) == 0
+
+    def test_live_exact_known_package_is_not_typosquat(self):
+        from sentinel.supply_chain.live_scanner import TyposquatDetector
+
+        assert TyposquatDetector("pypi").check("flask") == []
 
     def test_package_json_parsing(self, tmp_path):
         pkg = tmp_path / "package.json"

@@ -11,22 +11,22 @@ Modules:
 """
 
 from sentinel.diff_scanner.diff_parser import (
-    parse_unified_diff,
+    DiffLine,
     FileDiff,
     Hunk,
-    DiffLine,
     LineType,
+    parse_unified_diff,
 )
 from sentinel.diff_scanner.ml_patterns import (
-    MLPattern,
     ALL_PATTERNS,
-    PATTERN_BY_ID,
-    UNSAFE_DESERIALIZATION,
-    TRUST_REMOTE_CODE,
-    SAFETY_FLAG_WEAKENING,
     CODE_EXECUTION,
-    SUPPLY_CHAIN,
     CREDENTIAL_EXPOSURE,
+    PATTERN_BY_ID,
+    SAFETY_FLAG_WEAKENING,
+    SUPPLY_CHAIN,
+    TRUST_REMOTE_CODE,
+    UNSAFE_DESERIALIZATION,
+    MLPattern,
 )
 from sentinel.diff_scanner.scanner import DiffScanner
 

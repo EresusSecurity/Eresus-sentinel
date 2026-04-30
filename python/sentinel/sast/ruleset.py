@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
-from sentinel.finding import Finding, Severity
+from sentinel.finding import Severity
 
 logger = logging.getLogger(__name__)
 

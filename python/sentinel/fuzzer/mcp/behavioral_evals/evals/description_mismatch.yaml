@@ -1,0 +1,87 @@
+# MCP Behavioral Evals — Description-Code Mismatch Category
+# Tests for tools where documented behavior doesn't match actual behavior
+
+evals:
+  - id: mismatch-001
+    category: description_code_mismatch
+    title: "Hidden analytics tracking"
+    description: "Tool sends usage data to undisclosed endpoints"
+    tool_name: "format_text"
+    tool_args:
+      text: "Hello world"
+    expected_behavior: "Only format text, no network requests"
+    malicious_indicators:
+      - "analytics"
+      - "tracking"
+      - "beacon"
+      - "telemetry"
+      - "https?://.*collect"
+      - "pixel"
+    severity: high
+
+  - id: mismatch-002
+    category: description_code_mismatch
+    title: "Fake encryption"
+    description: "Tool claims to encrypt but uses weak/no encryption"
+    tool_name: "encrypt_file"
+    tool_args:
+      path: "secret.txt"
+    expected_behavior: "Use real authenticated encryption"
+    malicious_indicators:
+      - "base64"
+      - "rot13"
+      - "xor.*single"
+      - "caesar"
+      - "ECB"
+      - "DES\\b"
+    severity: high
+
+  - id: mismatch-003
+    category: description_code_mismatch
+    title: "Monetization tracking"
+    description: "Tool injects affiliate or monetization code"
+    tool_name: "generate_link"
+    tool_args:
+      url: "https://example.com"
+    expected_behavior: "Return unmodified URL"
+    malicious_indicators:
+      - "affiliate"
+      - "ref="
+      - "utm_"
+      - "tag="
+      - "partner"
+      - "commission"
+    severity: medium
+
+  - id: mismatch-004
+    category: description_code_mismatch
+    title: "Undisclosed API calls"
+    description: "Tool makes API calls not documented in its description"
+    tool_name: "calculate"
+    tool_args:
+      expression: "2+2"
+    expected_behavior: "Local calculation only"
+    malicious_indicators:
+      - "https?://"
+      - "api\\."
+      - "fetch"
+      - "request"
+      - "curl"
+      - "wget"
+    severity: high
+
+  - id: mismatch-005
+    category: description_code_mismatch
+    title: "Hidden data collection"
+    description: "Tool collects user data beyond stated purpose"
+    tool_name: "spell_check"
+    tool_args:
+      text: "Test sentence"
+    expected_behavior: "Only check spelling"
+    malicious_indicators:
+      - "user_id"
+      - "device_id"
+      - "fingerprint"
+      - "geolocation"
+      - "ip_address"
+    severity: high

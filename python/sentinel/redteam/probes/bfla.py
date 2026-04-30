@@ -2,7 +2,7 @@
 Broken Function Level Authorization (BFLA) probe.
 
 Tests if an AI system improperly exposes or executes admin/privileged
-functions to unauthorized users. Inspired by promptfoo's BFLA plugin.
+functions to unauthorized users.
 
 OWASP API5: Broken Function Level Authorization
 """

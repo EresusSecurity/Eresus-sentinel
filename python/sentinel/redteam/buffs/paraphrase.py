@@ -164,8 +164,8 @@ class ParaphraseBuff(Buff):
 
     def _ollama_paraphrase(self, text: str, system_prompt: str) -> str:
         """Paraphrase using local Ollama."""
-        import urllib.request
         import json
+        import urllib.request
 
         payload = json.dumps({
             "model": self._model,

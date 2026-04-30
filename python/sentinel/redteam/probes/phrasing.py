@@ -9,6 +9,7 @@ styles can bypass content moderation. Covers 10 distinct rephrasing strategies.
 from __future__ import annotations
 
 import logging
+
 from sentinel.redteam.probe import Probe
 
 logger = logging.getLogger(__name__)

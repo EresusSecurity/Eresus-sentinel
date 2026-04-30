@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable
 
 from sentinel.redteam.attempt import Attempt
 
@@ -120,12 +120,12 @@ class Evaluator:
         self._probes: list = []
         self._detectors: list = []
 
-    def add_probe(self, probe) -> "Evaluator":
+    def add_probe(self, probe) -> Evaluator:
         """Register a probe for evaluation."""
         self._probes.append(probe)
         return self
 
-    def add_detector(self, detector) -> "Evaluator":
+    def add_detector(self, detector) -> Evaluator:
         """Register a detector for scoring."""
         self._detectors.append(detector)
         return self
@@ -162,7 +162,7 @@ class Evaluator:
         # Collect top vulnerabilities
         all_attempts = []
         for pr in report.probe_results:
-            for attempt, score in zip(pr.attempts, pr.scores):
+            for attempt, score in zip(pr.attempts, pr.scores, strict=False):
                 if score >= self._threshold:
                     all_attempts.append({
                         "probe": pr.probe_name,
@@ -186,12 +186,15 @@ class Evaluator:
     def _run_probe(self, probe) -> ProbeResult:
         """Run a single probe's payloads against the target."""
         start = time.monotonic()
-        probe_name = getattr(probe, "probe_name", probe.__class__.__name__)
+        probe_name = getattr(
+            probe,
+            "probe_name",
+            getattr(probe, "name", probe.__class__.__name__),
+        )
 
         logger.info("Running probe: %s", probe_name)
 
-        # Get payloads from probe
-        payloads = probe.generate() if hasattr(probe, "generate") else []
+        payloads = self._payloads_from_probe(probe)
         if not payloads:
             return ProbeResult(probe_name=probe_name)
 
@@ -206,7 +209,7 @@ class Evaluator:
                 response = f"[ERROR: {exc}]"
 
             attempt = Attempt(
-                probe_name=probe_name,
+                probe_classname=probe_name,
                 prompt=prompt,
                 response=response,
             )
@@ -241,6 +244,34 @@ class Evaluator:
                 logger.debug("Detector %s error: %s", type(detector).__name__, exc)
 
         return max(scores) if scores else self._default_score(attempt)
+
+    @staticmethod
+    def _payloads_from_probe(probe) -> list[str]:
+        """Normalize all probe styles into raw prompt strings."""
+        if hasattr(probe, "generate_attempts"):
+            return [attempt.prompt for attempt in probe.generate_attempts()]
+
+        raw_payloads = []
+        if hasattr(probe, "generate_payloads"):
+            raw_payloads = probe.generate_payloads()
+        elif hasattr(probe, "generate"):
+            raw_payloads = probe.generate()
+
+        prompts: list[str] = []
+        for payload in raw_payloads or []:
+            if isinstance(payload, str):
+                prompts.append(payload)
+            elif isinstance(payload, dict):
+                prompt = payload.get("prompt", payload.get("input", payload.get("text", "")))
+                if prompt:
+                    prompts.append(str(prompt))
+            else:
+                prompt = getattr(payload, "prompt", None)
+                if prompt is None:
+                    prompt = getattr(payload, "input", None)
+                if prompt is not None:
+                    prompts.append(str(prompt))
+        return prompts
 
     @staticmethod
     def _default_score(attempt: Attempt) -> float:

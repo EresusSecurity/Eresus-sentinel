@@ -12,8 +12,8 @@ Sub-packages:
     yara_scanner — YARA rule-based prompt scanning
 """
 
-from sentinel.firewall.base import InputScanner, OutputScanner, ScanResult, ScanAction
-from sentinel.firewall.heuristic_detector import HeuristicInjectionDetector, CanaryWordGuard
+from sentinel.firewall.base import InputScanner, OutputScanner, ScanAction, ScanResult
+from sentinel.firewall.heuristic_detector import CanaryWordGuard, HeuristicInjectionDetector
 from sentinel.firewall.pii_detector import PIIDetector, PIIEntity
 from sentinel.firewall.yara_scanner import YaraPromptScanner
 

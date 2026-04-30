@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+
 from sentinel.finding import Finding, Severity
 from sentinel.notebook_scanner.parser import NotebookCell, NotebookParser
 

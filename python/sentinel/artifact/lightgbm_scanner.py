@@ -1,8 +1,10 @@
 """LightGBM model scanner (.lgb, .lightgbm, .txt model files)."""
 from __future__ import annotations
+
 import logging
 import re
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,8 @@ PICKLE_MARKERS = [b"\x80\x02", b"\x80\x03", b"\x80\x04", b"\x80\x05"]
 
 
 class LightGBMScanner:
+    """Scan LightGBM model files for embedded code and deserialization risks."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)
@@ -57,11 +61,9 @@ class LightGBMScanner:
 
     def _check_text_format(self, text: str, fp: str, findings: list[Finding]) -> None:
         lines = text.split("\n")
-        feature_section = False
         for i, line in enumerate(lines):
             stripped = line.strip()
             if stripped.startswith("feature_names="):
-                feature_section = True
                 feature_str = stripped[len("feature_names="):]
                 features = feature_str.split(" ")
                 for feat in features:

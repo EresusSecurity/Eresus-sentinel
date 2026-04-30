@@ -32,11 +32,11 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set
 
 from ..finding import Finding, Severity
 from ..rules import load_scanner_rules
-from .gguf_engine import GGUFReverseEngine, GGUF_MAGIC_BYTES
+from .gguf_engine import GGUF_MAGIC_BYTES, GGUFReverseEngine
 
 _rules = load_scanner_rules()
 _llama_rules = _rules.get("llamafile", {})
@@ -284,13 +284,13 @@ class LlamaFileScanner:
         # Check section header for suspicious names in 64-bit ELF
         if ei_class == 2 and len(header) >= 64:
             e_shoff = struct.unpack_from("<Q", header, 40)[0]
-            e_shnum = struct.unpack_from("<H", header, 60)[0]
-            e_shstrndx = struct.unpack_from("<H", header, 62)[0]
+            struct.unpack_from("<H", header, 60)[0]
+            struct.unpack_from("<H", header, 62)[0]
 
             if e_shoff > file_size:
                 self.findings.append(Finding.artifact(
                     rule_id="LLAMA-005",
-                    title=f"ELF section header offset beyond EOF",
+                    title="ELF section header offset beyond EOF",
                     description=f"Section header table offset {e_shoff} exceeds "
                                 f"file size {file_size}.",
                     severity=Severity.HIGH, target=filepath,
@@ -342,8 +342,6 @@ class LlamaFileScanner:
                 gguf_data = f.read(gguf_size)
 
             # Write to temp buffer and analyze
-            import tempfile
-            import os
 
             # Parse the GGUF header inline for security checks
             if len(gguf_data) < 24:

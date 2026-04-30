@@ -16,12 +16,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import struct
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +397,6 @@ def _scan_tflite(filepath: Path) -> list[ModelFinding]:
             interpreter = tf.lite.Interpreter(model_path=str(filepath))
             interpreter.allocate_tensors()
 
-            custom_ops = set()
             for detail in interpreter.get_tensor_details():
                 if detail.get("quantization_parameters", {}).get("quantized_dimension", -1) < 0:
                     pass  # Normal

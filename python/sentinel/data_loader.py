@@ -19,7 +19,6 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 

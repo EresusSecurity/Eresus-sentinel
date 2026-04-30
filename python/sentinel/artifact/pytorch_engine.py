@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
-from typing import List
 
 from ..finding import Finding, Severity
 from .format_common import FormatReport

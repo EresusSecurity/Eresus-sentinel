@@ -1,5 +1,6 @@
 """ModelAudit-parity infrastructure — rule catalog, cache, HF popular models whitelist."""
 from __future__ import annotations
+
 import hashlib
 import json
 import logging

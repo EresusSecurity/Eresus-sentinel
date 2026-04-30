@@ -27,9 +27,8 @@ No tensorflow or tflite-runtime dependency required.
 
 from __future__ import annotations
 
-import struct
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List
 
 from ..finding import Finding, Severity
 from ..rules import load_scanner_rules
@@ -392,7 +391,7 @@ class TFLiteScanner:
                     if overflow:
                         self.findings.append(Finding.artifact(
                             rule_id="TFLITE-022",
-                            title=f"Tensor dimension overflow risk",
+                            title="Tensor dimension overflow risk",
                             description=f"Tensor {t_idx} in subgraph {sg_idx} has "
                                         f"dimensions {dims} that may cause integer overflow "
                                         "during memory allocation.",

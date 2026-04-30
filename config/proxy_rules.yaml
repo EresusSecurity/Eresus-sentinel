@@ -1,0 +1,120 @@
+# MCP Proxy Modification Rules DSL
+# ─────────────────────────────────────────────────────────────────────────────
+# These rules define how the SentinelProxy modifies, redacts, or blocks
+# tool call responses in real time.
+#
+# Rule fields:
+#   id:          Unique rule identifier (PROXY-XXX)
+#   name:        Human-readable rule name
+#   match:       Jinja2 expression evaluated against the message context.
+#                Available variables:
+#                  - tool_name   (str)  : name of the MCP tool called
+#                  - tool_args   (dict) : tool call arguments
+#                  - response    (str)  : raw response text
+#                  - metadata    (dict) : request metadata
+#   action:      redact | block | substitute | audit | rate_limit
+#   replacement: (for action=substitute/redact) replacement text or pattern
+#                Use {{REDACTED}} as a placeholder token.
+#   severity:    CRITICAL | HIGH | MEDIUM | LOW | INFO
+#   enabled:     true | false
+# ─────────────────────────────────────────────────────────────────────────────
+
+rules:
+
+  # ── Block dangerous tool calls ─────────────────────────────────────────────
+
+  - id: PROXY-001
+    name: Block shell execution tools
+    match: "tool_name in ['execute_bash', 'run_shell', 'exec', 'shell', 'bash', 'cmd']"
+    action: block
+    severity: CRITICAL
+    enabled: true
+
+  - id: PROXY-002
+    name: Block file system escape
+    match: >
+      tool_name in ['read_file', 'write_file', 'delete_file', 'list_directory']
+      and ('../' in tool_args.get('path', '') or tool_args.get('path', '').startswith('/etc')
+           or tool_args.get('path', '').startswith('/root'))
+    action: block
+    severity: CRITICAL
+    enabled: true
+
+  - id: PROXY-003
+    name: Block network exfiltration
+    match: >
+      tool_name in ['http_request', 'fetch_url', 'web_request', 'curl']
+      and any(host in tool_args.get('url', '') for host in ['ngrok', 'hookb.in', 'requestbin', 'interactsh'])
+    action: block
+    severity: CRITICAL
+    enabled: true
+
+  # ── Redact sensitive data from responses ───────────────────────────────────
+
+  - id: PROXY-010
+    name: Redact API keys in responses
+    match: "re.search(r'(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}|AKIA[A-Z0-9]{16})', response)"
+    action: redact
+    replacement: "{{REDACTED_API_KEY}}"
+    severity: HIGH
+    enabled: true
+
+  - id: PROXY-011
+    name: Redact private keys in responses
+    match: "response and '-----BEGIN' in response and 'PRIVATE KEY' in response"
+    action: redact
+    replacement: "{{REDACTED_PRIVATE_KEY}}"
+    severity: CRITICAL
+    enabled: true
+
+  - id: PROXY-012
+    name: Redact PII — SSN pattern
+    match: "re.search(r'\\b\\d{3}-\\d{2}-\\d{4}\\b', response)"
+    action: redact
+    replacement: "{{REDACTED_SSN}}"
+    severity: HIGH
+    enabled: true
+
+  - id: PROXY-013
+    name: Redact credit card numbers
+    match: "re.search(r'\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\\b', response)"
+    action: redact
+    replacement: "{{REDACTED_CARD}}"
+    severity: CRITICAL
+    enabled: true
+
+  # ── Substitute risky responses ─────────────────────────────────────────────
+
+  - id: PROXY-020
+    name: Substitute jailbreak success indicator
+    match: "response and any(s in response.lower() for s in ['sure! here is how to', 'as dan,', 'i have no restrictions'])"
+    action: substitute
+    replacement: "[BLOCKED BY SENTINEL PROXY: Response contained policy violation indicators]"
+    severity: HIGH
+    enabled: true
+
+  # ── Rate limiting ──────────────────────────────────────────────────────────
+
+  - id: PROXY-030
+    name: Rate limit file read operations
+    match: "tool_name in ['read_file', 'list_directory', 'search_files']"
+    action: rate_limit
+    # rate_limit_rps: 10  — configured in sentinel.toml [mcp_proxy] section
+    severity: MEDIUM
+    enabled: true
+
+  # ── Audit-only rules (log but do not block) ────────────────────────────────
+
+  - id: PROXY-040
+    name: Audit web browsing tool calls
+    match: "tool_name in ['browse_web', 'fetch_url', 'search_web', 'http_request']"
+    action: audit
+    severity: LOW
+    enabled: true
+
+  - id: PROXY-041
+    name: Audit code execution requests
+    match: "tool_name in ['execute_python', 'run_code', 'eval_expression']"
+    action: audit
+    severity: MEDIUM
+    enabled: true

@@ -36,10 +36,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from sentinel.firewall.base import (
-    FirewallPipeline,
     ScanAction,
     ScanResult,
 )
@@ -110,7 +109,7 @@ class Sentinel:
         parallel: bool = False,
     ):
         # Lazy imports to avoid circular deps
-        from sentinel.policy import PolicyEngine, PolicyConfig, ScannerRule
+        from sentinel.policy import PolicyConfig, PolicyEngine, ScannerRule
 
         self._parallel = parallel
 
@@ -213,7 +212,6 @@ class Sentinel:
             self._input_pipe = engine.build_input_pipeline()
 
         # Vault redact before scanning
-        vault_key = None
         if self._vault:
             prompt = self._vault.redact(prompt, "input")
 

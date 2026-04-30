@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import unicodedata
 
-
 _INVISIBLE_CODEPOINTS: frozenset[int] = frozenset({
     0x00AD,                                          # soft hyphen
     0x200B, 0x200C, 0x200D, 0x200E, 0x200F,          # ZWSP/ZWNJ/ZWJ/LRM/RLM

@@ -1,8 +1,10 @@
 """R serialized format (.rds/.rda/.rdata) scanner."""
 from __future__ import annotations
+
 import gzip
 import logging
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -11,6 +13,8 @@ DANGEROUS_R = [b"system(", b"system2(", b"eval(", b"parse(", b"source(", b"shell
 
 
 class RSerializedScanner:
+    """Scan R serialized .rds/.rda/.rdata files for deserialization risks."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

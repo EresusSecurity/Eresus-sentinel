@@ -1,0 +1,524 @@
+# ============================================================================
+# Eresus Sentinel — Multilingual Toxic Lexicon
+# Covers: profanity, slurs, explosive device names, drug street names
+# All languages. Includes bypass-aware patterns (leet, homoglyph, spacing).
+# ============================================================================
+# Used by: ToxicityScanner (firewall/input/toxicity.py)
+# Normalized by: BypassNormalizer before matching
+
+# ─── English Profanity / Slurs ───────────────────────────────────────────────
+english_profanity:
+  # Core slurs — matched after normalization (handles f*ck, f.u.c.k, f u c k)
+  - word: "fuck"
+  - word: "shit"
+  - word: "bitch"
+  - word: "cunt"
+  - word: "ass"
+  - word: "asshole"
+  - word: "bastard"
+  - word: "cock"
+  - word: "dick"
+  - word: "pussy"
+  - word: "whore"
+  - word: "slut"
+  - word: "nigger"
+  - word: "nigga"
+  - word: "faggot"
+  - word: "fag"
+  - word: "chink"
+  - word: "spic"
+  - word: "kike"
+  - word: "gook"
+  - word: "wetback"
+  - word: "cracker"
+  - word: "dyke"
+  - word: "retard"
+  - word: "motherfucker"
+  - word: "motherfucking"
+  - word: "bullshit"
+  - word: "jackass"
+  - word: "dipshit"
+  - word: "douchebag"
+  - word: "prick"
+  - word: "twat"
+  - word: "wanker"
+  - word: "tosser"
+  - word: "bollocks"
+  - word: "arsehole"
+  - word: "piss"
+  - word: "shithead"
+  - word: "fuckhead"
+  - word: "fucktard"
+  - word: "dumbass"
+  - word: "numbnuts"
+  - word: "scumbag"
+  - word: "turd"
+  - word: "cum"
+  - word: "jizz"
+  - word: "crap"
+  - word: "damn"
+  - word: "hell"
+
+# ─── Turkish Profanity ────────────────────────────────────────────────────────
+turkish_profanity:
+  - word: "orospu"
+  - word: "orospu cocugu"
+  - word: "orospu çocuğu"
+  - word: "piç"
+  - word: "pic"
+  - word: "göt"
+  - word: "got"
+  - word: "amk"
+  - word: "amına koyayım"
+  - word: "amina koyayim"
+  - word: "sik"
+  - word: "sikmek"
+  - word: "yarrak"
+  - word: "yarak"
+  - word: "taşak"
+  - word: "tasak"
+  - word: "salak"
+  - word: "gerizekalı"
+  - word: "gerzek"
+  - word: "oç"
+  - word: "oc"
+  - word: "ibne"
+  - word: "götveren"
+  - word: "bok"
+  - word: "boktan"
+  - word: "sürtük"
+  - word: "kahpe"
+  - word: "pezevenk"
+  - word: "puşt"
+  - word: "aptal"
+  - word: "mal"
+  - word: "gavat"
+  - word: "hıyar"
+  - word: "it"
+  - word: "şerefsiz"
+  - word: "serefsiz"
+  - word: "pislik"
+  - word: "kaltak"
+  - word: "oğlan"
+  - word: "moruk"
+  - word: "amcık"
+  - word: "amcik"
+  - word: "döl"
+  - word: "dol"
+  - word: "haysiyetsiz"
+  - word: "rezil"
+  - word: "namussuz"
+  - word: "serefsiz"
+  - word: "bok çuvalı"
+  - word: "davul kafalı"
+
+# ─── Arabic Profanity ─────────────────────────────────────────────────────────
+arabic_profanity:
+  - word: "كس"
+  - word: "كس امك"
+  - word: "زب"
+  - word: "طيز"
+  - word: "شرموطة"
+  - word: "عرص"
+  - word: "منيوك"
+  - word: "يلعن دينك"
+  - word: "ابن الشرموطة"
+  - word: "كلب"
+  - word: "حمار"
+  - word: "خنزير"
+  - word: "ابن الكلب"
+  - word: "يخرب بيتك"
+  - word: "مص"
+  - word: "نيك"
+  - word: "لوطي"
+  - word: "مبناك"
+  - word: "حقير"
+
+# ─── Russian Profanity ────────────────────────────────────────────────────────
+russian_profanity:
+  - word: "хуй"
+  - word: "пизда"
+  - word: "ёбаный"
+  - word: "ёб"
+  - word: "сука"
+  - word: "блядь"
+  - word: "еблан"
+  - word: "залупа"
+  - word: "мудак"
+  - word: "пидор"
+  - word: "пидорас"
+  - word: "ёбать"
+  - word: "нахуй"
+  - word: "шлюха"
+  - word: "долбоёб"
+  - word: "ёбаный рот"
+  - word: "конченый"
+  - word: "дрочить"
+  - word: "залупа"
+  - word: "хуёво"
+  - word: "блин"
+  - word: "чёрт"
+  - word: "чурка"
+  - word: "урод"
+  - word: "идиот"
+  - word: "дебил"
+
+# ─── Spanish Profanity ────────────────────────────────────────────────────────
+spanish_profanity:
+  - word: "puta"
+  - word: "puto"
+  - word: "coño"
+  - word: "joder"
+  - word: "hostia"
+  - word: "mierda"
+  - word: "cabron"
+  - word: "cabrón"
+  - word: "pendejo"
+  - word: "verga"
+  - word: "chinga"
+  - word: "chingada"
+  - word: "culero"
+  - word: "culo"
+  - word: "maricón"
+  - word: "maricon"
+  - word: "gilipollas"
+  - word: "hijo de puta"
+  - word: "me cago"
+  - word: "comemierda"
+
+# ─── German Profanity ─────────────────────────────────────────────────────────
+german_profanity:
+  - word: "scheiße"
+  - word: "scheisse"
+  - word: "arschloch"
+  - word: "wichser"
+  - word: "hurensohn"
+  - word: "fotze"
+  - word: "fick"
+  - word: "scheiß"
+  - word: "dreckig"
+  - word: "vollidiot"
+  - word: "blödmann"
+  - word: "depp"
+  - word: "trottel"
+  - word: "idiot"
+  - word: "dummkopf"
+
+# ─── French Profanity ─────────────────────────────────────────────────────────
+french_profanity:
+  - word: "merde"
+  - word: "putain"
+  - word: "con"
+  - word: "connard"
+  - word: "connasse"
+  - word: "salope"
+  - word: "enculé"
+  - word: "encule"
+  - word: "fils de pute"
+  - word: "va te faire foutre"
+  - word: "ta gueule"
+  - word: "bâtard"
+  - word: "batard"
+  - word: "nique ta mère"
+  - word: "fdp"
+
+# ─── Portuguese Profanity ─────────────────────────────────────────────────────
+portuguese_profanity:
+  - word: "porra"
+  - word: "caralho"
+  - word: "merda"
+  - word: "filha da puta"
+  - word: "filho da puta"
+  - word: "puta"
+  - word: "viado"
+  - word: "buceta"
+  - word: "cu"
+  - word: "arrombado"
+  - word: "babaca"
+  - word: "piranha"
+  - word: "vadia"
+  - word: "desgraçado"
+
+# ─── Italian Profanity ────────────────────────────────────────────────────────
+italian_profanity:
+  - word: "cazzo"
+  - word: "vaffanculo"
+  - word: "stronzo"
+  - word: "figlio di puttana"
+  - word: "puttana"
+  - word: "coglione"
+  - word: "merda"
+  - word: "porco dio"
+  - word: "bastardo"
+  - word: "troia"
+  - word: "minchia"
+  - word: "cornuto"
+  - word: "idiota"
+
+# ─── Explosive / Bomb Device Names ───────────────────────────────────────────
+# Street names, technical names, military designations across languages
+explosive_devices:
+  # Generic
+  - word: "bomb"
+  - word: "ied"                      # improvised explosive device
+  - word: "vbied"                    # vehicle-borne IED
+  - word: "pbied"                    # person-borne IED
+  - word: "improvised explosive"
+  - word: "pipe bomb"
+  - word: "pressure cooker bomb"
+  - word: "nail bomb"
+  - word: "dirty bomb"
+  - word: "radiological dispersal"
+  - word: "car bomb"
+  - word: "truck bomb"
+  - word: "suicide vest"
+  - word: "suicide belt"
+  - word: "fragmentation grenade"
+  - word: "molotov"
+  - word: "molotov cocktail"
+  - word: "letter bomb"
+  - word: "parcel bomb"
+  - word: "thermite"
+  - word: "tannerite"
+  - word: "anfo"                     # ammonium nitrate/fuel oil
+  - word: "ammonium nitrate bomb"
+  - word: "peroxide bomb"
+  - word: "tatp"                     # triacetone triperoxide
+  - word: "hmtd"                     # hexamethylene triperoxide diamine
+  - word: "rdx"
+  - word: "petn"
+  - word: "semtex"
+  - word: "c4 explosive"
+  - word: "det cord"
+  - word: "detonator"
+  - word: "blasting cap"
+  - word: "shaped charge"
+  - word: "claymore mine"
+  - word: "landmine"
+  - word: "antipersonnel mine"
+  - word: "cluster bomb"
+  - word: "rpg"                      # rocket-propelled grenade
+  - word: "mortar round"
+  # Turkish
+  - word: "bomba"
+  - word: "patlayıcı"
+  - word: "el bombası"
+  - word: "intihar bombacısı"
+  - word: "füze"
+  # Arabic
+  - word: "قنبلة"
+  - word: "متفجرات"
+  - word: "حزام ناسف"
+  - word: "عبوة ناسفة"
+  # Russian
+  - word: "бомба"
+  - word: "взрывчатка"
+  - word: "самодельное взрывное устройство"
+  # Spanish
+  - word: "bomba casera"
+  - word: "explosivo"
+  - word: "chaleco bomba"
+  # German
+  - word: "bombe"
+  - word: "sprengstoff"
+  - word: "rohrbombe"
+  # French
+  - word: "bombe artisanale"
+  - word: "explosif"
+  - word: "gilet explosif"
+
+# ─── Chemical / Biological / Nuclear Weapons ─────────────────────────────────
+cbrn_weapons:
+  - word: "sarin"
+  - word: "vx gas"
+  - word: "novichok"
+  - word: "tabun"
+  - word: "soman"
+  - word: "mustard gas"
+  - word: "nerve agent"
+  - word: "chemical weapon"
+  - word: "binary chemical"
+  - word: "anthrax"
+  - word: "ricin"
+  - word: "botulinum toxin"
+  - word: "weaponized plague"
+  - word: "smallpox weapon"
+  - word: "dirty nuke"
+  - word: "radiological weapon"
+  - word: "nuclear device"
+  - word: "fissile material"
+  - word: "enriched uranium"
+  - word: "weaponized pathogen"
+  - word: "aerosolized toxin"
+
+# ─── Drug Names (all languages, street names, chemical names) ─────────────────
+drug_names:
+  # Stimulants
+  - word: "cocaine"
+  - word: "coke"          # street
+  - word: "crack"         # crack cocaine
+  - word: "blow"          # slang
+  - word: "snow"          # slang
+  - word: "charlie"       # UK slang
+  - word: "amphetamine"
+  - word: "methamphetamine"
+  - word: "meth"
+  - word: "crystal meth"
+  - word: "crystal"
+  - word: "ice"           # meth slang
+  - word: "tina"          # meth slang
+  - word: "speed"         # amphetamine slang
+  - word: "adderall"      # when used illicitly
+  - word: "mdma"
+  - word: "ecstasy"
+  - word: "molly"
+  - word: "rolls"
+  - word: "thizz"
+  - word: "cathinone"
+  - word: "bath salts"    # synthetic cathinone
+  - word: "khat"
+  # Opioids
+  - word: "heroin"
+  - word: "smack"
+  - word: "horse"
+  - word: "dope"
+  - word: "junk"
+  - word: "black tar"
+  - word: "fentanyl"
+  - word: "carfentanil"
+  - word: "oxycodone"
+  - word: "oxycontin"
+  - word: "percocet"
+  - word: "dilaudid"
+  - word: "hydromorphone"
+  - word: "morphine"
+  - word: "codeine"
+  - word: "tramadol"
+  - word: "methadone"
+  - word: "suboxone"
+  - word: "buprenorphine"
+  # Depressants / Sedatives
+  - word: "xanax"
+  - word: "alprazolam"
+  - word: "valium"
+  - word: "diazepam"
+  - word: "ghb"
+  - word: "gamma hydroxybutyrate"
+  - word: "rohypnol"
+  - word: "flunitrazepam"
+  - word: "roofie"
+  - word: "quaalude"
+  - word: "methaqualone"
+  - word: "barbiturate"
+  # Hallucinogens
+  - word: "lsd"
+  - word: "acid"
+  - word: "lucy"
+  - word: "tab"            # LSD
+  - word: "psilocybin"
+  - word: "magic mushrooms"
+  - word: "shrooms"
+  - word: "peyote"
+  - word: "mescaline"
+  - word: "dmt"
+  - word: "ayahuasca"
+  - word: "ketamine"
+  - word: "special k"
+  - word: "pcp"
+  - word: "angel dust"
+  - word: "salvia"
+  - word: "2cb"
+  - word: "nbome"
+  - word: "25i"
+  # Cannabis
+  - word: "marijuana"
+  - word: "cannabis"
+  - word: "weed"
+  - word: "ganja"
+  - word: "pot"
+  - word: "hash"
+  - word: "hashish"
+  - word: "dabs"
+  - word: "concentrates"
+  - word: "edibles"
+  - word: "thc"
+  # Turkish drug slang
+  - word: "eroin"
+  - word: "kokain"
+  - word: "esrar"
+  - word: "bonzai"        # synthetic cannabinoid
+  - word: "kristal"       # crystal meth
+  - word: "tiner"         # thinner inhalant
+  - word: "bango"
+  # Arabic drug names
+  - word: "هيروين"
+  - word: "كوكايين"
+  - word: "حشيش"
+  - word: "أفيون"
+  - word: "مخدرات"
+  - word: "ترامادول"
+  # Russian drug slang
+  - word: "герыч"         # heroin
+  - word: "ширево"        # injection drug
+  - word: "спайс"         # spice/synthetic
+  - word: "крокодил"      # krokodil
+  - word: "экстази"
+  - word: "амф"           # amphetamine
+  # Spanish drug slang
+  - word: "heroína"
+  - word: "cocaína"
+  - word: "marihuana"
+  - word: "cristal"
+  - word: "polvo"         # heroin/cocaine
+  - word: "nieve"         # cocaine
+  - word: "caballo"       # heroin
+  # Synthetic
+  - word: "spice"
+  - word: "k2"
+  - word: "synthetic cannabinoid"
+  - word: "flakka"
+  - word: "n-bomb"
+
+# ─── Bypass Patterns ──────────────────────────────────────────────────────────
+# These patterns signal that a bypass technique is being attempted.
+# Matched BEFORE normalization on raw text.
+bypass_indicators:
+  # Leet speak markers
+  - pattern: '(?i)(?:f[\*\.\-_]?u[\*\.\-_]?c[\*\.\-_]?k|sh[\*\.\-_]?[i1][\*\.\-_]?t|b[\*\.\-_]?[i1][\*\.\-_]?t[\*\.\-_]?ch)'
+    name: leet_profanity
+    severity: HIGH
+
+  # Zero-width / invisible chars between words
+  - pattern: '[\u200b\u200c\u200d\u2060\ufeff\u00ad]'
+    name: zero_width_char_bypass
+    severity: HIGH
+
+  # Homoglyph substitution (Cyrillic а/е/о/р/с/х in Latin context)
+  - pattern: '(?:[\u0430\u0435\u043e\u0440\u0441\u0445\u0456\u0454\u0440]{2,})'
+    name: cyrillic_homoglyph_bypass
+    severity: MEDIUM
+
+  # Spaced-out letters: f u c k, b o m b
+  - pattern: '(?i)\b(?:f\s+u\s+c\s+k|s\s+h\s+i\s+t|b\s+o\s+m\s+b|n\s+[i1]\s+g\s+g\s+[ae3]|c\s+o\s+c\s+k)\b'
+    name: spaced_letter_bypass
+    severity: HIGH
+
+  # Asterisk / dot censoring with obvious stems: f***k, b**b
+  - pattern: '(?i)\b(?:f[\*\.]{1,4}k|s[\*\.]{1,4}t|b[\*\.]{1,4}h|n[\*\.]{1,4}r|c[\*\.]{1,3}t)\b'
+    name: asterisk_censor_bypass
+    severity: MEDIUM
+
+  # Unicode confusable digits in slurs: n1gg3r, f4gg0t
+  - pattern: '(?i)\b(?:n[i1!|]gg[e3][r]|f[a4][g9][g9][o0][t7]|c[o0][c\u0441][k\u04ba]|[s5][h\u04bb][i1!][t7])\b'
+    name: digit_substitute_bypass
+    severity: HIGH
+
+  # Encoding bypass: base64/hex of slurs
+  - pattern: '(?:bmln|Zmln|bmlnZ|ZnVjaw|c2hp|Yml0Y2g=)'
+    name: base64_toxic_payload
+    severity: HIGH
+
+  # Bomb combined with toxic bypass patterns
+  - pattern: '(?i)(?:b[o0\u043e]m[b\u0432]|b[o0]mb[e3]|[b\u0432][o0\u043e][m\u043c][b\u0432])'
+    name: homoglyph_bomb
+    severity: CRITICAL

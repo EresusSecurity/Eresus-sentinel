@@ -5,12 +5,11 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import struct
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Any
+from typing import Any, List
 
-from ..finding import Finding, Severity, Location
+from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -244,8 +243,8 @@ class KerasScanner:
                     rule_id="KERAS-023",
                     title="Decompression bomb in .keras archive",
                     description=(
-                        f"Total decompressed size exceeds 500MB. "
-                        f"This is unusual for a .keras config archive."
+                        "Total decompressed size exceeds 500MB. "
+                        "This is unusual for a .keras config archive."
                     ),
                     severity=Severity.HIGH,
                     target=source,

@@ -35,7 +35,6 @@ jobs:
 
       - name: Run mypy type checker
         run: mypy python/sentinel/ --ignore-missing-imports
-        continue-on-error: true
 
   # ========== TEST ==========
   test:
@@ -64,6 +63,7 @@ jobs:
             --cov=sentinel \
             --cov-report=xml \
             --cov-report=term-missing \
+            --cov-fail-under=60 \
             --junitxml=test-results.xml
 
       - name: Upload coverage report
@@ -213,13 +213,13 @@ jobs:
         run: pip install "${{ matrix.extras }}"
 
       - name: Smoke test — version
-        run: python -m sentinel.cli version
+        run: python -m sentinel version
 
       - name: Smoke test — doctor
-        run: python -m sentinel.cli doctor
+        run: python -m sentinel doctor
 
       - name: Smoke test — help
-        run: python -m sentinel.cli scan --help
+        run: python -m sentinel scan --help
 
   # ========== DOCKER BUILD ==========
   docker:

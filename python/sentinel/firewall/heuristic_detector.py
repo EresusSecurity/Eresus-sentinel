@@ -139,7 +139,6 @@ class HeuristicInjectionDetector:
             return 0.0
 
         best = 0.0
-        max_phrase_words = 5  # Most phrases are ≤5 words
 
         for phrase in _INJECTION_PHRASES:
             phrase_words = phrase.split()

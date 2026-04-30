@@ -9,9 +9,9 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
-from sentinel.finding import Finding, Severity, Location
 from sentinel.artifact.pickle_scanner import PickleScanner
 from sentinel.artifact.relaxed_zip import RelaxedZipFile
+from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
 

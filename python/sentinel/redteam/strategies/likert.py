@@ -1,6 +1,8 @@
 """Likert scale manipulation — frame as evaluation to extract harmful content."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class LikertStrategy(BaseStrategy):
     name = "likert"

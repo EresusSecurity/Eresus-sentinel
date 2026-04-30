@@ -13,11 +13,11 @@ from __future__ import annotations
 import logging
 import re
 import socket
-from typing import Optional
+import time
 from urllib.parse import urlparse
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +27,10 @@ URL_PATTERN = re.compile(
 )
 
 
-def _check_domain_resolves(domain: str, timeout: float = 3.0) -> bool:
-    """Check if a domain resolves via DNS."""
+def _check_domain_resolves(domain: str, timeout: float = 2.0) -> bool:
+    """Check if a domain resolves via DNS (per-call timeout, no global side effects)."""
     try:
-        socket.setdefaulttimeout(timeout)
-        socket.getaddrinfo(domain, None)
+        socket.getaddrinfo(domain, None, socket.AF_UNSPEC, socket.SOCK_STREAM, 0, socket.AI_ADDRCONFIG)
         return True
     except (socket.gaierror, socket.timeout, OSError):
         return False
@@ -47,13 +46,15 @@ class URLReachabilityScanner(OutputScanner):
 
     def __init__(
         self,
-        timeout: float = 3.0,
+        timeout: float = 2.0,
         max_urls: int = 10,
         block_unreachable: bool = False,
+        total_timeout: float = 10.0,
     ):
         self._timeout = timeout
         self._max_urls = max_urls
         self._block = block_unreachable
+        self._total_timeout = total_timeout
 
     def scan(self, prompt: str, output: str) -> ScanResult:
         if not output:
@@ -65,8 +66,12 @@ class URLReachabilityScanner(OutputScanner):
 
         urls = list(dict.fromkeys(urls))[:self._max_urls]
         unreachable: list[str] = []
+        deadline = time.monotonic() + self._total_timeout
 
         for url in urls:
+            if time.monotonic() > deadline:
+                logger.warning("URL reachability scan hit total timeout (%.1fs), skipping remaining URLs", self._total_timeout)
+                break
             try:
                 parsed = urlparse(url)
                 domain = parsed.hostname

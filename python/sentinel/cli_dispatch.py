@@ -38,9 +38,20 @@ import logging
 import sys
 from pathlib import Path
 
-from sentinel.finding import Finding
+from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
+
+
+def _existing_file_target(target: str) -> Path | None:
+    """Return a path only when a firewall target is plausibly a file path."""
+    if not target or len(target) > 4096 or any(ch in target for ch in "\x00\r\n"):
+        return None
+    try:
+        path = Path(target)
+        return path if path.is_file() else None
+    except OSError:
+        return None
 
 
 # ── Post-Processing Pipeline ──────────────────────────────────────────
@@ -141,34 +152,55 @@ def dispatch_artifact(target: str) -> list[Finding]:
     return findings
 
 
+def _findings_from_artifact_result(result) -> list[Finding]:
+    if result is None:
+        return []
+    if isinstance(result, list):
+        return result
+    findings = getattr(result, "findings", None)
+    if findings is not None:
+        return list(findings)
+    return list(result)
+
+
 def _scan_single_artifact(path: Path) -> list[Finding]:
     """Scan a single model artifact file with safety limits."""
     from sentinel.artifact import (
-        PickleScanner, TorchScanner, SafetensorsValidator, GGUFAnalyzer,
-        TensorFlowScanner, TorchScriptScanner, TFLiteScanner, LlamaFileScanner,
+        GGUFAnalyzer,
+        LlamaFileScanner,
+        PickleScanner,
+        SafetensorsValidator,
+        TensorFlowScanner,
+        TFLiteScanner,
+        TorchScanner,
+        TorchScriptScanner,
     )
-    from sentinel.artifact.onnx_scanner import ONNXScanner
-    from sentinel.artifact.keras_scanner import KerasScanner
     from sentinel.artifact.archive_slip import ArchiveSlipDetector
-    from sentinel.artifact.xgboost_scanner import XGBoostScanner
-    from sentinel.artifact.numpy_scanner import NumpyScanner
-    from sentinel.artifact.yaml_scanner import YamlScanner
     from sentinel.artifact.catboost_scanner import CatBoostScanner
     from sentinel.artifact.coreml_scanner import CoreMLScanner
     from sentinel.artifact.flax_scanner import FlaxScanner
+    from sentinel.artifact.keras_scanner import KerasScanner
     from sentinel.artifact.lightgbm_scanner import LightGBMScanner
     from sentinel.artifact.mxnet_scanner import MXNetScanner
     from sentinel.artifact.nemo_scanner import NeMoScanner
+    from sentinel.artifact.numpy_scanner import NumpyScanner
+    from sentinel.artifact.onnx_scanner import ONNXScanner
     from sentinel.artifact.openvino_scanner import OpenVINOScanner
     from sentinel.artifact.paddle_scanner import PaddleScanner
     from sentinel.artifact.pmml_scanner import PMMLScanner
     from sentinel.artifact.r_serialized_scanner import RSerializedScanner
-    from sentinel.artifact.skops_scanner import SkopsScanner
-    from sentinel.artifact.torchserve_scanner import TorchServeScanner, Torch7Scanner, ExecuTorchScanner, TensorRTScanner
-    from sentinel.artifact.oci_scanner import OCIScanner
     from sentinel.artifact.sevenz_scanner import SevenZipScanner
-    from sentinel.scan_safety import check_file_size, FileTooLargeError
+    from sentinel.artifact.skops_scanner import SkopsScanner
+    from sentinel.artifact.torchserve_scanner import (
+        ExecuTorchScanner,
+        TensorRTScanner,
+        Torch7Scanner,
+        TorchServeScanner,
+    )
+    from sentinel.artifact.xgboost_scanner import XGBoostScanner
+    from sentinel.artifact.yaml_scanner import YamlScanner
     from sentinel.finding import Severity
+    from sentinel.scan_safety import FileTooLargeError, check_file_size
 
     # Pre-check file size before scanning
     try:
@@ -185,6 +217,20 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
 
     findings = []
     suffix = path.suffix.lower()
+    name_lower = path.name.lower()
+
+    if suffix == ".zip":
+        import zipfile
+        archive_findings = ArchiveSlipDetector().scan_file(str(path))
+        findings.extend(archive_findings)
+        if zipfile.is_zipfile(str(path)):
+            try:
+                with zipfile.ZipFile(str(path), "r") as zf:
+                    if any(n.startswith("code/") for n in zf.namelist()):
+                        findings.extend(TorchScriptScanner().scan_file(str(path)))
+            except zipfile.BadZipFile:
+                pass
+        return findings
 
     scanner_map = {
         (".pkl", ".pickle", ".p", ".dill", ".dat", ".data"): PickleScanner,
@@ -223,9 +269,9 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     }
 
     for extensions, scanner_cls in scanner_map.items():
-        if suffix in extensions:
+        if any(name_lower.endswith(ext) for ext in extensions):
             scanner = scanner_cls()
-            findings.extend(scanner.scan_file(str(path)))
+            findings.extend(_findings_from_artifact_result(scanner.scan_file(str(path))))
             return findings
 
     # PyTorch: check if TorchScript archive (ZIP with code/ dir)
@@ -241,6 +287,22 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
                 pass
         findings.extend(TorchScanner().scan_file(path))
 
+    # Watermark and distribution shift checks (all supported formats)
+    _WATERMARK_EXTS = frozenset({".gguf", ".safetensors", ".pt", ".pth", ".bin", ".ckpt"})
+    _DIST_SHIFT_EXTS = frozenset({".safetensors", ".pt", ".pth", ".bin", ".ckpt"})
+    if suffix in _WATERMARK_EXTS:
+        try:
+            from sentinel.artifact.watermark_detector import WatermarkDetector
+            findings.extend(WatermarkDetector().scan_file(path))
+        except Exception as exc:
+            logger.debug("WatermarkDetector: %s", exc)
+    if suffix in _DIST_SHIFT_EXTS:
+        try:
+            from sentinel.artifact.distribution_shift_detector import DistributionShiftDetector
+            findings.extend(DistributionShiftDetector().scan_file(path))
+        except Exception as exc:
+            logger.debug("DistributionShiftDetector: %s", exc)
+
     return findings
 
 
@@ -251,9 +313,9 @@ def dispatch_firewall_input(target: str) -> list[Finding]:
     pipeline = engine.build_input_pipeline()
 
     findings = []
-    path = Path(target)
+    path = _existing_file_target(target)
 
-    if path.is_file():
+    if path is not None:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
@@ -277,9 +339,9 @@ def dispatch_firewall_output(target: str) -> list[Finding]:
     pipeline = engine.build_output_pipeline()
 
     findings = []
-    path = Path(target)
+    path = _existing_file_target(target)
 
-    if path.is_file():
+    if path is not None:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
         result = pipeline.scan(content, prompt="")
@@ -300,15 +362,31 @@ def dispatch_sast(target: str) -> list[Finding]:
 
 def dispatch_agent(target: str) -> list[Finding]:
     """Run agent/MCP security validation."""
+    from sentinel.agent.a2a_scanner import A2AScanner
     from sentinel.agent.mcp_validator import MCPValidator
+
+    a2a_scanner = A2AScanner()
     validator = MCPValidator()
-    return validator.validate_file(target)
+    path = Path(target)
+    findings: list[Finding] = []
+
+    if path.is_dir():
+        for file_path in path.rglob("*.json"):
+            findings.extend(validator.validate_file(str(file_path)))
+        findings.extend(a2a_scanner.scan_path(path))
+    elif path.is_file():
+        findings.extend(validator.validate_file(str(path)))
+        findings.extend(a2a_scanner.scan_path(path))
+    else:
+        logger.warning("Target not found: %s", target)
+
+    return findings
 
 
 def dispatch_supply_chain(target: str) -> list[Finding]:
     """Run supply chain audit."""
-    from sentinel.supply_chain.provenance import ProvenanceVerifier
     from sentinel.supply_chain.dependency import DependencyAuditor
+    from sentinel.supply_chain.provenance import ProvenanceVerifier
 
     findings = []
     verifier = ProvenanceVerifier()
@@ -320,10 +398,17 @@ def dispatch_supply_chain(target: str) -> list[Finding]:
 
 def dispatch_diff(target: str) -> list[Finding]:
     """Run diff scanner on git diff, commit, or patch file."""
+    import subprocess as _sp
+    import sys
+
     from sentinel.diff_scanner import DiffScanner
     scanner = DiffScanner()
 
-    if target in ("--staged", "-"):
+    if target == "-":
+        # Read unified diff from stdin
+        diff_text = sys.stdin.read()
+        return scanner.scan_diff(diff_text)
+    elif target == "--staged":
         return scanner.scan_git_staged()
     elif target == "--unstaged":
         return scanner.scan_git_unstaged()
@@ -337,12 +422,33 @@ def dispatch_diff(target: str) -> list[Finding]:
     elif len(target) >= 7 and all(c in '0123456789abcdef' for c in target[:7]):
         return scanner.scan_commit(target)
     else:
-        diff_text = target
+        # Try as a file path first
         path = Path(target)
         if path.is_file():
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 diff_text = f.read()
-        return scanner.scan_diff(diff_text)
+            return scanner.scan_diff(diff_text)
+        # Try as a git ref (HEAD~1, branch name, tag, etc.)
+        try:
+            result = _sp.run(
+                ["git", "diff", target],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return scanner.scan_diff(result.stdout)
+        except Exception:
+            pass
+        # Last resort: try as a single commit
+        try:
+            result = _sp.run(
+                ["git", "diff", f"{target}^", target],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return scanner.scan_diff(result.stdout)
+        except Exception:
+            pass
+        return []
 
 
 def dispatch_notebook(target: str) -> list[Finding]:
@@ -364,6 +470,21 @@ def dispatch_notebook(target: str) -> list[Finding]:
     for result in results:
         if result.error:
             logger.warning("Notebook scan error for %s: %s", result.path, result.error)
+            all_findings.append(Finding.sast(
+                rule_id="NOTEBOOK-000",
+                title="Notebook parse error",
+                description=(
+                    "The notebook could not be parsed, so Sentinel could not "
+                    "inspect its cells or outputs."
+                ),
+                severity=Severity.MEDIUM,
+                confidence=1.0,
+                target=result.path,
+                evidence=result.error,
+                cwe_ids=["CWE-20"],
+                tags=["category:notebook", "category:parse-error"],
+                remediation="Fix the .ipynb JSON structure and re-run the scan.",
+            ))
         all_findings.extend(result.findings)
     return all_findings
 
@@ -398,7 +519,8 @@ def dispatch_validate_rules(target: str) -> list[Finding]:
             results[filename] = -1
 
     summary = {"yaml_files": results, "errors": errors, "total": len(yaml_files)}
-    print(json.dumps(summary, default=str))
+    import logging
+    logging.getLogger("sentinel.validate").debug(json.dumps(summary, default=str))
     return []
 
 
@@ -418,9 +540,10 @@ def dispatch_serve(target: str, **kwargs) -> list[Finding]:
 
     try:
         import uvicorn
+
         from sentinel.server import create_app
         app = create_app(policy_path=policy or None)
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, server_header=False)
     except ImportError:
         print(json.dumps({"error": "uvicorn not installed. Run: pip install uvicorn fastapi"}))
 
@@ -430,18 +553,114 @@ def dispatch_serve(target: str, **kwargs) -> list[Finding]:
 def dispatch_huggingface(target: str) -> list[Finding]:
     """Scan a HuggingFace model repository."""
     import os
+    from urllib.parse import urlparse
+
     from sentinel.artifact.huggingface_scanner import HuggingFaceScanner
 
     scanner = HuggingFaceScanner()
     # Use scan_remote_repo for repo IDs, scan_local_repo for local paths
     if os.path.exists(target):
         return scanner.scan_local_repo(target)
+
+    parsed = urlparse(target)
+    if parsed.netloc in {"huggingface.co", "www.huggingface.co"}:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2:
+            target = "/".join(parts[:2])
+
     return scanner.scan_remote_repo(target)
+
+
+def dispatch_hf_bulk(
+    *,
+    owner: str | None = None,
+    task: str | None = None,
+    tags: list[str] | None = None,
+    limit: int = 1000,
+    min_downloads: int = 0,
+    mode: str = "guard",
+    concurrency: int = 4,
+    output_path: str | None = None,
+    resume: bool = False,
+) -> list[Finding]:
+    """Bulk-scan HuggingFace Hub repositories and return aggregate findings."""
+    from sentinel.hf_bulk_scanner import HFBulkScanner
+
+    scanner = HFBulkScanner(concurrency=concurrency)
+    results = scanner.scan_bulk(
+        owner=owner,
+        task=task,
+        tags=tags,
+        limit=limit,
+        min_downloads=min_downloads,
+        mode=mode,
+        output_path=output_path,
+        resume=resume,
+    )
+
+    # Synthesise findings from aggregate results for pipeline integration
+    from sentinel.finding import Finding, Severity
+
+    findings: list[Finding] = []
+    for result in results:
+        if result.risk_level in ("CRITICAL", "HIGH"):
+            sev = Severity.CRITICAL if result.risk_level == "CRITICAL" else Severity.HIGH
+            findings.append(Finding.artifact(
+                rule_id="HF-BULK-001",
+                title=f"High-risk HuggingFace repository: {result.repo_id}",
+                description=(
+                    f"Bulk scan identified {result.finding_count} finding(s) in "
+                    f"{result.repo_id} (risk={result.risk_level})."
+                ),
+                severity=sev,
+                target=result.repo_id,
+                evidence=f"finding_count={result.finding_count} mode={result.mode}",
+                confidence=0.9,
+            ))
+    return findings
+
+
+def dispatch_multi_agent(
+    agents: list[dict],
+    scenarios: list[str] | None = None,
+) -> list[Finding]:
+    """Run multi-agent security tests from manifest configs.
+
+    Args:
+        agents:    List of agent manifest dicts with at minimum a ``name`` key.
+        scenarios: List of scenario names to run; defaults to all.
+    """
+    from sentinel.agent.multi_agent import (
+        CascadingHallucinationDetector,
+        CrossContaminationTester,
+    )
+
+    findings: list[Finding] = []
+    enabled = set(scenarios) if scenarios else {"hallucination", "contamination", "memory_poisoning"}
+
+    # Run static manifest analysis for each pair of agents
+    agent_pairs = [
+        (agents[i], agents[j])
+        for i in range(len(agents))
+        for j in range(i + 1, len(agents))
+    ]
+
+    if "hallucination" in enabled:
+        detector = CascadingHallucinationDetector()
+        for ma, mb in agent_pairs:
+            findings.extend(detector.run_from_manifests(ma, mb))
+
+    if "contamination" in enabled:
+        tester = CrossContaminationTester()
+        for ma, mb in agent_pairs:
+            findings.extend(tester.run_from_manifests(ma, mb))
+
+    return findings
 
 
 def dispatch_sbom(target: str) -> list[Finding]:
     """Generate SBOM for scanned model artifacts."""
-    from sentinel.integrations import SBOMGenerator, LicenseChecker
+    from sentinel.integrations import LicenseChecker, SBOMGenerator
     findings: list[Finding] = []
     sbom_gen = SBOMGenerator()
     license_checker = LicenseChecker()
@@ -470,8 +689,9 @@ def dispatch_sbom(target: str) -> list[Finding]:
 
 def dispatch_doctor(target: str) -> list[Finding]:
     """Run health check diagnostics."""
-    from sentinel.scanner_selection import DoctorCheck
     import json
+
+    from sentinel.scanner_selection import DoctorCheck
     doctor = DoctorCheck()
     results = doctor.run()
     print(json.dumps(results, default=str, indent=2))
@@ -480,8 +700,9 @@ def dispatch_doctor(target: str) -> list[Finding]:
 
 def dispatch_metadata(target: str) -> list[Finding]:
     """Extract metadata from model file without deserialization."""
-    from sentinel.scanner_selection import MetadataExtractor
     import json
+
+    from sentinel.scanner_selection import MetadataExtractor
     extractor = MetadataExtractor()
     meta = extractor.extract(target)
     print(json.dumps(meta, default=str, indent=2))

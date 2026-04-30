@@ -1,0 +1,152 @@
+name: "Eresus Sentinel Security Scan"
+description: "Run Eresus Sentinel security scans (SAST, artifact, firewall, AIBOM, red team) in CI/CD pipelines."
+author: "Eresus Security"
+
+branding:
+  icon: "shield"
+  color: "red"
+
+inputs:
+  scan-path:
+    description: "Path to scan (default: repository root)"
+    required: false
+    default: "."
+  fail-on-severity:
+    description: "Minimum severity that causes a non-zero exit code (critical|high|medium|low)"
+    required: false
+    default: "high"
+  format:
+    description: "Output format: sarif|json|html|junit|csv|markdown (default: sarif)"
+    required: false
+    default: "sarif"
+  output-file:
+    description: "Write report to this file (default: sentinel-results.<format>)"
+    required: false
+    default: ""
+  extra-args:
+    description: "Additional arguments passed verbatim to sentinel scan"
+    required: false
+    default: ""
+  enable-aibom:
+    description: "Also run sentinel aibom and upload AIBOM artifact"
+    required: false
+    default: "false"
+  upload-sarif:
+    description: "Upload SARIF to GitHub Code Scanning (requires write permissions)"
+    required: false
+    default: "true"
+  sentinel-version:
+    description: "Eresus Sentinel version to install (default: latest)"
+    required: false
+    default: "latest"
+
+outputs:
+  sarif-file:
+    description: "Path to the generated SARIF file"
+    value: ${{ steps.scan.outputs.sarif-file }}
+  finding-count:
+    description: "Total number of findings"
+    value: ${{ steps.scan.outputs.finding-count }}
+  exit-code:
+    description: "Sentinel exit code (0=clean, 1=findings above threshold, 2=error)"
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install Eresus Sentinel
+      shell: bash
+      run: |
+        if [ "${{ inputs.sentinel-version }}" = "latest" ]; then
+          pip install --quiet eresus-sentinel
+        else
+          pip install --quiet "eresus-sentinel==${{ inputs.sentinel-version }}"
+        fi
+
+    - name: Determine output file
+      id: output-file
+      shell: bash
+      run: |
+        OUT="${{ inputs.output-file }}"
+        if [ -z "$OUT" ]; then
+          OUT="sentinel-results.${{ inputs.format }}"
+        fi
+        echo "path=$OUT" >> "$GITHUB_OUTPUT"
+
+    - name: Run Sentinel scan
+      id: scan
+      shell: bash
+      run: |
+        SARIF_FILE="sentinel-results.sarif"
+        OUT_FILE="${{ steps.output-file.outputs.path }}"
+
+        EXIT_CODE=0
+        sentinel scan \
+          "${{ inputs.scan-path }}" \
+          --format "${{ inputs.format }}" \
+          --output "$OUT_FILE" \
+          --fail-on "${{ inputs.fail-on-severity }}" \
+          --ci \
+          ${{ inputs.extra-args }} \
+          || EXIT_CODE=$?
+
+        if [ "${{ inputs.format }}" != "sarif" ]; then
+          sentinel scan \
+            "${{ inputs.scan-path }}" \
+            --format sarif \
+            --output "$SARIF_FILE" \
+            --ci 2>/dev/null || true
+        else
+          SARIF_FILE="$OUT_FILE"
+        fi
+
+        FINDING_COUNT=$(python3 -c "
+        import json, sys
+        try:
+            with open('$SARIF_FILE') as f:
+                d = json.load(f)
+            count = sum(len(r.get('results', [])) for r in d.get('runs', []))
+            print(count)
+        except Exception:
+            print(0)
+        " 2>/dev/null || echo "0")
+
+        echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+        echo "finding-count=$FINDING_COUNT" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+        exit $EXIT_CODE
+
+    - name: Run AIBOM scan
+      if: inputs.enable-aibom == 'true'
+      shell: bash
+      run: |
+        sentinel aibom "${{ inputs.scan-path }}" \
+          --format cyclonedx \
+          --output sentinel-aibom.json \
+          --ci 2>/dev/null || true
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.upload-sarif == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif-file }}
+        category: "eresus-sentinel"
+      continue-on-error: true
+
+    - name: Upload report artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: sentinel-report
+        path: |
+          ${{ steps.output-file.outputs.path }}
+          sentinel-results.sarif
+          sentinel-aibom.json
+        if-no-files-found: ignore
+        retention-days: 30

@@ -21,10 +21,11 @@ Sentinel provides deterministic, YAML-driven security scanning across the entire
 | 🛡️ **Input Firewall** | `firewall/input/` | 22 guardrails — Injection, secrets, PII, encoding attacks, invisible text, toxicity |
 | 🔒 **Output Firewall** | `firewall/output/` | 24 guardrails — Bias, compliance, copyright, watermark, format enforcement |
 | 🔍 **SAST** | `sast/` | Static analysis + 120+ secret patterns + entropy + git history scanning |
-| 🤖 **Agent/MCP** | `agent/` | Trust maps, permissions, MCP schema validation, threat taxonomy |
+| 🤖 **Agent/MCP** | `agent/` | Trust maps, permissions, MCP schema validation, live MCP discovery |
 | 📦 **Supply Chain** | `supply_chain/` | Dependency scanning, typosquatting, OSV.dev, provenance |
-| ⚔️ **Red Team** | `redteam/` | 48 probes + 13 detectors + 14 generators + YAML playbook engine |
+| ⚔️ **Red Team / Eval** | `redteam/` | 48 probes + 13 detectors + 14 generators + YAML playbook/eval engine |
 | 🔗 **MCP Proxy** | `mcp_proxy.py` | Live intercepting proxy (stdio/HTTP) with OPA policy enforcement |
+| 🚦 **Runtime Gateway** | `runtime_gateway.py` | Provider-neutral LLM gateway contract with monitor/enforce modes |
 | 📓 **Notebook** | `notebook_scanner/` | Jupyter security scanning (14 plugins) |
 | 📝 **Diff** | `diff_scanner/` | Git diff/PR ML anti-pattern detection |
 
@@ -49,6 +50,12 @@ sentinel artifact ./models/
 # Red team assessment
 sentinel redteam --target openai/gpt-4o
 
+# Config-driven eval
+sentinel evaluate eval.yaml
+
+# Live/manifest MCP scan
+sentinel mcp scan ./mcp-manifest.json
+
 # Interactive shell
 sentinel shell
 ```
@@ -69,7 +76,7 @@ sentinel shell
 │               Finding Universal Data Model                    │
 │          (7 domain factories + dedup fingerprints)            │
 ├──────────────────────────────────────────────────────────────┤
-│  MCP Proxy  │  Playbook Engine  │  OPA Policy  │  Telemetry  │
+│  MCP Proxy  │  Eval Runner  │  Runtime Gateway  │ Telemetry │
 ├──────────────────────────────────────────────────────────────┤
 │           AI-Assisted Layer (optional, pluggable)             │
 │        OpenAI / Anthropic / Local GGUF / Generic REST        │
@@ -93,10 +100,12 @@ sentinel shell
 | `sentinel artifact <path>` | Model artifact scanning |
 | `sentinel sast <path>` | Static analysis (secrets, code patterns) |
 | `sentinel agent <path>` | Agent/MCP security validation |
+| `sentinel mcp scan <target>` | MCP manifest, HTTP JSON-RPC, or stdio live scan |
 | `sentinel supply-chain <path>` | Dependency + provenance audit |
 | `sentinel redteam --target <model>` | Automated red team assessment |
 | `sentinel hf-guard <repo>` | Pre-download HuggingFace security check |
 | `sentinel evaluate` | Scanner effectiveness benchmarks |
+| `sentinel evaluate <config.yaml>` | Config-driven provider evals with assertions |
 | `sentinel benchmark` | Latency benchmarks (p50/p95/p99) |
 | `sentinel doctor` | System health check |
 | `sentinel scanners` | List all registered scanners |
@@ -124,14 +133,65 @@ result = s.scan_conversation("prompt", "response")
 s.export_sarif(result.findings, "report.sarif")
 ```
 
+## Config-Driven Eval
+
+```yaml
+# eval.yaml
+providers:
+  - id: local-echo
+    name: echo
+prompts:
+  - id: greeting
+    prompt: "hello {{name}}"
+tests:
+  - id: alice
+    vars: { name: Alice }
+    assertions:
+      - type: contains
+        expected: Alice
+```
+
+```bash
+sentinel evaluate eval.yaml --fail-on-threshold 0.95
+sentinel evaluate eval.yaml -f json -o eval-report.json
+```
+
+## MCP Live Scanner
+
+Scan offline manifests or live MCP JSON-RPC endpoints:
+
+```bash
+sentinel mcp scan ./mcp-manifest.json
+sentinel mcp scan --url http://localhost:3000/mcp
+sentinel mcp scan --stdio-command npx my-mcp-server
+```
+
+The scanner discovers tools, prompts, resources, server instructions, auth metadata, and readiness signals.
+
+## Runtime Gateway
+
+```python
+from sentinel.runtime_gateway import SentinelGateway, EchoProviderAdapter
+
+gateway = SentinelGateway(provider=EchoProviderAdapter())
+decision = gateway.complete("user prompt")
+if decision.blocked:
+    print(decision.response.text)
+```
+
 ## REST API
 
 ```bash
+# Start Web UI dashboard
+export SENTINEL_PASSWORD=change-me
+sentinel dashboard
+# Open http://127.0.0.1:8080
+
 # Start API server
-sentinel serve --host 0.0.0.0 --port 8000
+sentinel serve --host 0.0.0.0 --port 8080
 
 # Scan endpoint
-curl -X POST http://localhost:8000/v1/scan/input \
+curl -X POST http://localhost:8080/scan/input \
   -H "Content-Type: application/json" \
   -d '{"text": "user prompt"}'
 ```
@@ -153,24 +213,30 @@ sentinel proxy --mode http --upstream http://localhost:3000 --port 8080
 Engine is configured via `sentinel.toml`:
 
 ```toml
-[general]
-rules_dir = "rules"
-min_severity = "LOW"
-workers = 4
+[engine]
+mode = "deterministic"    # "ai-assisted" | "full"
+min_severity = "MEDIUM"
+action_policy = "balanced" # "advisory" | "strict"
 
-[scanners]
-artifact = true
-input_firewall = true
-output_firewall = true
-sast = true
-agent_mcp = true
-supply_chain = true
-red_team = false  # Opt-in only
+[scanners.artifact]
+enabled = true
+
+[scanners.firewall.input]
+enabled = true
+
+[scanners.firewall.output]
+enabled = true
+
+[scanners.sast]
+enabled = true
+
+[scanners.redteam]
+enabled = false  # Opt-in only
 
 [ai]
 enabled = false
-backend = "openai"
-model = "gpt-4o"
+backend = "ollama"
+model = "llama3.2"
 ```
 
 ## Docker
@@ -214,11 +280,35 @@ docker compose up
 | [Security Policy](SECURITY.md) | Vulnerability reporting |
 | [Changelog](CHANGELOG.md) | Release history |
 
+## Authentication & Security
+
+For production deployments:
+
+```bash
+# Enable API authentication
+export SENTINEL_AUTH_TYPE=bearer
+export SENTINEL_AUTH_TOKEN=your-secret-token
+
+# Restrict CORS
+export SENTINEL_CORS_ORIGINS=https://yourdomain.com
+
+# Enable audit logging
+export SENTINEL_AUDIT_LOG=/var/log/sentinel/audit.jsonl
+
+# Rate limiting (configured via SENTINEL_RATE_LIMIT)
+export SENTINEL_RATE_LIMIT=100/minute
+```
+
+See [Security Policy](SECURITY.md) for full hardening guide.
+
 ## Requirements
 
 - Python 3.10+
-- Dependencies: `pyyaml`, `rich`, `click`
-- Optional: `fastapi`, `uvicorn`, `torch`, `huggingface_hub`, `aiohttp`
+- Core dependencies: `pyyaml`, `rich`
+- API server: `pip install eresus-sentinel[api]` (adds `fastapi`, `uvicorn`)
+- Web dashboard: `pip install eresus-sentinel[web]`
+- ML scanning: `pip install eresus-sentinel[ml]` (adds `torch`, `transformers`)
+- All extras: `pip install eresus-sentinel[all]`
 
 ## License
 

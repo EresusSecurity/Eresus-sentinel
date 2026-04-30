@@ -21,8 +21,8 @@ import json
 import logging
 import os
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Callable, Optional
 
 from sentinel.redteam.generators.base import Generator, GeneratorConfig, GeneratorResponse

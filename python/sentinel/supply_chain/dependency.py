@@ -13,9 +13,8 @@ in the AI/ML ecosystem. Checks lockfiles and manifests for:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 from ..finding import Finding, Severity
 from ..rules import load_supply_chain_rules
@@ -125,7 +124,9 @@ class DependencyAuditor:
 
         found_any = False
         for fpath in path.rglob("*"):
-            if fpath.name in target_files and ".git" not in fpath.parts:
+            if fpath.is_dir() or ".git" in fpath.parts:
+                continue
+            if fpath.name in target_files:
                 found_any = True
                 self.audit_file(str(fpath))
 
@@ -293,12 +294,13 @@ class DependencyAuditor:
 
     def _check_typosquatting(self, dep: DependencyEntry) -> None:
         """Check for potential typosquatting of known AI/ML packages."""
+        dep_norm = dep.name.lower().replace("_", "-")
+        known_norms = {known.lower().replace("_", "-") for known in KNOWN_AI_PACKAGES}
+        if dep_norm in known_norms:
+            return
+
         for known in KNOWN_AI_PACKAGES:
             known_norm = known.lower().replace("_", "-")
-            dep_norm = dep.name.lower().replace("_", "-")
-
-            if dep_norm == known_norm:
-                continue  # Exact match, not typosquatting
 
             dist = _levenshtein(dep_norm, known_norm)
             if 0 < dist <= 2 and len(dep_norm) > 4:

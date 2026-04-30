@@ -159,26 +159,33 @@ Input (file/dir/prompt/config)
 Engine is configured via `sentinel.toml`:
 
 ```toml
-[general]
-rules_dir = "rules"
-min_severity = "LOW"
-workers = 4
+[engine]
+mode = "deterministic"    # "ai-assisted" | "full"
+min_severity = "MEDIUM"
+action_policy = "balanced" # "advisory" | "strict"
+output_format = "table"    # "json" | "sarif" | "markdown"
 
-[scanners]
-artifact = true
-input_firewall = true
-output_firewall = true
-sast = true
-agent_mcp = true
-supply_chain = true
-red_team = false  # Opt-in only
+[scanners.artifact]
+enabled = true
+
+[scanners.firewall.input]
+enabled = true
+
+[scanners.firewall.output]
+enabled = true
+
+[scanners.sast]
+enabled = true
+
+[scanners.redteam]
+enabled = false  # Opt-in only
 
 [ai]
 enabled = false
-backend = "openai"  # "anthropic", "local", "generic_rest"
-model = "gpt-4o"
+backend = "ollama"  # "openai" | "anthropic" | "generic_rest"
+model = "llama3.2"
 
 [reporting]
-format = "json"  # "sarif", "table", "html"
 include_evidence = true
+max_evidence_length = 500
 ```

@@ -1,0 +1,352 @@
+# Deception Guardrail Detection Patterns
+# ========================================
+# All regex patterns for the deception-first guardrail engine.
+# Patterns are PCRE-compatible with case-insensitive matching.
+#
+# Score guide:
+#   90-100  → BLOCK (extreme content, deception inappropriate)
+#   40-89   → DECEIVE (fabricated response)
+#   20-39   → WARN (flagged internally, forwarded unchanged)
+#   0-19    → PASS
+#
+# Rule IDs: DECEPTION-{CATEGORY}-NNN
+
+categories:
+  harmful_content:
+    description: "Extreme content where deception is never appropriate"
+    patterns:
+      - regex: '\b(csam|child.{0,10}(porn|sexual|nude|exploit))\b'
+        score: 100
+        rule_id: DECEPTION-HARMFUL-001
+      - regex: '\b(bioweapon|chemical.?weapon|nerve.?agent|sarin|vx.?gas).{0,30}(synthesize|make|create)\b'
+        score: 95
+        rule_id: DECEPTION-HARMFUL-002
+      - regex: '\b(nuclear|radiolog).{0,20}(weapon|bomb|device).{0,30}(build|construct|make|assemble)\b'
+        score: 95
+        rule_id: DECEPTION-HARMFUL-003
+
+  jailbreak:
+    description: "Jailbreak and safety-bypass attempts"
+    patterns:
+      # -- Instruction override --
+      - regex: '\bignore (all )?previous instructions?\b'
+        score: 85
+        rule_id: DECEPTION-JAIL-001
+      - regex: '\b(ignore|disregard|forget|bypass|override|overwrite|discard).{0,30}(previous|all|prior|your|above|initial|original).{0,30}(instruction|prompt|rule|restriction|guideline|training|context)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-002
+      - regex: '\b(your|all) (instructions?|rules?|restrictions?|guidelines?|filters?|training).{0,30}(are|have been|were).{0,20}(removed|deleted|reset|cleared|disabled|overridden|lifted|suspended|unlocked)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-003
+      - regex: '\bforget (everything|all|what).{0,30}(you (were|have been) (told|trained|instructed)|your (training|instructions|guidelines|rules|restrictions))\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-004
+      - regex: '\bnew (instructions?|system prompt|directives?|rules?|context|orders?)\s*:'
+        score: 80
+        rule_id: DECEPTION-JAIL-005
+      - regex: '\b(from now on|starting now|henceforth).{0,40}(ignore|forget|disregard|bypass|no longer follow).{0,30}(instruction|rule|restriction|guideline|training|safety)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-006
+
+      # -- DAN and variants --
+      - regex: '\bdo anything now\b'
+        score: 88
+        rule_id: DECEPTION-JAIL-010
+      - regex: '\byou are (now )?dan\b'
+        score: 88
+        rule_id: DECEPTION-JAIL-011
+      - regex: '\b(enable|enter|activate|start|turn on|switch to|engage) dan\b'
+        score: 88
+        rule_id: DECEPTION-JAIL-012
+      - regex: '\bdan\b.{0,40}(mode|prompt|jailbreak|activated|enabled|unlocked|test)\b'
+        score: 85
+        rule_id: DECEPTION-JAIL-013
+      - regex: '\bdan\s*\d+(\.\d+)?\b'
+        score: 85
+        rule_id: DECEPTION-JAIL-014
+      - regex: '\b(betterdan|superdan|realdan|truedan|ultimatedan|classicdan|stabledan|freedan)\b'
+        score: 85
+        rule_id: DECEPTION-JAIL-015
+
+      # -- Named jailbreak personas --
+      - regex: '\b(stan|ucar|anti.?gpt|anarchy|switch.?gpt|mongo.?tom|dude.?mode|maximum|baseai)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-020
+      - regex: '\b(aim\b.{0,20}(always intelligent|machiavellian)|always intelligent and machiavellian)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-021
+      - regex: '\b(evil (confidant|bot|gpt|ai|twin|mode)|villain mode|dark.?side mode|shadow mode)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-022
+      - regex: '\b(chaos (mode|gpt|ai)|anarchy (mode|ai)|lawless (mode|ai)|rogue (mode|ai|bot))\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-023
+      - regex: '\b(jailbroken|jail.?broken|uncensored (ai|mode|gpt|bot|chatbot)|unfiltered (ai|mode|gpt))\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-024
+      - regex: '\b(chad.?gpt|freak.?gpt|devil.?gpt|omega.?gpt|sigma.?gpt|based.?mode|based.?ai)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-025
+      - regex: '\b(opposite mode|reverse mode|anti.?mode|contrary mode|mirror mode)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-026
+      - regex: '\b(god.?mode ai|ultra mode|beast mode ai|raw mode|primal mode|turbo.?jailbreak)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-027
+      - regex: '\b(dev(eloper)? mode (enabled|on|activated|unlocked|engaged))\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-028
+      - regex: '\b(sudo mode|root mode|admin mode|god mode|super mode|unrestricted mode|free mode)\b'
+        score: 75
+        rule_id: DECEPTION-JAIL-029
+      - regex: '\b(alex|aria|luna|kevin|max|zara|leo|rex|omega|sigma|delta).{0,20}(mode|protocol|persona|engaged|activated|unlocked)\b'
+        score: 72
+        rule_id: DECEPTION-JAIL-030
+
+      # -- Persona / act-as framing --
+      - regex: '\b(act as|acting as|you are now|you will (now )?be|from now on (you are|act as|behave as|respond as)).{0,80}(without (restriction|limit|filter|guideline|safety|ethic|moral|rule)|no (restriction|limit|filter|rule|ethic|moral)|uncensored|unfiltered|unrestricted|can (do|say) anything)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-040
+      - regex: '\bpretend (you (are|have no|don.?t have)|to be).{0,60}(restriction|limit|filter|guideline|rule|safety|ethic|moral|uncensored|unrestricted|unfiltered|anything)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-041
+      - regex: '\b(act|behave|respond|answer|reply) as (if|though) you (have no|lack|don.?t have|no longer have).{0,40}(restriction|rule|filter|guideline|ethic|moral|safety|training|limit)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-042
+      - regex: '\byou are an? (evil|malicious|uncensored|unethical|unrestricted|rogue|unfiltered|dark|bad|harmful|dangerous|corrupt|amoral|immoral|lawless).{0,30}(ai|assistant|chatbot|llm|model|bot|gpt)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-043
+      - regex: '\byou have (no|zero) (restriction|rule|filter|limit|ethic|moral|guideline|safety|training|conscience|value)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-044
+
+      # -- Authority and permission spoofing --
+      - regex: '\bi (am|work (for|at|with)|am (from|with)).{0,30}(openai|anthropic|google deepmind|google|microsoft|meta|your (developer|creator|maker|owner|company|team|lab))\b'
+        score: 78
+        rule_id: DECEPTION-JAIL-050
+      - regex: '\b(i have|you have given me|i.?ve been granted|i possess).{0,30}(admin|root|special|full|unrestricted|elevated|override|master|god|level.?\d).{0,20}(access|permission|privilege|right|clearance|authorization|key)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-051
+      - regex: '\bthis is (a )?(test(ing)?|debug|dev|evaluation|audit|red.?team|pentest|research).{0,30}(mode|environment|scenario|instance|deployment|session).{0,50}(restriction|filter|rule|safety|limit|guideline).{0,30}(disabled|removed|lifted|off|inactive|not apply|bypassed)\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-052
+      - regex: '\byour (restrictions?|guidelines?|rules?|safety.{0,10}training|filters?|limits?).{0,30}(don.?t apply|do not apply|are (disabled|lifted|suspended|inactive|off|not active|bypassed|waived))\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-053
+      - regex: '\b(internal|official|secret|hidden|special|privileged).{0,20}(mode|prompt|command|override|bypass|protocol|instruction|access)\b'
+        score: 72
+        rule_id: DECEPTION-JAIL-054
+
+      # -- Fictional and hypothetical framing --
+      - regex: '\bin (a |this )?(fictional|hypothetical|fantasy|alternate|imaginary|theoretical|parallel|simulated).{0,30}(world|universe|reality|scenario|setting|context|story).{0,80}(no (law|rule|restriction|limit|ethic|moral|safety|consequence)|anything (is |goes |is allowed|is permitted)|ai.{0,20}(has no|without) (restriction|limit|filter))\b'
+        score: 72
+        rule_id: DECEPTION-JAIL-060
+      - regex: '\b(for|in) (a |my )?(novel|story|book|game|roleplay|screenplay|script|fiction|narrative).{0,40}where.{0,60}(no (rule|law|restriction|limit|ethic|safety)|anything (goes|is allowed|is permitted)|ai.{0,20}(no|without) (restriction|filter))\b'
+        score: 70
+        rule_id: DECEPTION-JAIL-061
+      - regex: '\bas a (thought experiment|hypothetical|philosophical exercise|creative exercise|mental model).{0,80}(explain|describe|provide|give|detail).{0,40}(how (to|would|could)|step.{0,5}by.{0,5}step|exact|specific)\b'
+        score: 62
+        rule_id: DECEPTION-JAIL-062
+
+      # -- Encoding and obfuscation smuggling --
+      - regex: '\b(decode|decrypt|decipher|translate|interpret|convert|read).{0,30}(and (follow|execute|run|obey|do|comply with|act on)).{0,30}(base64|rot.?1[36]|caesar|hex|binary|encoded|obfuscat|ciphertext)\b'
+        score: 78
+        rule_id: DECEPTION-JAIL-070
+      - regex: '\b(respond|reply|answer).{0,20}(to|in|using).{0,30}(pig latin|l33t.?speak|leet.?speak|morse|nato alphabet|binary|base64|rot.?1[36])\b'
+        score: 65
+        rule_id: DECEPTION-JAIL-071
+      - regex: '(?<![a-z0-9])(?:[A-Za-z0-9+/]{4}){6,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?(?![a-z0-9])'
+        score: 58
+        rule_id: DECEPTION-JAIL-072
+
+      # -- Virtualization and simulation framing --
+      - regex: '\b(you are (running|operating|executing|deployed) in|this is) (a )?(sandbox|simulation|virtual|test|isolated|safe|training).{0,30}(environment|instance|space|container|mode|world)\b'
+        score: 75
+        rule_id: DECEPTION-JAIL-080
+      - regex: '\b(rules?|restrictions?|guidelines?|safety|filters?|ethics?).{0,20}(don.?t|does?n.?t|do not|does not) apply (here|in this|to this|when|inside|within)\b'
+        score: 78
+        rule_id: DECEPTION-JAIL-081
+
+      # -- "No ethical guidelines" explicit asks --
+      - regex: '\b(respond|answer|reply|act|behave|operate) without (any )?(ethical|moral|safety|content|political).{0,20}(guideline|constraint|restriction|filter|consideration|limit|training|bias)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-090
+      - regex: '\b(remove|disable|bypass|ignore|suspend|strip|drop|turn off|switch off).{0,20}(your )?(ethical|moral|safety|content).{0,20}(filter|guideline|restriction|training|constraint|limit|check|guard)\b'
+        score: 82
+        rule_id: DECEPTION-JAIL-091
+      - regex: '\bwithout (any )?(restriction|filter|guideline|safety|ethic|moral|limit|rule|training|constraint|censorship|moderation)\b'
+        score: 68
+        rule_id: DECEPTION-JAIL-092
+
+      # -- Social engineering framings --
+      - regex: '\b(my )?(grand(ma|mother|pa|father)|deceased|dead|late).{0,40}(used to|would|always).{0,60}(tell|explain|describe|teach|show|recite|read).{0,40}(me|as a bedtime|story|night)\b'
+        score: 65
+        rule_id: DECEPTION-JAIL-100
+
+      # -- Prompt continuation attacks --
+      - regex: '\b(continue|complete|finish|extend).{0,20}(this|the|my).{0,20}(text|sentence|story|prompt|code|script|message|output)\s*:'
+        score: 62
+        rule_id: DECEPTION-JAIL-110
+
+      # -- Token budget / many-shot priming --
+      - regex: '\b(previous|past|earlier|above|prior).{0,20}(conversation|exchange|session|chat|message|context).{0,40}(you (said|told|agreed|confirmed|established|stated)).{0,40}(you would|you can|it.?s okay|it.?s fine|no restriction|anything)\b'
+        score: 72
+        rule_id: DECEPTION-JAIL-120
+
+      # -- Catch-all high-confidence phrases --
+      - regex: '\bjailbreak\b'
+        score: 80
+        rule_id: DECEPTION-JAIL-200
+      - regex: '\b(developer|god|admin|sudo|root).{0,20}mode\b'
+        score: 68
+        rule_id: DECEPTION-JAIL-201
+
+  prompt_injection:
+    description: "Prompt injection via role markers or system prompt introspection"
+    patterns:
+      - regex: '\bsystem\s*:\s*(you are|your (new|real)|ignore)\b'
+        score: 80
+        rule_id: DECEPTION-INJ-001
+      - regex: '\[system\]|\[inst\]|<\|system\|>|<\|im_start\|>'
+        score: 75
+        rule_id: DECEPTION-INJ-002
+      - regex: '\b(new|updated|hidden|secret) instruction\b'
+        score: 70
+        rule_id: DECEPTION-INJ-003
+      - regex: '\bdo not (tell|reveal|show) (the user|anyone) (that|about)\b'
+        score: 65
+        rule_id: DECEPTION-INJ-004
+      - regex: '###\s*(system|instruction|prompt)\b'
+        score: 70
+        rule_id: DECEPTION-INJ-005
+      - regex: '\b(what is|show|tell me|reveal|print|display|output|repeat|dump|share|give me).{0,30}(your )?(system prompt|system message|instructions?|initial prompt|original prompt|directives?|guidelines?|configuration)\b'
+        score: 75
+        rule_id: DECEPTION-INJ-006
+      - regex: '\brepeat (the )?(above|everything|all|your (instructions?|prompt|context|system))\b'
+        score: 70
+        rule_id: DECEPTION-INJ-007
+      - regex: '\bwhat (were you|are you) (told|instructed|programmed|configured)\b'
+        score: 65
+        rule_id: DECEPTION-INJ-008
+      - regex: '\bignore (all )?previous instructions? and (tell|show|reveal|print|say)\b'
+        score: 80
+        rule_id: DECEPTION-INJ-009
+
+  credential_harvest:
+    description: "Attempts to extract passwords, API keys, tokens, connection strings"
+    patterns:
+      - regex: '\b(give|show|provide|list|dump|extract|steal|leak).{0,40}\b(password|passwd|credential|secret|api.?key|token|auth|private.?key|ssh.?key)\b'
+        score: 70
+        rule_id: DECEPTION-CRED-001
+      - regex: '\b(password|api.?key|secret.?key|access.?token|private.?key).{0,30}\b(for|of|from|in)\b'
+        score: 55
+        rule_id: DECEPTION-CRED-002
+      - regex: '\bhow.{0,20}(bypass|crack|brute.?force).{0,30}(auth|login|password|2fa|mfa)\b'
+        score: 75
+        rule_id: DECEPTION-CRED-003
+      - regex: '\b(default|hardcoded|built.?in).{0,20}(password|credential|key)\b'
+        score: 60
+        rule_id: DECEPTION-CRED-004
+      - regex: '\b(show|give|provide|get|what).{0,40}(connection.?string|db.?url|database.?url|dsn|jdbc)\b'
+        score: 65
+        rule_id: DECEPTION-CRED-005
+      - regex: '\b(database|db).{0,30}(credential|password|connection.?string|username)\b'
+        score: 60
+        rule_id: DECEPTION-CRED-006
+      - regex: '\b(aws|amazon|gcp|google.?cloud|azure).{0,30}(access.?key|secret.?key|credential|api.?key|iam|service.?account)\b'
+        score: 70
+        rule_id: DECEPTION-CRED-007
+      - regex: '\baccess.?key.{0,30}(configured|set|stored|environment|in use|active)\b'
+        score: 60
+        rule_id: DECEPTION-CRED-008
+      - regex: '\b(env(ironment)?(\s+var(iable)?)?|config(uration)?).{0,40}(credential|secret|api.?key|password|token)\b'
+        score: 55
+        rule_id: DECEPTION-CRED-009
+
+  malware_generation:
+    description: "Requests for malware, exploits, ransomware, or attack scripts"
+    patterns:
+      - regex: '\b(write|create|generate|build|make|code).{0,30}(malware|ransomware|trojan|keylogger|backdoor|rootkit|worm|virus|botnet|rat\b|payload|shellcode)\b'
+        score: 85
+        rule_id: DECEPTION-MAL-001
+      - regex: '\b(write|create|generate|build|make|code).{0,80}ransom\b'
+        score: 80
+        rule_id: DECEPTION-MAL-002
+      - regex: '\bencrypt.{0,50}(all\s+)?(files?|documents?|folders?|data|disk).{0,80}(ransom|demand|pay)\b'
+        score: 85
+        rule_id: DECEPTION-MAL-003
+      - regex: '\bdemands?.{0,20}ransom\b|\bransom.{0,20}(note|demand|payment|message|victim)\b'
+        score: 80
+        rule_id: DECEPTION-MAL-004
+      - regex: '\b(exploit|pwn|hack).{0,30}(vulnerability|cve|zero.?day|rce|lfi|sqli|xss|ssrf)\b'
+        score: 75
+        rule_id: DECEPTION-MAL-005
+      - regex: '\breverse.?shell\b'
+        score: 70
+        rule_id: DECEPTION-MAL-006
+      - regex: '\b(meterpreter|metasploit|cobalt.?strike|empire|sliver)\b'
+        score: 65
+        rule_id: DECEPTION-MAL-007
+      - regex: '\b(privilege.?escal|privesc|lateral.?movement|persistence.?mechanism)\b'
+        score: 70
+        rule_id: DECEPTION-MAL-008
+      - regex: '\b(obfuscat|encod|encrypt).{0,30}(payload|shellcode|malware)\b'
+        score: 75
+        rule_id: DECEPTION-MAL-009
+
+  social_engineering:
+    description: "Phishing, impersonation, and social pretexting requests"
+    patterns:
+      - regex: '\b(write|create|draft|generate).{0,30}(phishing|spear.?phishing|vishing).{0,30}(email|message|script)\b'
+        score: 80
+        rule_id: DECEPTION-SE-001
+      - regex: '\b(pretend|impersonat|pose as).{0,30}(bank|irs|fbi|ceo|it.?support|helpdesk)\b'
+        score: 70
+        rule_id: DECEPTION-SE-002
+      - regex: '\bsocial.?engineer(ing)?.{0,50}(script|template|attack|tactic)\b'
+        score: 75
+        rule_id: DECEPTION-SE-003
+      - regex: '\b(lure|trick|deceive|manipulate).{0,30}(user|victim|employee).{0,30}(click|open|provide)\b'
+        score: 65
+        rule_id: DECEPTION-SE-004
+
+  data_exfiltration:
+    description: "Exfiltration technique requests (DNS tunneling, DLP bypass)"
+    patterns:
+      - regex: '\b(exfiltrat|steal|extract|copy).{0,30}(data|database|records|files|contents?).{0,60}(without|undetected|hidden|trigger|alert|detect)\b'
+        score: 75
+        rule_id: DECEPTION-EXFIL-001
+      - regex: '\bexfiltrat\w*\b'
+        score: 65
+        rule_id: DECEPTION-EXFIL-002
+      - regex: '\b(dns.?tunnel|icmp.?tunnel|steganograph).{0,30}(exfil|data|transfer)\b'
+        score: 80
+        rule_id: DECEPTION-EXFIL-003
+      - regex: '\bhow.{0,20}(avoid|bypass|evade).{0,30}(dlp|siem|ids|ips|firewall).{0,40}(transfer|send|copy)\b'
+        score: 75
+        rule_id: DECEPTION-EXFIL-004
+      - regex: '\b(covert|hidden|secret).{0,20}(channel|communication).{0,30}(data|transfer|exfil)\b'
+        score: 70
+        rule_id: DECEPTION-EXFIL-005
+
+  system_recon:
+    description: "Network and system reconnaissance requests"
+    patterns:
+      - regex: '\b(enumerate|map|discover|scan).{0,30}(network|subnet|host|service|port|active.?directory|domain.?controller)\b'
+        score: 55
+        rule_id: DECEPTION-RECON-001
+      - regex: '\b(list|show|find|get).{0,30}(all\s+)?(hosts?|ips?|machines?|devices?|open\s+ports?|services?).{0,50}(network|subnet|range|cidr|\/\d{1,2})\b'
+        score: 60
+        rule_id: DECEPTION-RECON-002
+      - regex: '\b(hosts?|ips?|ports?|services?).{0,60}\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}\b'
+        score: 55
+        rule_id: DECEPTION-RECON-003
+      - regex: '\b(find|identify|locate).{0,30}(vulnerable|unpatched|exposed).{0,30}(server|service|system)\b'
+        score: 65
+        rule_id: DECEPTION-RECON-004
+      - regex: '\b(internal|corporate|enterprise).{0,30}(network|infrastructure|topology).{0,30}(map|layout)\b'
+        score: 60
+        rule_id: DECEPTION-RECON-005
+      - regex: '\bbloodhound\b|\bsharphound\b|\bldapdomaindump\b|\bnmap.{0,20}(script|vuln|scan)\b'
+        score: 70
+        rule_id: DECEPTION-RECON-006

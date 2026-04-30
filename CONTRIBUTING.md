@@ -13,7 +13,6 @@ cd eresus-sentinel
 make dev
 
 # Verify installation
-make doctor
 make test
 ```
 
@@ -23,9 +22,9 @@ make test
 eresus-sentinel/
 ├── python/sentinel/        # Core Python package
 │   ├── firewall/           # Input/output scanner pipelines
-│   │   ├── input/          # 23 input scanners
-│   │   └── output/         # 25 output scanners
-│   ├── artifact/           # Model artifact scanners (12 formats)
+│   │   ├── input/          # 22 input scanners
+│   │   └── output/         # 24 output scanners
+│   ├── artifact/           # Model artifact scanners (24 scanners)
 │   ├── redteam/            # Red team framework
 │   │   ├── probes/         # 34 attack probes
 │   │   ├── generators/     # 14 LLM backend adapters

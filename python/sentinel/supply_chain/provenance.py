@@ -14,13 +14,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from ..finding import Finding, Severity
-
 
 # Known dangerous file extensions in model repositories
 DANGEROUS_EXTENSIONS = {
@@ -46,6 +44,31 @@ DANGEROUS_EXTENSIONS = {
 
 # Safe file extensions that should be preferred
 SAFE_EXTENSIONS = {".safetensors", ".gguf", ".onnx", ".json", ".txt", ".md", ".yaml", ".yml", ".toml", ".cfg", ".csv"}
+
+MODEL_REPO_SIGNAL_FILES = {
+    "adapter_config.json",
+    "config.json",
+    "generation_config.json",
+    "model_index.json",
+    "preprocessor_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+}
+
+MODEL_REPO_SIGNAL_EXTENSIONS = {
+    ".safetensors",
+    ".onnx",
+    ".gguf",
+    ".mlmodel",
+    ".mlpackage",
+    ".pt",
+    ".pth",
+    ".bin",
+    ".ckpt",
+    ".h5",
+    ".keras",
+}
 
 # Minimum expected fields in a properly documented model card
 MODEL_CARD_REQUIRED_FIELDS = [
@@ -147,6 +170,7 @@ class ProvenanceVerifier:
 
         has_safetensors = False
         has_pickle_based = False
+        has_model_repo_signal = False
         dangerous_files = []
         all_files = []
 
@@ -158,6 +182,8 @@ class ProvenanceVerifier:
 
             all_files.append(fpath)
             ext = fpath.suffix.lower()
+            if fpath.name in MODEL_REPO_SIGNAL_FILES or ext in MODEL_REPO_SIGNAL_EXTENSIONS:
+                has_model_repo_signal = True
 
             if ext == ".safetensors":
                 has_safetensors = True
@@ -195,7 +221,7 @@ class ProvenanceVerifier:
 
         # Check for model card
         model_card = path / "README.md"
-        if not model_card.exists():
+        if has_model_repo_signal and not model_card.exists():
             self.findings.append(Finding.supply_chain(
                 rule_id="SC-012",
                 title="Missing model card (README.md)",
@@ -290,7 +316,7 @@ class ProvenanceVerifier:
             self.findings.append(Finding.supply_chain(
                 rule_id="SC-031",
                 title="trust_remote_code enabled in config",
-                description=f"config.json has trust_remote_code=true. "
+                description="config.json has trust_remote_code=true. "
                             "This enables arbitrary code execution when loading the model.",
                 severity=Severity.CRITICAL,
                 target=config_path,
@@ -302,7 +328,7 @@ class ProvenanceVerifier:
             self.findings.append(Finding.supply_chain(
                 rule_id="SC-032",
                 title="Custom code flag enabled in config",
-                description=f"config.json has custom_code enabled. "
+                description="config.json has custom_code enabled. "
                             "Review all Python files in the repo for malicious code.",
                 severity=Severity.HIGH,
                 target=config_path,

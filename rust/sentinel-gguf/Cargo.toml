@@ -1,0 +1,23 @@
+[package]
+name = "sentinel-gguf"
+version = "0.1.0"
+edition = "2021"
+description = "Fast GGUF model file security scanner for Eresus Sentinel"
+license = "LicenseRef-ESL-1.1"
+authors = ["Eresus Security <security@eresussec.com>"]
+
+[lib]
+name = "sentinel_gguf"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py38"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

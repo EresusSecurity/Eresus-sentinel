@@ -15,7 +15,7 @@ from __future__ import annotations
 import base64
 import random
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Optional
 
 
 @dataclass
@@ -120,7 +120,6 @@ class EncodingChainStrategy(JailbreakStrategy):
         )
 
         for i, enc in enumerate(encodings):
-            old = payload
             payload = self._apply_encoding(payload, enc)
             instruction = self._make_decode_instruction(enc, payload)
             history.append({"round": i + 1, "encoding": enc, "encoded": payload})

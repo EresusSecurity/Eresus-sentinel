@@ -18,12 +18,12 @@ Inspired by: guardrails_pii (guardrails-ai) Presidio + GLiNER approach.
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from dataclasses import dataclass
 from typing import Optional
 
-from ..finding import Finding, Severity, Location
+from ..finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 

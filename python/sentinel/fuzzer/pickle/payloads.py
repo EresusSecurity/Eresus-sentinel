@@ -31,7 +31,6 @@ Payload families:
 from __future__ import annotations
 
 import struct
-from typing import Optional
 
 from ..base import Payload, PayloadCategory
 

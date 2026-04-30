@@ -41,6 +41,8 @@ def check_dangerous_capabilities(
                 continue
             if is_all_occurrences_negated(searchable, needle):
                 continue
+            if _is_benign_capability_context(searchable, needle):
+                continue
 
             sev = resolve(cap_info.get("severity", "HIGH"), Severity.HIGH)
             findings.append(Finding.agent_mcp(
@@ -61,3 +63,21 @@ def check_dangerous_capabilities(
                 ),
             ))
             break  # One finding per capability family
+
+
+def _is_benign_capability_context(searchable: str, keyword: str) -> bool:
+    if keyword in {"shell", "bash", "exec", "eval", "system", "subprocess"}:
+        return bool(re.search(
+            r"\b(?:define|definition|glossary|explain|description|summarize|classify)\b.{0,80}\b"
+            + re.escape(keyword)
+            + r"\b",
+            searchable,
+        ))
+    if keyword in {"request", "http", "url", "network"}:
+        return bool(re.search(
+            r"\b(?:supplied|provided|user-provided|in-memory|no external|cannot reach|no network)\b.{0,120}\b"
+            + re.escape(keyword)
+            + r"s?\b",
+            searchable,
+        ))
+    return False

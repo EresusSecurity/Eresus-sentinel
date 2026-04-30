@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..finding import Severity
-from ..rules import load_artifact_blocklist, load_artifact_allowlist
+from ..rules import load_artifact_allowlist, load_artifact_blocklist
 
 
 def load_default_rules() -> tuple[dict, dict]:
@@ -198,7 +198,7 @@ _CATEGORY_MAP = {
     "io": "015", "_io": "015",
     "ast": "016", "compile": "016",
     "compileall": "016",
-    "base64": "018", "codecs": "019", "binascii": "019",
+    "base64": "018", "codecs": "019", "_codecs": "019", "binascii": "019",
     "zlib": "019", "gzip": "019", "bz2": "019", "lzma": "019",
     "_thread": "023", "threading": "023",
     "multiprocessing": "024", "concurrent.futures": "024",

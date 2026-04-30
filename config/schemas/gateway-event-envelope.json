@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GatewayEventEnvelope",
+  "type": "object",
+  "required": ["envelope_id", "timestamp", "event_type", "payload"],
+  "properties": {
+    "envelope_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "event_type": {"type": "string"},
+    "version": {"type": "string", "default": "1.0"},
+    "source": {"type": "string"},
+    "correlation_id": {"type": "string"},
+    "payload": {"type": "object"},
+    "routing": {
+      "type": "object",
+      "properties": {
+        "destination": {"type": "string"},
+        "priority": {"type": "string", "enum": ["high", "normal", "low"]}
+      }
+    }
+  }
+}

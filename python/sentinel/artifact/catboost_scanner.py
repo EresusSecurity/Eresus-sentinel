@@ -1,8 +1,9 @@
 """CatBoost .cbm binary model scanner."""
 from __future__ import annotations
+
 import logging
-import struct
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,8 @@ SUSPICIOUS_STRINGS = [
 
 
 class CatBoostScanner:
+    """Scan CatBoost .cbm model files for deserialization and integrity issues."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

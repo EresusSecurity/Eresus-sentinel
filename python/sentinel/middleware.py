@@ -40,8 +40,8 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
-import time
 import threading
+import time
 from typing import Any, Callable, Optional
 
 from sentinel.firewall.base import ScanAction, ScanResult
@@ -444,3 +444,228 @@ class SentinelLangChainHandler:
     def clear_history(self) -> None:
         """Clear scan result history."""
         self._scan_results.clear()
+
+
+class SentinelAgentMiddleware:
+    """
+    LangGraph / LangChain agent-level middleware with before/after model hooks.
+
+    Operates in three modes:
+      ``off``      — passthrough, no inspection.
+      ``monitor``  — scans and logs, never blocks.
+      ``enforce``  — raises on BLOCK findings.
+
+    Usage (LangGraph):
+        from sentinel.middleware import SentinelAgentMiddleware
+        mw = SentinelAgentMiddleware(mode="enforce")
+
+        # Wrap inside a LangGraph node or custom AgentExecutor step:
+        def agent_node(state):
+            mw.before_model(state["messages"][-1].content)
+            response = llm.invoke(state["messages"])
+            mw.after_model(response.content)
+            return state
+    """
+
+    def __init__(
+        self,
+        mode: str = "enforce",
+        input_scanners: list[str] | None = None,
+        output_scanners: list[str] | None = None,
+        on_violation: Optional[Callable[[str, "ScanResult"], None]] = None,
+        block_message: str = "Sentinel blocked this agent action.",
+    ) -> None:
+        if mode not in ("off", "monitor", "enforce"):
+            raise ValueError(f"mode must be 'off', 'monitor', or 'enforce', got {mode!r}")
+        self.mode = mode
+        self._mw = SentinelMiddleware(
+            input_scanners=input_scanners,
+            output_scanners=output_scanners,
+            block_message=block_message,
+        )
+        self._on_violation = on_violation
+        self._block_message = block_message
+        self._history: list[dict] = []
+
+    def before_model(self, prompt: str) -> str:
+        """
+        Scan prompt before it reaches the model.
+
+        Returns sanitized prompt. Raises ``ValueError`` in enforce mode on BLOCK.
+        """
+        if self.mode == "off":
+            return prompt
+        result = self._mw.guard_input(prompt)
+        self._record("before_model", result)
+        if result.action == ScanAction.BLOCK:
+            if self._on_violation:
+                try:
+                    self._on_violation("before_model", result)
+                except Exception:
+                    logger.exception("on_violation raised in before_model")
+            if self.mode == "enforce":
+                raise ValueError(
+                    f"Sentinel blocked agent input: {len(result.findings)} findings, "
+                    f"risk={result.risk_score:.2f}"
+                )
+        return result.sanitized or prompt
+
+    def after_model(self, output: str, prompt: str = "") -> str:
+        """
+        Scan model output after generation.
+
+        Returns sanitized output. Raises ``ValueError`` in enforce mode on BLOCK.
+        """
+        if self.mode == "off":
+            return output
+        result = self._mw.guard_output(prompt, output)
+        self._record("after_model", result)
+        if result.action == ScanAction.BLOCK:
+            if self._on_violation:
+                try:
+                    self._on_violation("after_model", result)
+                except Exception:
+                    logger.exception("on_violation raised in after_model")
+            if self.mode == "enforce":
+                raise ValueError(
+                    f"Sentinel blocked agent output: {len(result.findings)} findings, "
+                    f"risk={result.risk_score:.2f}"
+                )
+        return result.sanitized or output
+
+    async def async_before_model(self, prompt: str) -> str:
+        """Async version of before_model."""
+        return await asyncio.to_thread(self.before_model, prompt)
+
+    async def async_after_model(self, output: str, prompt: str = "") -> str:
+        """Async version of after_model."""
+        return await asyncio.to_thread(self.after_model, output, prompt)
+
+    def _record(self, phase: str, result: "ScanResult") -> None:
+        self._history.append({
+            "phase": phase,
+            "action": result.action.value,
+            "risk_score": result.risk_score,
+            "findings": len(result.findings),
+        })
+
+    @property
+    def history(self) -> list[dict]:
+        return list(self._history)
+
+    def clear_history(self) -> None:
+        self._history.clear()
+
+
+class SentinelToolMiddleware:
+    """
+    Intercept individual MCP / LangChain tool calls and results.
+
+    Usage:
+        from sentinel.middleware import SentinelToolMiddleware
+        tool_mw = SentinelToolMiddleware(mode="enforce")
+
+        # Wrap a tool call:
+        safe_args = tool_mw.wrap_tool_call("read_file", {"path": user_path})
+        result = actual_tool(safe_args)
+        safe_result = tool_mw.wrap_tool_result("read_file", result)
+    """
+
+    def __init__(
+        self,
+        mode: str = "enforce",
+        input_scanners: list[str] | None = None,
+        output_scanners: list[str] | None = None,
+        on_violation: Optional[Callable[[str, "ScanResult"], None]] = None,
+        block_message: str = "Sentinel blocked this tool call.",
+        blocked_tools: list[str] | None = None,
+    ) -> None:
+        if mode not in ("off", "monitor", "enforce"):
+            raise ValueError(f"mode must be 'off', 'monitor', or 'enforce', got {mode!r}")
+        self.mode = mode
+        self._mw = SentinelMiddleware(
+            input_scanners=input_scanners,
+            output_scanners=output_scanners,
+            block_message=block_message,
+        )
+        self._on_violation = on_violation
+        self._block_message = block_message
+        self._blocked_tools: set[str] = set(blocked_tools or [])
+        self._history: list[dict] = []
+
+    def wrap_tool_call(self, tool_name: str, args: dict) -> dict:
+        """
+        Inspect tool name + arguments before execution.
+
+        Returns (possibly sanitized) args. Raises ``ValueError`` in enforce mode.
+        """
+        if self.mode == "off":
+            return args
+        if tool_name in self._blocked_tools:
+            if self.mode == "enforce":
+                raise ValueError(f"Tool '{tool_name}' is blocked by policy.")
+            logger.warning("Blocked tool called in monitor mode: %s", tool_name)
+            return args
+
+        payload = f"tool_call name={tool_name!r} args={args!r}"
+        result = self._mw.guard_input(payload)
+        self._record("tool_call", tool_name, result)
+        if result.action == ScanAction.BLOCK:
+            self._fire_violation("tool_call", result)
+            if self.mode == "enforce":
+                raise ValueError(
+                    f"Sentinel blocked tool call '{tool_name}': "
+                    f"{len(result.findings)} findings"
+                )
+        return args
+
+    def wrap_tool_result(self, tool_name: str, result_obj: Any) -> Any:
+        """
+        Inspect tool result after execution.
+
+        Returns (possibly sanitized) result. Raises ``ValueError`` in enforce mode.
+        """
+        if self.mode == "off":
+            return result_obj
+        text = str(result_obj)[:16_000]
+        result = self._mw.guard_output("", text)
+        self._record("tool_result", tool_name, result)
+        if result.action == ScanAction.BLOCK:
+            self._fire_violation("tool_result", result)
+            if self.mode == "enforce":
+                raise ValueError(
+                    f"Sentinel blocked tool result from '{tool_name}': "
+                    f"{len(result.findings)} findings"
+                )
+        return result.sanitized if result.sanitized else result_obj
+
+    async def awrap_tool_call(self, tool_name: str, args: dict) -> dict:
+        """Async version of wrap_tool_call."""
+        return await asyncio.to_thread(self.wrap_tool_call, tool_name, args)
+
+    async def awrap_tool_result(self, tool_name: str, result_obj: Any) -> Any:
+        """Async version of wrap_tool_result."""
+        return await asyncio.to_thread(self.wrap_tool_result, tool_name, result_obj)
+
+    def _record(self, phase: str, tool_name: str, result: "ScanResult") -> None:
+        self._history.append({
+            "phase": phase,
+            "tool": tool_name,
+            "action": result.action.value,
+            "risk_score": result.risk_score,
+            "findings": len(result.findings),
+        })
+
+    def _fire_violation(self, phase: str, result: "ScanResult") -> None:
+        if self._on_violation:
+            try:
+                self._on_violation(phase, result)
+            except Exception:
+                logger.exception("on_violation raised in %s", phase)
+
+    @property
+    def history(self) -> list[dict]:
+        return list(self._history)
+
+    def clear_history(self) -> None:
+        self._history.clear()

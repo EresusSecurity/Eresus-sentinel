@@ -8,15 +8,23 @@ import struct
 from typing import Optional
 
 from ..base import Generator
+from .emitters import (
+    emit_bytes_op,
+    emit_ext,
+    emit_float,
+    emit_global,
+    emit_inst,
+    emit_int,
+    emit_memo_get,
+    emit_memo_put,
+    emit_persid,
+    emit_stack_global,
+    emit_string,
+)
 from .opcodes import OpcodeInfo, opcodes_for_protocol
 from .pvm import PVMState, none_obj, tuple_obj
-from .validation import can_emit
-from .emitters import (
-    emit_int, emit_float, emit_string, emit_bytes_op, emit_global,
-    emit_stack_global, emit_inst, emit_memo_put, emit_memo_get,
-    emit_ext, emit_persid,
-)
 from .stack_ops import process_stack_op
+from .validation import can_emit
 
 
 class PickleGenerator(Generator):

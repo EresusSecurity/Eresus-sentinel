@@ -17,17 +17,15 @@ Features:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import os
 import re
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
-from urllib import request, error, parse
+from typing import Any
+from urllib import request
 
 from sentinel.finding import Finding, Severity
 
@@ -334,11 +332,10 @@ class TyposquatDetector:
         """Check if a package name looks like a typosquat."""
         risks = []
         name = package_name.lower().replace("_", "-")
+        if name in self._known:
+            return risks
 
         for known in self._known:
-            if name == known:
-                continue
-
             dl_dist = _damerau_levenshtein(name, known)
             lev_dist = _levenshtein(name, known)
 
@@ -565,7 +562,7 @@ class ConfusionDetector:
         for section in ("dependencies", "devDependencies"):
             all_deps.update(data.get(section, {}))
 
-        scoped = [d for d in all_deps if d.startswith("@")]
+        [d for d in all_deps if d.startswith("@")]
         unscoped = [d for d in all_deps if not d.startswith("@")]
 
         # Private-looking unscoped packages
@@ -775,45 +772,60 @@ class LiveDependencyScanner:
         findings = []
         root = Path(project_dir)
 
-        # Python
-        for req_file in root.rglob("requirements*.txt"):
-            if ".git" not in str(req_file):
-                findings.extend(self.scan_requirements(str(req_file)))
+        if root.is_file():
+            if self._ecosystem == "pypi" and (root.name.startswith("requirements") or root.name in {"pyproject.toml", "setup.py"}):
+                if root.name == "setup.py":
+                    try:
+                        content = root.read_text(encoding="utf-8", errors="ignore")
+                        return self._risks_to_findings(self._malicious.scan_setup_py(content, root.parent.name), str(root))
+                    except Exception:
+                        return []
+                return self.scan_requirements(str(root))
+            if self._ecosystem == "npm" and root.name == "package.json":
+                return self.scan_package_json(str(root))
+            return []
 
-        for pyproject in root.rglob("pyproject.toml"):
-            if ".git" not in str(pyproject):
-                findings.extend(self.scan_requirements(str(pyproject)))
-
-        # npm
-        for pkg_json in root.rglob("package.json"):
-            if "node_modules" not in str(pkg_json) and ".git" not in str(pkg_json):
-                findings.extend(self.scan_package_json(str(pkg_json)))
-
-        # Setup.py malicious check
-        for setup in root.rglob("setup.py"):
-            if ".git" not in str(setup):
-                try:
-                    with open(setup, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
-                    mal_risks = self._malicious.scan_setup_py(content, setup.parent.name)
-                    findings.extend(self._risks_to_findings(mal_risks, str(setup)))
-                except Exception:
-                    pass
-
-        # pip-audit
-        if self._pip_audit:
+        if self._ecosystem == "pypi":
+            # Python
             for req_file in root.rglob("requirements*.txt"):
                 if ".git" not in str(req_file):
-                    vulns = self._pip_audit.run(str(root), str(req_file))
-                    for v in vulns:
-                        sev = {"CRITICAL": Severity.CRITICAL, "HIGH": Severity.HIGH}.get(v.severity, Severity.MEDIUM)
-                        findings.append(Finding.supply_chain(
-                            rule_id=f"PIPAUDIT-{v.vuln_id}",
-                            title=f"pip-audit: {v.vuln_id} in {v.package}",
-                            description=v.summary,
-                            severity=sev,
-                            target=str(req_file),
-                        ))
+                    findings.extend(self.scan_requirements(str(req_file)))
+
+            for pyproject in root.rglob("pyproject.toml"):
+                if ".git" not in str(pyproject):
+                    findings.extend(self.scan_requirements(str(pyproject)))
+
+            # Setup.py malicious check
+            for setup in root.rglob("setup.py"):
+                if ".git" not in str(setup):
+                    try:
+                        with open(setup, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                        mal_risks = self._malicious.scan_setup_py(content, setup.parent.name)
+                        findings.extend(self._risks_to_findings(mal_risks, str(setup)))
+                    except Exception:
+                        pass
+
+            # pip-audit
+            if self._pip_audit:
+                for req_file in root.rglob("requirements*.txt"):
+                    if ".git" not in str(req_file):
+                        vulns = self._pip_audit.run(str(root), str(req_file))
+                        for v in vulns:
+                            sev = {"CRITICAL": Severity.CRITICAL, "HIGH": Severity.HIGH}.get(v.severity, Severity.MEDIUM)
+                            findings.append(Finding.supply_chain(
+                                rule_id=f"PIPAUDIT-{v.vuln_id}",
+                                title=f"pip-audit: {v.vuln_id} in {v.package}",
+                                description=v.summary,
+                                severity=sev,
+                                target=str(req_file),
+                            ))
+
+        elif self._ecosystem == "npm":
+            # npm
+            for pkg_json in root.rglob("package.json"):
+                if "node_modules" not in str(pkg_json) and ".git" not in str(pkg_json):
+                    findings.extend(self.scan_package_json(str(pkg_json)))
 
         return findings
 

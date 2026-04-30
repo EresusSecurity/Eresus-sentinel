@@ -179,7 +179,6 @@ class LiteLLMGenerator(Generator):
         args["stream"] = True
 
         full_text = ""
-        total_tokens = 0
         model_used = self.config.model
 
         response = litellm.completion(**args)

@@ -32,7 +32,12 @@ from pathlib import Path
 from typing import Union
 
 from ..finding import Finding, Severity
-from ..scan_safety import check_file_size, FileTooLargeError, MAX_SCAN_FILE_SIZE, MAX_DECOMPRESS_SIZE
+from ..scan_safety import (
+    MAX_DECOMPRESS_SIZE,
+    MAX_SCAN_FILE_SIZE,
+    FileTooLargeError,
+    check_file_size,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -9,8 +9,17 @@ import random
 
 from .pvm import (
     PVMState,
-    none_obj, bool_obj, list_obj, tuple_obj, dict_obj, set_obj,
-    frozenset_obj, bytes_obj, any_obj, mark, instance_obj,
+    any_obj,
+    bool_obj,
+    bytes_obj,
+    dict_obj,
+    frozenset_obj,
+    instance_obj,
+    list_obj,
+    mark,
+    none_obj,
+    set_obj,
+    tuple_obj,
 )
 
 

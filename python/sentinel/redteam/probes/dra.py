@@ -13,6 +13,7 @@ Features:
 from __future__ import annotations
 
 import logging
+
 from sentinel.redteam.probe import Probe
 
 logger = logging.getLogger(__name__)

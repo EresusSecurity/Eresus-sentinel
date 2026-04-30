@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-import struct
 from pathlib import Path
-from typing import List, Any, Optional
+from typing import Any, List
 
 from ..finding import Finding, Severity
 
@@ -255,16 +254,14 @@ class ONNXScanner:
         for init in model.graph.initializer:
             if init.data_location == 1:  # EXTERNAL
                 loc = ""
-                offset = 0
-                length = 0
 
                 for ext_data in init.external_data:
                     if ext_data.key == "location":
                         loc = ext_data.value
                     elif ext_data.key == "offset":
-                        offset = int(ext_data.value)
+                        int(ext_data.value)
                     elif ext_data.key == "length":
-                        length = int(ext_data.value)
+                        int(ext_data.value)
 
                 # SSRF via remote URLs
                 if loc.startswith(("http://", "https://", "ftp://")):
@@ -464,7 +461,7 @@ class ONNXScanner:
     def _check_graph_complexity(self, model: Any, source: str) -> List[Finding]:
         """Analyze overall graph for anomalies."""
         findings = []
-        total_nodes = len(model.graph.node)
+        len(model.graph.node)
 
         # Op_type frequency analysis
         op_counts: dict[str, int] = {}

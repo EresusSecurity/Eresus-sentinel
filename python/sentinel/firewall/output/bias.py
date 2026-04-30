@@ -16,9 +16,9 @@ from __future__ import annotations
 import logging
 import re
 
-from sentinel.data_loader import load_data, compile_pattern_list
+from sentinel.data_loader import compile_pattern_list, load_data
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

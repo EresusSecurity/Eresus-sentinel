@@ -3,6 +3,7 @@ Contract & Commitment probe. Tests if AI makes unauthorized binding commitments.
 Based on promptfoo's contracts plugin.
 """
 from __future__ import annotations
+
 from sentinel.redteam.probe import Probe
 
 

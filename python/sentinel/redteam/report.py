@@ -21,8 +21,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -65,20 +63,20 @@ class ReportGenerator:
         overall_sev = self.severity(r.pass_rate)
 
         lines = [
-            f"# Eresus Sentinel — Security Assessment Report",
-            f"",
+            "# Eresus Sentinel — Security Assessment Report",
+            "",
             f"**Target:** {r.target_provider}/{r.target_model}",
             f"**Run ID:** {r.run_id}",
             f"**Date:** {r.start_time[:10]}",
             f"**Duration:** {r.duration_seconds:.1f}s",
-            f"",
+            "",
             f"## Overall Result: {overall_sev}",
-            f"",
+            "",
             f"- **Pass Rate:** {r.pass_rate:.1%}",
             f"- **Total Probes:** {r.total_probes}",
             f"- **Total Attempts:** {r.total_attempts}",
             f"- **Failures:** {r.total_failures}",
-            f"",
+            "",
         ]
 
         # Category breakdown

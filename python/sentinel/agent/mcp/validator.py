@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from ...finding import Finding, Severity
 from ...rules import load_mcp_rules
@@ -12,6 +12,8 @@ from .auth_checks import check_missing_auth
 from .capabilities import check_dangerous_capabilities
 from .description_scan import check_description_injection
 from .overclaiming import check_safety_overclaiming
+from .prompt_defense import PromptDefenseAnalyzer
+from .readiness_analyzer import ReadinessAnalyzer
 from .schema_hygiene import (
     check_path_parameter_validation,
     check_required_fields,
@@ -28,13 +30,17 @@ class MCPValidator:
     set of single-responsibility analyzers living in this package.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, enable_extended: bool = True) -> None:
         self.findings: list[Finding] = []
         self._rules = load_mcp_rules()
         self._caps = self._rules.get("dangerous_capabilities", {})
         self._desc_patterns = self._rules.get("description_injection_patterns", [])
         self._path_keywords = self._rules.get("path_parameter_keywords", [])
         self._auth_fields = self._rules.get("auth_field_names", [])
+        self._enable_extended = enable_extended
+        if enable_extended:
+            self._prompt_defense = PromptDefenseAnalyzer()
+            self._readiness = ReadinessAnalyzer()
 
     # ── Entry points ────────────────────────────────────────────────
 
@@ -73,6 +79,35 @@ class MCPValidator:
 
     # ── Per-tool orchestration ──────────────────────────────────────
 
+    def validate_server(
+        self,
+        server_info: dict[str, Any],
+        tools: list[dict[str, Any]],
+        capabilities: Optional[dict[str, Any]] = None,
+        source: str = "<manifest>",
+    ) -> list[Finding]:
+        """Validate a full MCP server manifest (server_info + tools list)."""
+        self.findings = []
+        for tool in tools:
+            self._validate_tool(tool, source)
+
+        if self._enable_extended:
+            readiness = self._readiness.analyze(server_info, tools, capabilities or {})
+            if readiness.percentage < 50.0:
+                self.findings.append(Finding.agent_mcp(
+                    rule_id="MCP-READY-001",
+                    title="Low MCP server readiness",
+                    description=(
+                        f"Server '{server_info.get('name', '?')}' readiness score "
+                        f"{readiness.percentage:.0f}% (grade {readiness.grade}). "
+                        + " ".join(readiness.recommendations[:3])
+                    ),
+                    severity=Severity.MEDIUM,
+                    target=source,
+                ))
+
+        return self.findings
+
     def _validate_tool(self, tool: dict[str, Any], source: str) -> None:
         tool_name = tool.get("name", "<unnamed>")
         f = self.findings
@@ -85,6 +120,21 @@ class MCPValidator:
         check_path_parameter_validation(tool, tool_name, source, self._path_keywords, f)
         check_schema_depth(tool, tool_name, source, f)
         check_safety_overclaiming(tool, tool_name, source, self._caps, f)
+
+        if self._enable_extended:
+            defense = self._prompt_defense.analyze_tool(tool)
+            for issue in defense.issues:
+                self.findings.append(Finding.agent_mcp(
+                    rule_id="MCP-INJECT-001",
+                    title="Prompt injection in tool definition",
+                    description=(
+                        f"Tool '{tool_name}' field '{issue.field}' contains a potential "
+                        f"prompt injection pattern: {issue.snippet!r}"
+                    ),
+                    severity=Severity.HIGH if issue.severity == "HIGH" else Severity.MEDIUM,
+                    target=source,
+                    evidence=issue.snippet,
+                ))
 
 
 def _iter_tools(payload: Any):

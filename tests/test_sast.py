@@ -99,9 +99,12 @@ class TestSASTAnalyzer(unittest.TestCase):
         findings = self.analyzer.scan_path(path)
         os.unlink(path)
         rule_ids = [f.rule_id for f in findings]
-        # Should have both eval (SAST-020) and pickle (SAST-001)
+        # Should have both eval (SAST-020 or SAST-020b) and pickle (SAST-001)
         self.assertIn("SAST-001", rule_ids)
-        self.assertIn("SAST-020", rule_ids)
+        self.assertTrue(
+            "SAST-020" in rule_ids or "SAST-020b" in rule_ids,
+            f"Expected SAST-020 or SAST-020b in {rule_ids}",
+        )
 
 
 if __name__ == "__main__":

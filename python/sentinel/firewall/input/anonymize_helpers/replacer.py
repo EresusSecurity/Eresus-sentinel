@@ -1,10 +1,12 @@
 """Entity replacement strategies for anonymization."""
 from __future__ import annotations
+
 import hashlib
 import random
 import string
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+
 from .entity_types import EntityType
 from .ner_engine import NERResult
 

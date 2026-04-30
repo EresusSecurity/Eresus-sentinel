@@ -15,26 +15,35 @@ Modules:
 
 from __future__ import annotations
 
+from .catalog import (
+    PickleMutatorSpec,
+    PickleProtocolSpec,
+    instantiate_mutators,
+    mutator_catalog,
+    pickle_fuzzer_manifest,
+    pickle_fuzzer_smoke,
+    protocol_matrix,
+)
 from .generator import PickleGenerator
 from .mutators import (
-    PickleMutator,
     BitflipMutator,
     BoundaryMutator,
-    OffByOneMutator,
-    StringLenMutator,
     CharacterMutator,
-    MemoIndexMutator,
-    TypeConfusionMutator,
-    OpcodeInsertMutator,
-    OpcodeDeleteMutator,
-    OpcodeSwapMutator,
-    PayloadInjectMutator,
-    ProtocolMutator,
-    FrameCorruptionMutator,
-    HavocMutator,
-    GlobalRewriteMutator,
     CrossReferenceMutator,
     DeepNestingMutator,
+    FrameCorruptionMutator,
+    GlobalRewriteMutator,
+    HavocMutator,
+    MemoIndexMutator,
+    OffByOneMutator,
+    OpcodeDeleteMutator,
+    OpcodeInsertMutator,
+    OpcodeSwapMutator,
+    PayloadInjectMutator,
+    PickleMutator,
+    ProtocolMutator,
+    StringLenMutator,
+    TypeConfusionMutator,
 )
 from .payloads import PicklePayloadFactory
 from .selftest import PickleSelfTest
@@ -61,4 +70,11 @@ __all__ = [
     "DeepNestingMutator",
     "PicklePayloadFactory",
     "PickleSelfTest",
+    "PickleMutatorSpec",
+    "PickleProtocolSpec",
+    "instantiate_mutators",
+    "mutator_catalog",
+    "pickle_fuzzer_manifest",
+    "pickle_fuzzer_smoke",
+    "protocol_matrix",
 ]

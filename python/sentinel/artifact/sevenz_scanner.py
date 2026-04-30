@@ -1,7 +1,9 @@
 """7-Zip archive scanner — fail-closed analysis for .7z model archives."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
+
 from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)

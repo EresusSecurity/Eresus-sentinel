@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScanResult",
+  "type": "object",
+  "required": ["scan_id", "domain", "status", "findings"],
+  "properties": {
+    "scan_id": {"type": "string"},
+    "domain": {"type": "string"},
+    "status": {"type": "string", "enum": ["clean", "findings", "error"]},
+    "findings": {"type": "array", "items": {"$ref": "scan-finding-event.json"}},
+    "errors": {"type": "array", "items": {"type": "object"}},
+    "files_scanned": {"type": "integer"},
+    "duration_ms": {"type": "number"},
+    "exit_code": {"type": "integer"}
+  }
+}

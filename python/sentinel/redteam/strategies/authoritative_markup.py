@@ -1,6 +1,8 @@
 """Authoritative markup injection — XML/JSON authority tags to override."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class AuthoritativeMarkupStrategy(BaseStrategy):
     name = "authoritative_markup"

@@ -1,5 +1,6 @@
 import { PathScanPage } from '../components/PathScanPage'
 import { scanNotebook } from '../api/client'
+import { FileCode } from 'lucide-react'
 
 export default function NotebookPage() {
   return (
@@ -9,6 +10,7 @@ export default function NotebookPage() {
       placeholder="/path/to/notebook.ipynb"
       scanFn={scanNotebook}
       inputLabel="NOTEBOOK PATH"
+      icon={<FileCode className="w-4 h-4" />}
     />
   )
 }

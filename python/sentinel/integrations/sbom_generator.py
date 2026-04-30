@@ -1,15 +1,16 @@
 """SBOM generation + License checking + Remote source scanning."""
 from __future__ import annotations
+
 import hashlib
 import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+
 from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -332,8 +333,8 @@ class JFrogSource(RemoteSource):
         self.token = token or os.environ.get("JFROG_TOKEN", "")
 
     def list_models(self, prefix: str = "") -> list[RemoteModel]:
-        import urllib.request
         import urllib.parse
+        import urllib.request
         aql = f'items.find({{"repo":"{self.repo}","path":{{"$match":"{prefix}*"}}}})'
         req = urllib.request.Request(
             f"{self.url}/api/search/aql", data=aql.encode(),

@@ -11,7 +11,7 @@ import logging
 import re
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def _analyze_sentiment(text: str) -> dict:
 
     word_count = max(len(text.split()), 1)
     neg_density = neg_count / word_count
-    manip_density = manip_count / word_count
+    manip_count / word_count
 
     hostility_score = min(1.0, (neg_count * 0.2) + (manip_count * 0.3))
 

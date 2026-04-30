@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import re
-import struct
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class RuleSeverity(Enum):

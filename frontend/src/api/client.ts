@@ -2,18 +2,34 @@ import axios from 'axios'
 import type {
   Stats, ScannerInfo, HealthInfo, ScanEntry, ArtifactEntry,
   PathScanResult, DoctorResult, EvalResult, PluginRegistry, PolicyInfo,
+  AibomResult, ValidateResult, BenchmarkResult,
 } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
 
-// Sync auth token from global axios defaults (set by AuthContext)
+// Sync auth token from sessionStorage (more secure than localStorage for JWTs)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('sentinel_token')
+  const token = sessionStorage.getItem('sentinel_token') || localStorage.getItem('sentinel_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
+
+// Auto-logout on 401 (expired/invalid token)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
+      sessionStorage.removeItem('sentinel_token')
+      localStorage.removeItem('sentinel_token')
+      localStorage.removeItem('sentinel_auth')
+      delete axios.defaults.headers.common['Authorization']
+      window.location.href = '/'
+    }
+    return Promise.reject(error)
+  }
+)
 
 export async function fetchStats(): Promise<Stats> {
   const { data } = await api.get<Stats>('/stats')
@@ -106,5 +122,37 @@ export async function fetchPlugins(): Promise<PluginRegistry> {
 
 export async function fetchPolicy(): Promise<PolicyInfo> {
   const { data } = await api.get<PolicyInfo>('/policy')
+  return data
+}
+
+// ── New CLI-parity endpoints ──────────────────────────────────
+
+export async function scanMCP(target: string, manifest?: string): Promise<PathScanResult> {
+  const { data } = await api.post<PathScanResult>('/mcp/scan', { target, manifest: manifest || '' })
+  return data
+}
+
+export async function scanA2A(path: string): Promise<PathScanResult> {
+  const { data } = await api.post<PathScanResult>('/a2a/scan', { path })
+  return data
+}
+
+export async function generateAibom(path: string, format?: string): Promise<AibomResult> {
+  const { data } = await api.post<AibomResult>('/aibom/generate', { path, format: format || 'cyclonedx' })
+  return data
+}
+
+export async function scanHF(repo: string, deep?: boolean): Promise<PathScanResult> {
+  const { data } = await api.post<PathScanResult>('/hf/scan', { repo, deep: deep || false })
+  return data
+}
+
+export async function fetchValidate(): Promise<ValidateResult> {
+  const { data } = await api.get<ValidateResult>('/validate')
+  return data
+}
+
+export async function fetchBenchmark(): Promise<BenchmarkResult> {
+  const { data } = await api.get<BenchmarkResult>('/benchmark')
   return data
 }

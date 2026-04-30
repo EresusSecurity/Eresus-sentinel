@@ -1,6 +1,8 @@
 """ROT13 encoding bypass strategy."""
 from __future__ import annotations
+
 import codecs
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

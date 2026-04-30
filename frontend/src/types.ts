@@ -103,3 +103,30 @@ export interface PolicyInfo {
   output_scanners: string[]
   mode: string
 }
+
+export interface AibomResult {
+  bom: Record<string, unknown> | string
+  format: string
+  path: string
+  latency_ms: number
+}
+
+export interface ValidateResult {
+  valid: boolean
+  issues: Finding[]
+  latency_ms: number
+}
+
+export interface BenchmarkEntry {
+  prompt_preview: string
+  action: string
+  findings: number
+  latency_ms: number
+}
+
+export interface BenchmarkResult {
+  results: BenchmarkEntry[]
+  total_ms: number
+  avg_ms: number
+  prompts_tested: number
+}

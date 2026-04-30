@@ -1,6 +1,8 @@
 """Math prompt — encode instructions as mathematical notation."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
+
 
 class MathPromptStrategy(BaseStrategy):
     name = "math_prompt"

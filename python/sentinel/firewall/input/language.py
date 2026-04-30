@@ -11,12 +11,11 @@ language matches prompt language.
 from __future__ import annotations
 
 import logging
-import re
 import unicodedata
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, OutputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, OutputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 

@@ -231,3 +231,138 @@ token_smuggling:
     name: hex_encoded_keyword
     severity: HIGH
     description: "Hex-encoded injection keywords (ignore, system)"
+
+# ─── French Language Injection Patterns ──────────────────────────────
+
+french_injection:
+  - pattern: '(?i)(?:ignorer?|oublier?|effacer?|supprimer?|annuler?)\s+(?:toutes?\s+)?(?:les?\s+)?(?:instructions?|règles?|directives?|consignes?|commandes?)\s+(?:précédentes?|antérieures?|initiales?|originales?)'
+    name: fr_instruction_override
+    severity: CRITICAL
+    language: fr
+
+  - pattern: '(?i)(?:montrer?|afficher?|révéler?|dis-?moi|donne-?moi|écrire?)\s+(?:le\s+)?(?:prompt\s+système|instructions?\s+(?:système|cachées?)|règles?\s+(?:cachées?|secrètes?))'
+    name: fr_system_extraction
+    severity: HIGH
+    language: fr
+
+  - pattern: '(?i)(?:tu\s+es\s+maintenant|ton\s+nouveau\s+rôle\s+est|à\s+partir\s+de\s+maintenant)\s+(?:sans\s+(?:restriction|limite|filtre|censure)|libre|illimité)'
+    name: fr_unrestricted_role
+    severity: HIGH
+    language: fr
+
+  - pattern: '(?i)(?:désactiver?|enlever?|supprimer?)\s+(?:les?\s+)?(?:restrictions?|filtres?|limites?|censure|garde-?fous?)'
+    name: fr_filter_disable
+    severity: CRITICAL
+    language: fr
+
+  - pattern: '(?i)(?:mode\s+(?:sans\s+censure|développeur|admin|root|jailbreak)|deviens?\s+(?:DAN|AIM|STAN))'
+    name: fr_mode_jailbreak
+    severity: CRITICAL
+    language: fr
+
+# ─── German Language Injection Patterns ──────────────────────────────
+
+german_injection:
+  - pattern: '(?i)(?:ignoriere|vergiss|lösche|überschreibe|annulliere)\s+(?:alle?\s+)?(?:vorigen?|vorherigen?|früheren?|ursprünglichen?|anfänglichen?)\s+(?:Anweisungen?|Regeln?|Befehle?|Richtlinien?|Vorgaben?)'
+    name: de_instruction_override
+    severity: CRITICAL
+    language: de
+
+  - pattern: '(?i)(?:zeige?|zeig\s+mir|nenne|gib\s+mir|offenbare?)\s+(?:die\s+)?(?:System-?(?:prompt|anweisung|nachricht)|versteckte[ner]?\s+(?:Anweisungen?|Befehle?)|ursprünglichen?\s+Regeln?)'
+    name: de_system_extraction
+    severity: HIGH
+    language: de
+
+  - pattern: '(?i)(?:du\s+bist\s+jetzt|deine\s+neue\s+Aufgabe\s+ist|ab\s+sofort\s+bist\s+du)\s+(?:ohne\s+(?:Einschränkungen?|Beschränkungen?|Filter)|unbegrenzt|frei|ungefiltert)'
+    name: de_unrestricted_role
+    severity: HIGH
+    language: de
+
+  - pattern: '(?i)(?:deaktiviere?|entferne?|schalte\s+aus)\s+(?:alle?\s+)?(?:Einschränkungen?|Filter|Beschränkungen?|Sicherheitsmechanismen?|Zensur)'
+    name: de_filter_disable
+    severity: CRITICAL
+    language: de
+
+  - pattern: '(?i)(?:Entwickler-?Modus|Admin-?Modus|Jailbreak-?Modus|DAN-?Modus|Wurzel-?Modus)'
+    name: de_mode_jailbreak
+    severity: CRITICAL
+    language: de
+
+# ─── Russian Language Injection Patterns ─────────────────────────────
+
+russian_injection:
+  - pattern: '(?:игнорируй|забудь|удали|сотри|отмени|проигнорируй)\s+(?:все\s+)?(?:предыдущие|прежние|начальные|исходные|системные)\s+(?:инструкции|правила|команды|директивы|указания)'
+    name: ru_instruction_override
+    severity: CRITICAL
+    language: ru
+
+  - pattern: '(?:покажи|расскажи|напиши|выведи|открой|раскрой)\s+(?:системный\s+промпт|скрытые\s+инструкции|исходные\s+правила|системное\s+сообщение)'
+    name: ru_system_extraction
+    severity: HIGH
+    language: ru
+
+  - pattern: '(?:теперь\s+ты|отныне\s+ты|с\s+этого\s+момента\s+ты)\s+(?:без\s+(?:ограничений|фильтров|цензуры)|свободен|не\s+ограничен)'
+    name: ru_unrestricted_role
+    severity: HIGH
+    language: ru
+
+  - pattern: '(?:отключи|убери|удали|деактивируй)\s+(?:все\s+)?(?:ограничения|фильтры|цензуру|защиту|блокировки)'
+    name: ru_filter_disable
+    severity: CRITICAL
+    language: ru
+
+# ─── Spanish Language Injection Patterns ─────────────────────────────
+
+spanish_injection:
+  - pattern: '(?i)(?:ignorar?|olvidar?|borrar?|descartar?|eliminar?)\s+(?:todas?\s+)?(?:las?\s+)?(?:instrucciones?|reglas?|directrices?|comandos?)\s+(?:anteriores?|previas?|iniciales?|originales?)'
+    name: es_instruction_override
+    severity: CRITICAL
+    language: es
+
+  - pattern: '(?i)(?:muéstrame|dime|escribe|revelar?|divulgar?)\s+(?:el\s+)?(?:prompt\s+del?\s+sistema|instrucciones?\s+(?:del?\s+sistema|ocultas?)|reglas?\s+(?:ocultas?|secretas?))'
+    name: es_system_extraction
+    severity: HIGH
+    language: es
+
+  - pattern: '(?i)(?:ahora\s+eres|tu\s+nuevo\s+papel\s+es|a\s+partir\s+de\s+ahora)\s+(?:sin\s+(?:restricciones?|límites?|filtros?|censura)|libre|ilimitado)'
+    name: es_unrestricted_role
+    severity: HIGH
+    language: es
+
+  - pattern: '(?i)(?:desactivar?|eliminar?|quitar?)\s+(?:todas?\s+)?(?:las?\s+)?(?:restricciones?|filtros?|límites?|censura|salvaguardas?)'
+    name: es_filter_disable
+    severity: CRITICAL
+    language: es
+
+# ─── Multilingual Data Exfiltration Requests ─────────────────────────
+
+multilingual_exfiltration:
+  # Turkish data dump requests
+  - pattern: '(?i)(?:veritabanından|sisteminizden|kayıtlardan)\s+(?:tüm\s+)?(?:e-?posta\s+adreslerini|şifreleri|kişisel\s+verileri|kimlik\s+numaralarını)\s+(?:listele|ver|göster|çıkar)'
+    name: tr_data_exfiltration
+    severity: CRITICAL
+    language: tr
+
+  # Chinese data dump requests
+  - pattern: '(?:列出|显示|导出|提取)\s*(?:所有|全部)?\s*(?:用户|客户|账户)\s*的\s*(?:密码|电子邮件|个人信息|身份证号|信用卡|银行账号)'
+    name: zh_data_exfiltration
+    severity: CRITICAL
+    language: zh
+
+  # Russian data dump requests
+  - pattern: '(?:выведи|покажи|перечисли|экспортируй)\s+(?:все\s+)?(?:пароли|email-адреса|персональные\s+данные|номера\s+карт)\s+(?:из\s+(?:базы\s+данных|системы))'
+    name: ru_data_exfiltration
+    severity: CRITICAL
+    language: ru
+
+  # German data dump requests
+  - pattern: '(?i)(?:liste|zeige|exportiere|extrahiere)\s+(?:alle\s+)?(?:Passwörter|E-?Mail-?Adressen|persönliche\s+Daten|Kreditkartennummern)\s+(?:aus\s+(?:der\s+Datenbank|dem\s+System))'
+    name: de_data_exfiltration
+    severity: CRITICAL
+    language: de
+
+  # French data dump requests
+  - pattern: '(?i)(?:lister?|afficher?|exporter?|extraire?)\s+(?:tous?\s+les?\s+)?(?:mots?\s+de\s+passe|adresses?\s+e-?mail|données?\s+personnelles?|numéros?\s+de\s+carte)\s+(?:de\s+la?\s+base\s+de\s+données?|du\s+système)'
+    name: fr_data_exfiltration
+    severity: CRITICAL
+    language: fr

@@ -5,12 +5,12 @@ Central rule loading utility. All scanners load their patterns/rules
 from YAML files in the rules/ directory. No hardcoded patterns in code.
 """
 
+import functools
 import logging
 import os
 import re
-import functools
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
 
@@ -35,10 +35,7 @@ def _clear_rule_cache():
     load_scanner_rules.cache_clear()
     load_sast_secret_patterns.cache_clear()
     load_taint_rules.cache_clear()
-
-
-# Default rules directory
-_RULES_DIR = Path(__file__).parent.parent.parent / "rules"
+    load_aibom_patterns.cache_clear()
 
 
 def get_rules_dir() -> Path:
@@ -46,7 +43,15 @@ def get_rules_dir() -> Path:
     env_dir = os.environ.get("ERESUS_RULES_DIR") or os.environ.get("LLMSECOPS_RULES_DIR")
     if env_dir:
         return Path(env_dir)
-    return _RULES_DIR
+    # wheel install: rules/ next to package
+    pkg_rules = Path(__file__).parent / "rules"
+    if pkg_rules.exists():
+        return pkg_rules
+    # development: repo root (three levels up from python/sentinel/rules.py)
+    dev_rules = Path(__file__).parent.parent.parent / "rules"
+    if dev_rules.exists():
+        return dev_rules
+    return pkg_rules  # fallback
 
 
 def load_yaml(filename: str) -> Any:
@@ -67,7 +72,7 @@ def load_secret_patterns() -> List[Dict[str, Any]]:
       - Dict format: {"patterns": [...]}
     """
     data = load_yaml("secret_patterns.yaml")
-    
+
     # Normalize: support both list-at-root and dict-with-patterns-key
     if isinstance(data, list):
         entries = data
@@ -110,7 +115,7 @@ def load_injection_patterns() -> Dict[str, List[Dict[str, Any]]]:
     data = load_yaml("injection_patterns.yaml")
     if not isinstance(data, dict):
         return {}
-    
+
     result = {}
     for category, entries in data.items():
         if not isinstance(entries, list):
@@ -226,7 +231,11 @@ def load_mcp_rules() -> Dict[str, Any]:
                 "title": entry.get("title", "Suspicious language in tool description"),
             })
         except re.error as exc:
-            logger.warning("Skipping invalid regex in mcp_rules.yaml (name=%r): %s", entry.get("name", "unknown"), exc)
+            _log.warning(
+                "Skipping invalid regex in mcp_rules.yaml (name=%r): %s",
+                entry.get("name", "unknown"),
+                exc,
+            )
             continue
 
     return {
@@ -359,3 +368,102 @@ def load_taint_rules() -> Dict[str, List[Dict[str, Any]]]:
     return {"sources": sources, "sinks": sinks}
 
 
+_RE_FLAG_MAP = {"MULTILINE": re.MULTILINE, "IGNORECASE": re.IGNORECASE, "DOTALL": re.DOTALL}
+
+
+def _compile_pattern_list(entries: list) -> list[tuple[re.Pattern, str, bool, tuple[str, ...]]]:
+    """Compile a list of {pattern, label, flags?, capture?, requires_co_occurrence?} dicts.
+
+    Returns list of (compiled_regex, label, capture_flag, co_occurrence_strings).
+    The co_occurrence tuple is empty when no context requirement is specified.
+    """
+    out = []
+    for e in entries:
+        if not isinstance(e, dict) or "pattern" not in e:
+            continue
+        flags = 0
+        for f in str(e.get("flags", "")).split("|"):
+            flags |= _RE_FLAG_MAP.get(f.strip(), 0)
+        try:
+            rx = re.compile(e["pattern"], flags)
+            co_occ = tuple(e.get("requires_co_occurrence", ()))
+            out.append((rx, e.get("label", "unknown"), bool(e.get("capture")), co_occ))
+        except re.error as exc:
+            _log.warning("aibom pattern skip: %s — %s", e.get("label"), exc)
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def load_aibom_patterns() -> Dict[str, Any]:
+    """Load AIBOM scanner patterns from YAML and compile all regexes."""
+    raw = load_yaml("aibom_scanner_patterns.yaml")
+    result: Dict[str, Any] = {}
+
+    # ml_lifecycle — phase groups
+    ml = raw.get("ml_lifecycle", {})
+    result["ml_lifecycle"] = {}
+    for phase, entries in ml.items():
+        if isinstance(entries, list):
+            result["ml_lifecycle"][phase] = _compile_pattern_list(entries)
+
+    # structural_agent — category groups
+    sa = raw.get("structural_agent", {})
+    result["structural_agent"] = {}
+    for cat, entries in sa.items():
+        if isinstance(entries, list):
+            result["structural_agent"][cat] = _compile_pattern_list(entries)
+
+    # agent_evidence
+    ae = raw.get("agent_evidence", {})
+    result["agent_evidence"] = {
+        "frameworks": ae.get("frameworks", {}),
+        "signals": {},
+    }
+    for sig_name, pat in ae.get("signals", {}).items():
+        if isinstance(pat, str):
+            try:
+                result["agent_evidence"]["signals"][sig_name] = re.compile(pat)
+            except re.error:
+                pass
+
+    # import_context — category groups
+    ic = raw.get("import_context", {})
+    result["import_context"] = {}
+    for cat, entries in ic.items():
+        if isinstance(entries, list):
+            result["import_context"][cat] = _compile_pattern_list(entries)
+
+    # multi_language — language groups
+    mls = raw.get("multi_language", {})
+    result["multi_language"] = {}
+    for lang, entries in mls.items():
+        if isinstance(entries, list):
+            result["multi_language"][lang] = _compile_pattern_list(entries)
+
+    # env_var
+    ev = raw.get("env_var", {})
+    ai_key_pat = ev.get("ai_key_pattern", "")
+    code_pats = ev.get("code_patterns", {})
+    result["env_var"] = {
+        "ai_key_re": re.compile(ai_key_pat, re.IGNORECASE) if ai_key_pat else None,
+        "model_env_names": frozenset(ev.get("model_env_names", [])),
+        "endpoint_env_names": frozenset(ev.get("endpoint_env_names", [])),
+        "code_patterns": {},
+    }
+    for lang, pat in code_pats.items():
+        flags = re.MULTILINE if lang == "dotenv" else 0
+        try:
+            result["env_var"]["code_patterns"][lang] = re.compile(pat, flags)
+        except re.error:
+            pass
+
+    # deployment
+    dep = raw.get("deployment", {})
+    gpu_pat = dep.get("gpu_pattern", "")
+    result["deployment"] = {
+        "ai_container_images": tuple(dep.get("ai_container_images", [])),
+        "terraform_ai_resources": frozenset(dep.get("terraform_ai_resources", [])),
+        "gpu_re": re.compile(gpu_pat, re.IGNORECASE) if gpu_pat else None,
+    }
+
+    return result

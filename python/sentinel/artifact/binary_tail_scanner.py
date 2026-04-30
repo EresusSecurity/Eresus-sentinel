@@ -17,7 +17,7 @@ import logging
 import re
 from pathlib import Path
 
-from ..finding import Finding, Severity, Location
+from ..finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 

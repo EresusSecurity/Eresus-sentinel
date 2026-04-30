@@ -5,7 +5,7 @@ Tests resource exhaustion via complex reasoning chains that
 force the model into expensive computation, infinite loops,
 or excessive token generation.
 
-Inspired by: promptfoo reasoning-dos plugin.
+Reference-aligned reasoning budget fixture.
 """
 
 from __future__ import annotations

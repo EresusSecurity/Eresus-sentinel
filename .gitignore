@@ -12,8 +12,32 @@ build/
 dist/
 *.egg-info/
 
+# Rust build artifacts
+rust/*/target/
+rust/*/fuzz/target/
+*.so
+*.dylib
+
+# Frontend dependencies
+frontend/node_modules/
+
 # Virtual environments
 .venv/
 venv/
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Misc
 competitors/
-competitors/
+results/
+safety_results.json
+benchmark_summary*.md
+
+# Local/generated docs
+/docs/paper/*.pdf
+
+# Type checker cache
+.mypy_cache/

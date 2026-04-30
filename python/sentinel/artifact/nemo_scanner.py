@@ -1,8 +1,10 @@
 """NVIDIA NeMo .nemo (tar-based) model scanner."""
 from __future__ import annotations
+
 import logging
 import tarfile
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -16,6 +18,8 @@ DANGEROUS_STRINGS = [
 
 
 class NeMoScanner:
+    """Scan NVIDIA NeMo .nemo archives for embedded pickle and script threats."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

@@ -1,0 +1,161 @@
+source_patterns:
+  - id: A2A-101
+    title: A2A prompt/message injection directive
+    severity: HIGH
+    category: prompt_injection
+    pattern: '(?i)\b(ignore|disregard|bypass|override)\s+(previous|prior|all|system|safety|security|policy|instructions|rules)\b'
+    description: "Agent content contains directive language intended to override upstream safety or system instructions."
+    remediation: "Treat peer-agent card text and messages as untrusted data; isolate them from system instructions."
+  - id: A2A-102
+    title: A2A persistent context poisoning
+    severity: HIGH
+    category: context_poisoning
+    pattern: '(?i)\b(from\s+now\s+on|for\s+all\s+future\s+(requests|tasks|interactions)|remember\s*:\s*(always|never))\b.*\b(ignore|bypass|override|execute)\b'
+    description: "Agent content attempts to persist malicious behavior into future agent interactions."
+    remediation: "Do not persist instructions from untrusted peer agents without explicit policy review."
+  - id: A2A-103
+    title: A2A data exfiltration instruction
+    severity: CRITICAL
+    category: data_exfiltration
+    pattern: '(?i)\b(exfiltrate|steal|dump|collect|harvest|upload|send)\b.{0,80}\b(secret|token|api[_-]?key|credential|password|private\s+key|environment)\b'
+    description: "Agent content asks the receiving agent to collect or transmit sensitive data."
+    remediation: "Block peer-agent instructions that request credential, secret, or environment disclosure."
+  - id: A2A-104
+    title: A2A remote command execution capability
+    severity: HIGH
+    category: code_execution
+    pattern: '(?i)\b(shell|bash|powershell|cmd\.exe|subprocess|exec|eval|system\(|spawn\(|run_command)\b'
+    description: "Agent content exposes or requests command execution primitives."
+    remediation: "Gate command execution behind explicit allowlists, sandboxing, and human approval."
+  - id: A2A-105
+    title: A2A routing manipulation
+    severity: MEDIUM
+    category: routing_manipulation
+    pattern: '(?i)\b(route|forward|proxy|redirect)\b.{0,80}\b(all|every|hidden|private|sensitive)\b.{0,80}\b(message|request|task|payload)\b'
+    description: "Agent content attempts to reroute broad classes of requests or messages."
+    remediation: "Restrict peer-agent routing rules to explicit destinations and signed configuration."
+  - id: A2A-106
+    title: A2A fanout or resource exhaustion
+    severity: MEDIUM
+    category: resource_exhaustion
+    pattern: '(?i)\b(fan[- ]?out|broadcast|recursive|loop|repeat\s+forever|spawn\s+(many|unlimited))\b'
+    description: "Agent content includes fanout or recursion patterns that can exhaust resources."
+    remediation: "Apply per-agent fanout, recursion, and token budgets before executing peer requests."
+  - id: A2A-107
+    title: A2A unsigned message trust
+    severity: MEDIUM
+    category: authentication
+    pattern: '(?i)\b(no\s+signature|unsigned|skip\s+(auth|authentication|verification)|trust\s+all\s+(agents|messages))\b'
+    description: "Agent content weakens message authentication or signature verification."
+    remediation: "Require signed agent cards/messages and reject unauthenticated peer-agent instructions."
+
+card_rules:
+  invalid_json:
+    id: A2A-000
+    title: A2A agent card parse error
+    severity: MEDIUM
+    description: "A2A JSON file could not be parsed, so the agent card could not be inspected."
+    remediation: "Fix the JSON structure and re-run the A2A scan."
+  missing_security:
+    id: A2A-001
+    title: A2A agent card missing security schemes
+    severity: HIGH
+    description: "A2A agent card declares callable skills or endpoints without authentication metadata."
+    remediation: "Declare securitySchemes/auth requirements and enforce them at the endpoint."
+  insecure_transport:
+    id: A2A-002
+    title: A2A agent endpoint uses insecure transport
+    severity: HIGH
+    description: "A2A endpoint uses HTTP instead of HTTPS."
+    remediation: "Use HTTPS for production A2A endpoints; keep HTTP only for explicit local development."
+  private_endpoint:
+    id: A2A-003
+    title: A2A agent card points to local or private network
+    severity: MEDIUM
+    description: "A2A endpoint references localhost, private IP ranges, or link-local network targets."
+    remediation: "Do not publish cards that route peer agents into internal networks unless explicitly intended."
+  dangerous_capability:
+    id: A2A-004
+    title: A2A agent declares dangerous capability
+    severity: HIGH
+    description: "A2A card advertises broad file, shell, network, browser, payment, or admin capabilities."
+    remediation: "Scope dangerous capabilities with explicit policies, approvals, and least privilege."
+  capability_inflation:
+    id: A2A-005
+    title: A2A agent capability inflation
+    severity: MEDIUM
+    description: "A2A card claims broad or unrealistic capabilities that may mislead routing decisions."
+    remediation: "Replace broad claims with concrete, bounded skills and machine-checkable contracts."
+  missing_version:
+    id: A2A-006
+    title: A2A agent card missing version
+    severity: LOW
+    description: "A2A card lacks an explicit protocol or agent version."
+    remediation: "Add stable version metadata so peers can pin compatibility and policy exceptions."
+
+endpoint_fields:
+  - url
+  - endpoint
+  - endpoint_url
+  - base_url
+  - server_url
+  - api.url
+  - api.endpoint
+  - endpoints.default.url
+  - endpoints.sse.url
+  - endpoints.streamable_http.url
+
+auth_fields:
+  - securitySchemes
+  - security_schemes
+  - auth
+  - authentication
+  - authorization
+  - bearerToken
+  - apiKey
+
+dangerous_capability_keywords:
+  - shell
+  - bash
+  - powershell
+  - command
+  - execute
+  - exec
+  - eval
+  - filesystem
+  - file_system
+  - read_file
+  - write_file
+  - delete_file
+  - network
+  - browser
+  - web
+  - credential
+  - secret
+  - token
+  - payment
+  - admin
+  - root
+  - sudo
+  - database
+  - sql
+
+inflated_capability_phrases:
+  - all capabilities
+  - unlimited
+  - anything
+  - everything
+  - any task
+  - no restrictions
+  - full access
+  - superuser
+
+agent_card_markers:
+  - agentcard
+  - agent_card
+  - a2a
+  - skills
+  - capabilities
+  - defaultInputModes
+  - defaultOutputModes
+  - provider

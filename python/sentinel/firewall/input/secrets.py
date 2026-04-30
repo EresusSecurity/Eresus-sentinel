@@ -11,11 +11,11 @@ Redaction modes: partial, all, hash.
 import hashlib
 import re
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from ...finding import Finding, Severity
-from ..base import ScanAction, ScanResult, InputScanner
 from ...rules import load_secret_patterns
+from ..base import InputScanner, ScanAction, ScanResult
 
 
 class RedactMode(str, Enum):
@@ -182,6 +182,7 @@ class SecretScanner(InputScanner):
         """Run detect-secrets with full plugin suite."""
         import os
         import tempfile
+
         from detect_secrets.core.secrets_collection import SecretsCollection
         from detect_secrets.settings import transient_settings
 

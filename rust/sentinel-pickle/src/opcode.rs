@@ -115,8 +115,6 @@ pub enum Opcode {
     BinInt1        = b'K',
     /// Push a 2-byte unsigned int (little-endian).
     BinInt2        = b'M',
-    /// Push None (binary form, same value as NoneOp but included for completeness).
-    BinNone        = b'N', // same byte as NoneOp — intentional
     /// Get from memo by 1-byte index.
     BinGet         = b'h',
     /// Get from memo by 4-byte index.
@@ -151,12 +149,6 @@ pub enum Opcode {
     Long1          = 0x8a,
     /// Push a long integer from a 4-byte-counted byte string.
     Long4          = 0x8b,
-
-    // ── Protocol 3 ──────────────────────────────────────────────────
-    /// Push a 4-byte-length bytes object (replaces BinBytes in proto 3+).
-    BinBytes3      = b'B', // note: same as BinBytes — protocol differentiates
-    /// Push a 1-byte-length bytes object (replaces ShortBinBytes).
-    ShortBinBytes3 = b'C',
 
     // ── Protocol 4 ──────────────────────────────────────────────────
     /// Push a short (1-byte length) binary Unicode string.
@@ -333,7 +325,6 @@ impl Opcode {
             Opcode::BinInt         => "BININT",
             Opcode::BinInt1        => "BININT1",
             Opcode::BinInt2        => "BININT2",
-            Opcode::BinNone        => "NONE",
             Opcode::BinGet         => "BINGET",
             Opcode::LongBinGet     => "LONG_BINGET",
             Opcode::BinPut         => "BINPUT",
@@ -363,8 +354,6 @@ impl Opcode {
             Opcode::Bytearray8     => "BYTEARRAY8",
             Opcode::NextBuffer     => "NEXT_BUFFER",
             Opcode::ReadonlyBuffer => "READONLY_BUFFER",
-            Opcode::BinBytes3      => "BINBYTES",
-            Opcode::ShortBinBytes3 => "SHORT_BINBYTES",
             Opcode::Unknown        => "UNKNOWN",
         }
     }

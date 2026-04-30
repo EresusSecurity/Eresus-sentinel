@@ -5,21 +5,32 @@ from __future__ import annotations
 import io
 import logging
 import pickletools
-from typing import Optional
+from contextlib import suppress
 
-from .._pickle_ops import (
-    GLOBAL_OPS, REDUCE_OPS, STRING_OPS, TUPLE_OPS,
-    EXT_OPS, MEMO_WRITE_OPS, MEMO_READ_OPS,
-    DangerousImport, PickleAnalysis,
-    MAX_OPCODES, MAX_MEMO_SIZE,
-    GET_PUT_RATIO_WARN, DUP_COUNT_THRESHOLD,
-)
-from .._pickle_rules import is_dangerous, classify_severity
 from ...finding import Severity
+from .._pickle_ops import (
+    DUP_COUNT_THRESHOLD,
+    EXT_OPS,
+    GET_PUT_RATIO_WARN,
+    MAX_MEMO_SIZE,
+    MAX_OPCODES,
+    MEMO_READ_OPS,
+    MEMO_WRITE_OPS,
+    REDUCE_OPS,
+    STRING_OPS,
+    TUPLE_OPS,
+    DangerousImport,
+    PickleAnalysis,
+)
+from .._pickle_rules import _check_list, classify_severity, is_dangerous
 from .formats import (
-    PROTO_HEADERS, YAML_MARKERS,
-    detect_protocol, detect_nested_pickle, detect_tar,
-    detect_yaml_markers, parse_global_arg,
+    PROTO_HEADERS,
+    YAML_MARKERS,
+    detect_nested_pickle,
+    detect_protocol,
+    detect_tar,
+    detect_yaml_markers,
+    parse_global_arg,
 )
 from .raw_scan import raw_byte_scan
 
@@ -70,6 +81,7 @@ def deep_analyze(
                 source, _parse_error,
             )
         analysis.byte_scan_fallback = True
+        analysis.parse_error = _parse_error
 
         def _check_fn(mod, name, op, pos, pending, anal):
             _check_import(mod, name, op, pos, pending, anal, blocklist, allowlist)
@@ -80,6 +92,7 @@ def deep_analyze(
     # Partial-pickle recovery
     if _parse_error:
         analysis.byte_scan_fallback = True
+        analysis.parse_error = _parse_error
 
     ops = all_ops
     analysis.total_opcodes = len(ops)
@@ -114,7 +127,7 @@ def _walk_opcodes(
     allowlist: dict[str, list[str]],
 ) -> None:
     """Walk the opcode list and populate analysis."""
-    last_global: Optional[DangerousImport] = None
+    last_global: DangerousImport | None = None
     recent_strings: list[str] = []
     pending_globals: list[DangerousImport] = []
     _value_stack: list = []
@@ -126,6 +139,8 @@ def _walk_opcodes(
     _last_was_obj = False
     _obj_globals: list[DangerousImport] = []
     _last_was_newobj_or_reduce = False
+    _last_suspicious_global: DangerousImport | None = None
+    _suspicious_globals: list[DangerousImport] = []
 
     _proto_count = 0
     _get_count = 0
@@ -141,6 +156,8 @@ def _walk_opcodes(
             if op_name == "PROTO":
                 _proto_count += 1
                 ver = arg if isinstance(arg, int) else 0
+                if ver not in range(6):
+                    analysis.has_invalid_opcode = True
                 if _proto_count > 1:
                     analysis.has_duplicate_proto = True
                 if ver >= 2 and _op_index > 0:
@@ -168,9 +185,12 @@ def _walk_opcodes(
                     if isinstance(arg, bytes) and len(arg) >= 32:
                         for hdr in PROTO_HEADERS:
                             hdr_pos = arg.find(hdr)
-                            if hdr_pos >= 0 and hdr_pos + 2 < len(arg):
-                                if arg[hdr_pos + 1] <= 5:
-                                    analysis.has_nested_pickle = True
+                            if (
+                                hdr_pos >= 0
+                                and hdr_pos + 2 < len(arg)
+                                and arg[hdr_pos + 1] <= 5
+                            ):
+                                analysis.has_nested_pickle = True
                     if isinstance(val, str):
                         for marker in YAML_MARKERS:
                             if marker.decode() in val:
@@ -195,6 +215,12 @@ def _walk_opcodes(
                     )
                     if pending_globals and pending_globals[-1].position == pos:
                         last_global = pending_globals[-1]
+                    suspicious = _suspicious_global_mutation(
+                        module, name, op_name, pos, blocklist, allowlist, str(arg)
+                    )
+                    if suspicious is not None:
+                        _suspicious_globals.append(suspicious)
+                        _last_suspicious_global = suspicious
 
             # ── STACK_GLOBAL ─────────────────────────────────
             elif op_name == "STACK_GLOBAL":
@@ -210,6 +236,12 @@ def _walk_opcodes(
                     )
                     if pending_globals and pending_globals[-1].position == pos:
                         last_global = pending_globals[-1]
+                    suspicious = _suspicious_global_mutation(
+                        module, name, op_name, pos, blocklist, allowlist, f"{module}.{name}"
+                    )
+                    if suspicious is not None:
+                        _suspicious_globals.append(suspicious)
+                        _last_suspicious_global = suspicious
 
             # ── EXT opcodes ──────────────────────────────────
             elif op_name in EXT_OPS:
@@ -233,12 +265,17 @@ def _walk_opcodes(
                     last_global.chain_confirmed = True
                     last_global.confidence = 1.0
                     _obj_globals.append(last_global)
+                if _last_suspicious_global is not None:
+                    _last_suspicious_global.chain_confirmed = True
+                    _last_suspicious_global.confidence = max(
+                        _last_suspicious_global.confidence, 0.8
+                    )
 
             # ── REDUCE/BUILD/NEWOBJ ──────────────────────────
             elif op_name in REDUCE_OPS:
                 analysis.has_reduce = True
-                if op_name == "BUILD":
-                    if _last_was_newobj_or_reduce:
+                if op_name == "BUILD" and _last_was_newobj_or_reduce:
+                    if last_global is not None or _last_suspicious_global is not None:
                         analysis.has_setstate_gadget = True
                 if op_name in ("REDUCE", "NEWOBJ", "NEWOBJ_EX"):
                     _last_was_newobj_or_reduce = True
@@ -253,10 +290,8 @@ def _walk_opcodes(
                             last_global.name == "add_extension"):
                         args = recent_strings[-3:]
                         if len(args) >= 3:
-                            try:
+                            with suppress(ValueError, IndexError):
                                 analysis.copyreg_extensions[int(args[2])] = (args[0], args[1])
-                            except (ValueError, IndexError):
-                                pass
 
                     for s in recent_strings[-3:]:
                         if isinstance(s, str) and len(s) >= 32:
@@ -273,6 +308,13 @@ def _walk_opcodes(
 
                     last_global = None
                     recent_strings.clear()
+                if _last_suspicious_global is not None:
+                    _last_suspicious_global.chain_confirmed = True
+                    _last_suspicious_global.confidence = max(
+                        _last_suspicious_global.confidence, 0.8
+                    )
+                    _last_suspicious_global.payload_args.extend(recent_strings[-5:])
+                    _last_suspicious_global = None
 
             # ── Memo write ───────────────────────────────────
             elif op_name in MEMO_WRITE_OPS:
@@ -304,6 +346,7 @@ def _walk_opcodes(
                 _last_was_obj = False
                 if op_name == "STOP":
                     last_global = None
+                    _last_suspicious_global = None
 
         except (TypeError, KeyError, IndexError, ValueError) as exc:
             logger.warning(
@@ -333,6 +376,9 @@ def _walk_opcodes(
     analysis.dangerous_imports = pending_globals + [
         imp for imp in analysis.dangerous_imports if imp not in pending_globals
     ]
+    analysis.suspicious_global_mutations = [
+        imp for imp in _suspicious_globals if imp.chain_confirmed
+    ]
 
 
 def _check_import(
@@ -346,7 +392,8 @@ def _check_import(
     allowlist: dict[str, list[str]],
 ) -> None:
     """Check a single import and append to pending if dangerous."""
-    if is_dangerous(module, name, blocklist, allowlist):
+    dangerous = is_dangerous(module, name, blocklist, allowlist)
+    if dangerous:
         severity = classify_severity(module, name)
         pending.append(DangerousImport(
             module=module,
@@ -357,13 +404,192 @@ def _check_import(
             confidence=0.7,
         ))
 
-    if module in ("base64", "codecs", "marshal", "zlib", "gzip"):
+    if dangerous and module in (
+        "base64", "codecs", "_codecs", "binascii",
+        "marshal", "zlib", "gzip", "bz2", "lzma",
+    ):
         analysis.obfuscation_detected = True
 
     if module == "types" and name in ("CodeType", "FunctionType"):
         analysis.has_codetype_construction = True
     if module == "marshal" and name == "loads":
         analysis.has_codetype_construction = True
+
+
+def _suspicious_global_mutation(
+    module: str,
+    name: str,
+    op_name: str,
+    pos: int,
+    blocklist: dict[str, list[str]],
+    allowlist: dict[str, list[str]],
+    raw_arg: str = "",
+) -> DangerousImport | None:
+    """Return a finding candidate for mutated dangerous GLOBAL names."""
+    if not module or not name:
+        return None
+    if is_dangerous(module, name, blocklist, allowlist):
+        return None
+    if _check_list(module, name, allowlist):
+        return None
+
+    candidate = _nearest_dangerous_global(module, name, blocklist, raw_arg)
+    if candidate is None:
+        return None
+
+    candidate_module, candidate_name = candidate
+    severity_name = candidate_name[:-1] if candidate_name.endswith("*") else candidate_name
+    return DangerousImport(
+        module=module,
+        name=name,
+        opcode=f"{op_name}(near:{candidate_module}.{candidate_name})",
+        position=pos,
+        severity=classify_severity(candidate_module, severity_name),
+        confidence=0.65,
+        payload_args=[f"near_miss={candidate_module}.{candidate_name}"],
+    )
+
+
+def _nearest_dangerous_global(
+    module: str,
+    name: str,
+    blocklist: dict[str, list[str]],
+    raw_arg: str = "",
+) -> tuple[str, str] | None:
+    """Find a dangerous YAML rule that a mutated GLOBAL appears to target."""
+    combined = _normalize_identifier(f"{raw_arg} {module} {name}")
+
+    for rule_module, names in blocklist.items():
+        if not isinstance(names, list):
+            continue
+        candidate_module = rule_module[:-2] if rule_module.endswith(".*") else rule_module
+        module_close = _close_identifier(module, candidate_module)
+
+        for pattern in names:
+            if not isinstance(pattern, str):
+                continue
+            if pattern == "*":
+                if module_close:
+                    return candidate_module, pattern
+                continue
+
+            candidate_name = pattern[:-1] if pattern.endswith("*") else pattern
+            name_close = _close_identifier(name, candidate_name)
+            if module_close and name_close:
+                return candidate_module, pattern
+
+            candidate_module_norm = _normalize_identifier(candidate_module)
+            candidate_name_norm = _normalize_identifier(candidate_name)
+            if (
+                len(candidate_module_norm) >= 3
+                and len(candidate_name_norm) >= 4
+                and candidate_module_norm in combined
+                and candidate_name_norm in combined
+            ):
+                return candidate_module, pattern
+
+            # Name close + partial module match — catches heavily mutated
+            # module strings where the function name survived (near-)intact.
+            module_norm = _normalize_identifier(module)
+            if (
+                name_close
+                and len(candidate_module_norm) >= 4
+                and len(module_norm) >= 3
+                and _partial_module_match(module_norm, candidate_module_norm)
+            ):
+                return candidate_module, pattern
+
+            # Module close + exact name match — catches cases where module
+            # survived intact but name has minor corruption.
+            if (
+                module_close
+                and len(candidate_name_norm) >= 4
+                and _close_identifier(name, candidate_name)
+            ):
+                return candidate_module, pattern
+
+    return None
+
+
+def _partial_module_match(value: str, candidate: str) -> bool:
+    """Relaxed prefix match for near-miss mutation detection.
+
+    Guards against FPs by requiring:
+    - Both identifiers share a common prefix (min 3 chars).
+    - The shorter string is at least 60% the length of the longer one,
+      preventing unrelated modules with coincidental prefixes
+      (e.g. json≠jsonpickle, pickle≠pickle_compat).
+    """
+    if not value or not candidate:
+        return False
+    shorter, longer = min(len(value), len(candidate)), max(len(value), len(candidate))
+    if shorter < 3:
+        return False
+    if shorter < longer * 0.6:
+        return False
+    prefix_len = max(3, shorter // 2 + 1)
+    if len(value) >= prefix_len and len(candidate) >= prefix_len:
+        return value[:prefix_len] == candidate[:prefix_len]
+    return False
+
+
+def _normalize_identifier(value: str) -> str:
+    return "".join(ch.lower() for ch in value if ch.isalnum() or ch in "._")
+
+
+def _close_identifier(value: str, candidate: str) -> bool:
+    value_norm = _normalize_identifier(value)
+    candidate_norm = _normalize_identifier(candidate)
+    if not value_norm or not candidate_norm:
+        return False
+    if value_norm == candidate_norm:
+        return True
+    if len(candidate_norm) >= 4 and (
+        candidate_norm in value_norm
+        or (
+            len(value_norm) >= 4
+            and len(value_norm) >= len(candidate_norm) // 2
+            and value_norm in candidate_norm
+        )
+    ):
+        return True
+    max_distance = 1 if len(candidate_norm) <= 5 else 2
+    if _edit_distance_at_most(value_norm, candidate_norm, max_distance):
+        return True
+    return len(candidate_norm) <= 4 and _subsequence_shape(value_norm, candidate_norm)
+
+
+def _subsequence_shape(value: str, candidate: str) -> bool:
+    if len(value) < len(candidate) or len(candidate) < 3:
+        return False
+    if not value.startswith(candidate[:2]) or value[-1] != candidate[-1]:
+        return False
+    index = 0
+    for char in value:
+        if index < len(candidate) and char == candidate[index]:
+            index += 1
+    return index == len(candidate)
+
+
+def _edit_distance_at_most(left: str, right: str, limit: int) -> bool:
+    if abs(len(left) - len(right)) > limit:
+        return False
+    previous = list(range(len(right) + 1))
+    for i, left_char in enumerate(left, 1):
+        current = [i]
+        row_min = i
+        for j, right_char in enumerate(right, 1):
+            cost = 0 if left_char == right_char else 1
+            current.append(min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + cost,
+            ))
+            row_min = min(row_min, current[-1])
+        if row_min > limit:
+            return False
+        previous = current
+    return previous[-1] <= limit
 
 
 def _expansion_attack_analysis(ops: list[tuple], analysis: PickleAnalysis) -> None:
@@ -374,8 +600,13 @@ def _expansion_attack_analysis(ops: list[tuple], analysis: PickleAnalysis) -> No
 
     if _put_count > 0:
         analysis.get_put_ratio = _get_count / _put_count
+        # High GET/PUT ratio with few total opcodes is a compact expansion
+        # attack (Billion Laughs).  Large pickles with high ratios are
+        # normal memoization (e.g. repeated strings/objects in lists).
         if analysis.get_put_ratio >= GET_PUT_RATIO_WARN:
-            analysis.has_expansion_attack = True
+            total_ops = getattr(analysis, "total_opcodes", 0)
+            if total_ops < 200 or _memo_size >= 50:
+                analysis.has_expansion_attack = True
     elif _get_count > GET_PUT_RATIO_WARN:
         analysis.get_put_ratio = float(_get_count)
         analysis.has_expansion_attack = True
@@ -390,13 +621,13 @@ def _expansion_attack_analysis(ops: list[tuple], analysis: PickleAnalysis) -> No
 def _unused_variable_analysis(ops: list[tuple], analysis: PickleAnalysis) -> None:
     """Detect side-effect-only operations (unused memo writes after REDUCE)."""
     _memo_referenced = set()
-    for opcode, arg, pos in ops:
+    for opcode, arg, _pos in ops:
         if opcode.name in MEMO_READ_OPS and isinstance(arg, int):
             _memo_referenced.add(arg)
 
     _memo_written_after_reduce = set()
     _last_was_reduce = False
-    for opcode, arg, pos in ops:
+    for opcode, arg, _pos in ops:
         if opcode.name in REDUCE_OPS:
             _last_was_reduce = True
         elif opcode.name in MEMO_WRITE_OPS:

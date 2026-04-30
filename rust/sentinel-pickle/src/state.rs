@@ -6,6 +6,11 @@
 use crate::opcode::Opcode;
 use std::collections::HashMap;
 
+/// Hard limits to prevent resource exhaustion during fuzzing / hostile inputs.
+pub const MAX_STACK_DEPTH: usize  = 4_096;
+pub const MAX_OPCODE_COUNT: usize = 1_000_000;
+pub const MAX_MEMO_ENTRIES: usize = 65_536;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum StackValue {
     None,
@@ -67,6 +72,14 @@ pub struct PVMState {
     pub offset: usize,
     pub opcode_count: usize,
     pub errors: Vec<String>,
+    /// Number of times the stack depth limit was hit (resource-exhaustion signal).
+    pub depth_limit_hits: usize,
+    /// Number of tainted (derived from GLOBAL) values currently on the stack.
+    pub tainted_on_stack: usize,
+    /// Maximum stack depth observed during execution.
+    pub max_stack_depth: usize,
+    /// Whether execution was aborted due to reaching a hard limit.
+    pub aborted: bool,
 }
 
 impl PVMState {
@@ -81,15 +94,38 @@ impl PVMState {
             offset: 0,
             opcode_count: 0,
             errors: Vec::new(),
+            depth_limit_hits: 0,
+            tainted_on_stack: 0,
+            max_stack_depth: 0,
+            aborted: false,
         }
     }
 
     pub fn push(&mut self, val: StackValue) {
+        if self.stack.len() >= MAX_STACK_DEPTH {
+            self.depth_limit_hits += 1;
+            self.errors.push(format!(
+                "Stack depth limit ({}) exceeded at offset {} — dropping push",
+                MAX_STACK_DEPTH, self.offset
+            ));
+            return;
+        }
+        // Track tainted values (those derived from a GLOBAL reference)
+        if matches!(&val, StackValue::Global { .. } | StackValue::Reduced { .. }) {
+            self.tainted_on_stack += 1;
+        }
         self.stack.push(val);
+        if self.stack.len() > self.max_stack_depth {
+            self.max_stack_depth = self.stack.len();
+        }
     }
 
     pub fn pop(&mut self) -> StackValue {
-        self.stack.pop().unwrap_or(StackValue::Unknown)
+        let val = self.stack.pop().unwrap_or(StackValue::Unknown);
+        if matches!(&val, StackValue::Global { .. } | StackValue::Reduced { .. }) {
+            self.tainted_on_stack = self.tainted_on_stack.saturating_sub(1);
+        }
+        val
     }
 
     pub fn peek(&self) -> &StackValue {
@@ -131,7 +167,7 @@ impl PVMState {
     }
 
     pub fn record_reduce(&mut self) {
-        let args = self.pop();
+        let _args = self.pop();
         let callable = self.pop();
         if let StackValue::Global { module, name } = &callable {
             self.reduce_calls.push(ReduceCall {
@@ -150,7 +186,7 @@ impl PVMState {
     }
 
     pub fn record_build(&mut self) {
-        let state = self.pop();
+        let _state = self.pop();
         let base = self.pop();
         self.push(StackValue::Built {
             base: Box::new(base),
@@ -160,6 +196,15 @@ impl PVMState {
     pub fn execute(&mut self, data: &[u8]) {
         self.offset = 0;
         while self.offset < data.len() {
+            // Hard opcode budget — prevents multi-billion-op zip-bomb inputs
+            if self.opcode_count >= MAX_OPCODE_COUNT {
+                self.aborted = true;
+                self.errors.push(format!(
+                    "Opcode budget ({}) exhausted at offset {} — aborting",
+                    MAX_OPCODE_COUNT, self.offset
+                ));
+                break;
+            }
             let byte = data[self.offset];
             let op = Opcode::from_byte(byte);
             self.opcode_count += 1;
@@ -177,7 +222,7 @@ impl PVMState {
                     self.offset += 8;
                 }
                 Opcode::Stop => break,
-                Opcode::NoneOp | Opcode::BinNone => self.push(StackValue::None),
+                Opcode::NoneOp => self.push(StackValue::None),
                 Opcode::NewTrue => self.push(StackValue::Bool(true)),
                 Opcode::NewFalse => self.push(StackValue::Bool(false)),
                 Opcode::EmptyList => self.push(StackValue::List),
@@ -193,7 +238,16 @@ impl PVMState {
                     let val = self.peek().clone();
                     self.push(val);
                 }
-                Opcode::Memoize => self.memoize(),
+                Opcode::Memoize => {
+                    if self.memo.len() < MAX_MEMO_ENTRIES {
+                        self.memoize();
+                    } else {
+                        self.errors.push(format!(
+                            "Memo limit ({MAX_MEMO_ENTRIES}) hit at offset {} — memoize skipped",
+                            self.offset
+                        ));
+                    }
+                }
 
                 // ── Integer opcodes ──
                 Opcode::BinInt => {
@@ -276,7 +330,7 @@ impl PVMState {
                 }
 
                 // ── Bytes opcodes ──
-                Opcode::ShortBinBytes | Opcode::ShortBinBytes3 => {
+                Opcode::ShortBinBytes => {
                     if self.offset < data.len() {
                         let len = data[self.offset] as usize;
                         self.offset += 1;
@@ -286,7 +340,7 @@ impl PVMState {
                         }
                     }
                 }
-                Opcode::BinBytes | Opcode::BinBytes3 => {
+                Opcode::BinBytes => {
                     if self.offset + 4 <= data.len() {
                         let len = u32::from_le_bytes([
                             data[self.offset], data[self.offset+1],
@@ -442,7 +496,7 @@ impl PVMState {
                 // ── DANGEROUS: Reduce/Newobj/NewobjEx/Build ──
                 Opcode::Reduce => self.record_reduce(),
                 Opcode::Newobj => {
-                    let args = self.pop();
+                    let _args = self.pop();
                     let cls = self.pop();
                     if let StackValue::Global { module, name } = &cls {
                         self.reduce_calls.push(ReduceCall {
@@ -458,8 +512,8 @@ impl PVMState {
                     self.push(StackValue::Reduced { callable: Box::new(cls) });
                 }
                 Opcode::NewobjEx => {
-                    let kwargs = self.pop();
-                    let args = self.pop();
+                    let _kwargs = self.pop();
+                    let _args = self.pop();
                     let cls = self.pop();
                     if let StackValue::Global { module, name } = &cls {
                         self.reduce_calls.push(ReduceCall {
@@ -478,7 +532,7 @@ impl PVMState {
 
                 // ── Collection builders ──
                 Opcode::Tuple => {
-                    let items = self.pop_mark();
+                    let _items = self.pop_mark();
                     self.push(StackValue::Tuple);
                 }
                 Opcode::Tuple1 => { self.pop(); self.push(StackValue::Tuple); }

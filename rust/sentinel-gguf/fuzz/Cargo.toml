@@ -1,0 +1,25 @@
+[package]
+name = "sentinel-gguf-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+sentinel-gguf = { path = ".." }
+
+[[bin]]
+name = "fuzz_gguf"
+path = "fuzz_targets/fuzz_gguf.rs"
+test = false
+doc  = false
+
+[profile.release]
+opt-level     = 3
+debug         = false
+panic         = "abort"
+lto           = "thin"
+codegen-units = 1

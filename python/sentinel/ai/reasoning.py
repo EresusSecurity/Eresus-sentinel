@@ -18,10 +18,9 @@ from __future__ import annotations
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
+from urllib.request import Request, urlopen
 
 from ..finding import Finding, Severity
 

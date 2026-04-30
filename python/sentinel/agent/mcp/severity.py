@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ...finding import Severity
 
-
 SEVERITY_MAP: dict[str, Severity] = {
     "CRITICAL": Severity.CRITICAL,
     "HIGH": Severity.HIGH,

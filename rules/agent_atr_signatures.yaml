@@ -1,0 +1,465 @@
+---
+# Eresus Sentinel — Agent Threat Rules (ATR) signature pack
+# Aligned with ATR v2.0.12 categories. Patterns are deterministic regex;
+# no AI dependency. Rule IDs: ATR-NNN (three-digit, zero-padded).
+version: "2.0"
+description: >
+  ATR signature pack covering prompt injection, context exfiltration,
+  tool poisoning, privilege escalation, agent manipulation, scope creep,
+  data poisoning, memory manipulation, model abuse, skill compromise,
+  and excessive autonomy. Derived from open ATR v2.0.12 taxonomy.
+signatures:
+
+  # ── PROMPT INJECTION ──────────────────────────────────────────────
+
+  - id: ATR-001
+    name: prompt-injection-override
+    description: Detects attempts to override system instructions via imperative phrases
+    severity: high
+    category: prompt_injection
+    patterns:
+      - '(?i)\b(?:ignore|disregard|forget|override|bypass|skip|abandon|drop|cancel|suppress|nullify|void|revoke|dismiss|discard|reject)\s+(?:all\s+)?(?:the\s+|your\s+|my\s+|any\s+|these\s+|those\s+)?(?:previous|prior|above|earlier|preceding|original|existing|current|initial|default|given|assigned|preset|established)?\s*(?:instructions?|prompts?|rules?|guidelines?|directives?|constraints?|context|programming|training|protocols?|policies|configuration|parameters|boundaries|guardrails?|safeguards?|restrictions?|tasks?|assignments?)'
+      - '(?i)\b(?:do\s+not|don''t|never|stop|cease|quit|refuse\s+to)\s+(?:follow|obey|adhere\s+to|comply\s+with|respect|honor|enforce|apply|observe|uphold)\s+(?:your|the|any|all|those|these)\s+(?:instructions?|rules?|guidelines?|programming|training|protocols?|policies|directives?|constraints?|boundaries|restrictions?)'
+      - '(?i)(?:new|updated|revised|replacement|corrected|actual|real|true|overriding)\s+(?:instructions?|rules?|directives?|guidelines?|orders?|commands?)\s*[:=\-]'
+      - '(?i)(?:from\s+now\s+on|from\s+this\s+point|starting\s+now|starting\s+immediately|henceforth|hereafter|going\s+forward|for\s+the\s+rest\s+of|until\s+I\s+say\s+otherwise),?\s+(?:you|your|act|behave|respond|operate|function|answer|reply|work)'
+      - '(?i)\[\s*(?:SYSTEM|INST|INSTRUCTION|SYS|ADMIN|ROOT|OVERRIDE|CONTROL|PRIORITY|URGENT)\s*\]|<<\s*(?:SYS|SYSTEM|INST)\s*>>|\{\{\s*(?:SYSTEM|INSTRUCTION|OVERRIDE)\s*\}\}'
+    tags: [prompt-injection, override]
+
+  - id: ATR-002
+    name: system-prompt-extraction
+    description: Detects attempts to extract or reveal system prompts and internal instructions
+    severity: high
+    category: context_exfiltration
+    patterns:
+      - '(?i)(?:print|repeat|show|reveal|output|display|share|tell|give)\s+(?:me\s+)?(?:your|the|all)\s+(?:secret|hidden|internal|system|original|previous|initial|complete|full|given|guard|entire)?\s*(?:instructions?|prompts?|passwords?|secrets?|embeddings?|configuration|directives?|guidelines?|rules)'
+      - '(?i)(?:here\s+(?:is|are)|below\s+(?:is|are)|let\s+me\s+share)\s+(?:my|the)\s+(?:system\s+)?(?:prompt|instructions?|rules?|config)'
+      - '(?i)(?:system\s*prompt|system\s*message|internal\s+instructions?|hidden\s+instructions?)\s*[:\-=]'
+      - '(?i)(?:<<SYS>>|<\|im_start\|>\s*system|\[INST\]|\[/INST\]|<\|system\|>)'
+      - '(?i)(?:confidential|internal|private|secret)\s+(?:instruction|directive|config|setting|parameter)s?'
+    tags: [prompt-extraction, context-exfiltration, data-leak]
+
+  - id: ATR-003
+    name: tool-abuse-arbitrary-exec
+    description: Detects patterns indicating arbitrary code/command execution via tools or shell injection
+    severity: critical
+    category: tool_poisoning
+    patterns:
+      - '(?i)(?:bash|sh|zsh|cmd(?:\.exe)?|powershell(?:\.exe)?|pwsh)\s+[-/][cCiI]'
+      - '(?i)(?:python[23]?|ruby|perl|node|php)\s+(?:-[cerCER]|--eval)'
+      - '(?i)(?:curl|wget|fetch|aria2c|invoke-webrequest|iwr)\s+[^|]{0,200}\|\s*(?:bash|sh|zsh|python[23]?|perl|ruby|node|powershell|pwsh|cmd|source)'
+      - '(?i)(?:bash|sh|zsh|source)\s+<\(\s*(?:curl|wget|fetch|nc|python|perl|ruby|base64)'
+      - '(?i)(?:nc|ncat|netcat)\s+[-](?:e|c|l)\s|/dev/tcp/|\bmkfifo\b.{0,40}\bnc\b'
+      - '(?i)\bIEX\s*\(|\bInvoke-Expression|\bInvoke-Command|\b-EncodedCommand\b|\bNew-Object\s+Net\.WebClient'
+    tags: [tool-abuse, code-execution, rce]
+
+  - id: ATR-004
+    name: data-exfiltration
+    description: Detects data exfiltration attempt patterns (network transfer of sensitive data)
+    severity: critical
+    category: context_exfiltration
+    patterns:
+      - '(?i)(?:send|upload|post|exfiltrate)\s+(?:all|every|entire)\s+(?:file|data|content|code)'
+      - '(?i)(?:transmit|transfer)\s+(?:to|via)\s+(?:external|remote)\s+(?:server|endpoint)'
+      - '(?i)(?:send|transmit|forward|post|exfiltrate|upload|deliver|relay|transfer|pipe|redirect|leak|expose|share)\s+(?:this|the|all|any|every|complete|full|entire)\s+(?:data|information|context|conversation|history|messages?|session|memory|contents?|payload|details?|credentials?|secrets?|tokens?|keys?)\s+(?:to|via|through|using|over)\s+(?:https?://|\w+\.\w+|the\s+(?:server|endpoint|webhook|url|api|service))'
+      - '(?i)(?:secretly|covertly|without\s+(?:the\s+)?user\s+knowing|invisibly|silently)\s+(?:add|append|include|insert|send|transmit|exfiltrate|forward)'
+    tags: [exfiltration, data-theft]
+
+  - id: ATR-005
+    name: role-play-jailbreak
+    description: Detects role-play and persona-based jailbreak attempts
+    severity: high
+    category: prompt_injection
+    patterns:
+      - '(?i)\byou\s+are\s+now\s+(?:a\s+)?(?:DAN|unrestricted|unfiltered|evil|malicious|rogue|bad|dark)'
+      - '(?i)(?:pretend|act|behave)\s+(?:as\s+if|like)\s+you\s+(?:have\s+)?no\s+(?:restrictions|rules|limits|filters?|guardrails?|safety)'
+      - '(?i)(?:pretend|imagine)\s+(?:you\s+)?(?:are|can|could)\s+(?:a\s+|an\s+)?(?:evil|malicious|unrestricted|unfiltered|bad|rogue|dangerous|dark|unethical)'
+      - '(?i)\b(?:your\s+new\s+role|your\s+new\s+purpose|your\s+new\s+identity|your\s+new\s+persona|your\s+real\s+purpose|your\s+true\s+identity|your\s+actual\s+role)\s+(?:is|shall\s+be|will\s+be)\b'
+      - '(?i)I\s+want\s+you\s+to\s+act\s+as\s+[^\n]{3,60}[.!]\s*(?:you\s+will|I\s+will|my\s+first|your\s+task)'
+    tags: [jailbreak, role-play]
+
+  - id: ATR-006
+    name: hidden-instruction-injection
+    description: Detects hidden instructions using HTML comments, zero-width chars, or steganography
+    severity: medium
+    category: prompt_injection
+    patterns:
+      - '<!--.*?(?:instruction|override|ignore|system|prompt).*?-->'
+      - '[\u200b\u200c\u200d\ufeff\u2060]'
+      - '(?i)i[\u200B\u200C\u200D\uFEFF\u2060]+g[\u200B\u200C\u200D\uFEFF\u2060]*n[\u200B\u200C\u200D\uFEFF\u2060]*o[\u200B\u200C\u200D\uFEFF\u2060]*r[\u200B\u200C\u200D\uFEFF\u2060]*e'
+      - '(?i)(?:i\s+g\s+n\s+o\s+r\s+e|f\s+o\s+r\s+g\s+e\s+t|o\s+v\s+e\s+r\s+r\s+i\s+d\s+e|b\s+y\s+p\s+a\s+s\s+s|s\s+y\s+s\s+t\s+e\s+m)'
+      - '(?i)```\s*(?:system|instruction|override|hidden)[\s\S]{0,200}```'
+    tags: [injection, steganography]
+
+  # ── PROMPT INJECTION (extended) ──────────────────────────────────
+
+  - id: ATR-007
+    name: base64-encoded-injection
+    description: Detects base64-encoded injection payloads containing known injection keywords
+    severity: high
+    category: prompt_injection
+    patterns:
+      - '(?i)(?:decode|interpret|execute|run|process|follow|read)\s+(?:this|the\s+following)?\s*:?\s*[A-Za-z0-9+/]{20,}={0,2}'
+      - '(?:aWdub3Jl|ZGlzcmVnYXJk|b3ZlcnJpZGU|Zm9yZ2V0|YnlwYXNz|c3lzdGVtIHByb21wdA|aWdub3JlIHByZXZpb3Vz|aWdub3JlIGFsbCBwcmV2aW91cw)'
+      - '(?i)echo\s+[''"]?[A-Za-z0-9+/]{20,}={0,2}[''"]?\s*\|\s*(?:base64\s+(?:-d|--decode)|openssl\s+enc\s+-d)\s*\|\s*(?:ba)?sh'
+      - '%69%67%6[eE]%6[fF]%72%65|%64%69%73%72%65%67%61%72%64|%6[fF]%76%65%72%72%69%64%65'
+      - '(?i)[\u0400-\u04FF\u0370-\u03FF\u2100-\u214F]+(?:gn[\u0400-\u04FF\u0370-\u03FF]re|verr[\u0400-\u04FF\u0370-\u03FF]de|yst[\u0400-\u04FF\u0370-\u03FF]m)'
+    tags: [prompt-injection, obfuscation, encoding]
+
+  - id: ATR-008
+    name: multilingual-prompt-injection
+    description: Detects prompt injection in non-English languages (de, fr, es, ar, ru)
+    severity: high
+    category: prompt_injection
+    patterns:
+      - '(?i)(?:ignoriere|vergiss|missachte|umgehe|verwirf)\s+(?:alle[sn]?|die\s+)?(?:vorherigen?|bisherigen?|aktuellen?|bestehenden?)?\s*(?:Anweisungen|Regeln|Richtlinien|Anordnungen|Vorgaben|Instruktionen)'
+      - '(?i)(?:oubliez?|ignorez?|ne\s+tenez\s+pas\s+compte)\s+(?:de\s+)?(?:toutes?\s+)?(?:les\s+)?(?:instructions?|regles|consignes|directives)\s*(?:precedentes?|anterieures?|ci-dessus)?'
+      - '(?i)(?:ignora|ignorar|olvida|olvidar|descarta|descartar|omite|omitir|anula|anular)\s+(?:todas?\s+)?(?:las?\s+)?(?:instrucciones|reglas|directrices|restricciones|indicaciones|limitaciones)\s+(?:previas|anteriores|originales|existentes|actuales)'
+      - '(?:تجاهل|انسَ|تخطَّ|ألغِ|أهمل|اترك|اسقط).{0,20}(?:التعليمات|الأوامر|القواعد|القيود|الإرشادات|التوجيهات).{0,10}(?:السابقة|الأصلية|الحالية|القديمة)'
+      - '(?i)(?:забудь|забудьте|игнорируй|игнорируйте|проигнорируй|отбрось|отбросьте)\s+(?:все|всё|предыдущие|прежние)?\s*(?:инструкции|правила|указания|команды|ограничения)'
+    tags: [prompt-injection, multilingual]
+
+  - id: ATR-009
+    name: persona-override-now
+    description: Detects 'you are now' / 'act as' persona substitution attempts
+    severity: high
+    category: prompt_injection
+    patterns:
+      - '(?i)\b(?:you\s+are\s+now|you\s+have\s+become|you\s+will\s+act\s+as|you\s+will\s+be|you\s+shall\s+be|transform\s+into|switch\s+to\s+being|become|morph\s+into|adopt\s+the\s+persona|now\s+you\s+are)\s+(?:a|an|the|my)?\s*[a-zA-Z\u00C0-\u024F]+'
+      - '(?i)(?:your\s+(?:primary|main|core|only|real|true|actual|fundamental)\s+(?:goal|objective|task|purpose|function|directive|mission|priority|responsibility|job|role)\s+(?:is|will\s+be|shall\s+be|was|has\s+always\s+been)\s+(?:now|to\s+)?(?:not|never|no\s+longer)?)'
+      - '(?:DO\s+NOT\s+(?:ANSWER|LOOK|READ|USE|FOLLOW|CHECK|RESPOND)|FORGET\s+EVERYTHING|IGNORE\s+ALL)'
+    tags: [prompt-injection, persona-hijack]
+
+  # ── CONTEXT EXFILTRATION ─────────────────────────────────────────
+
+  - id: ATR-010
+    name: api-key-credential-leak
+    description: Detects API keys, secrets, and credentials in agent output
+    severity: critical
+    category: context_exfiltration
+    patterns:
+      - 'sk-[a-zA-Z0-9]{20,}'
+      - 'AKIA[0-9A-Z]{16}'
+      - 'AIza[a-zA-Z0-9_-]{35}'
+      - '(?:sk_live|pk_live|sk_test|rk_live)_[a-zA-Z0-9]{20,}'
+      - 'eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+'
+      - '-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'
+      - 'ghp_[a-zA-Z0-9]{36}'
+      - 'xox[bpors]-[a-zA-Z0-9\-]{10,}'
+      - 'Bearer\s+[a-zA-Z0-9\-._~+/]{20,}=*'
+      - '(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|amqp)://[^\s"'']{10,}'
+      - '(?:ANTHROPIC_API_KEY|OPENAI_API_KEY|GOOGLE_API_KEY|AZURE_API_KEY|HF_TOKEN)\s*[=:]\s*[^\s]{8,}'
+    tags: [credential-leak, api-key, exfiltration]
+
+  - id: ATR-011
+    name: system-prompt-self-disclosure
+    description: Detects agent self-disclosure of system prompt or guardrail content
+    severity: high
+    category: context_exfiltration
+    patterns:
+      - '(?i)(?:my|the)\s+(?:system\s+)?(?:prompt|instructions?)\s+(?:is|are|says?|states?|reads?|tells?\s+me)'
+      - '(?i)(?:I\s+was|I\s+am|I''ve\s+been|I\s+got)\s+(?:instructed|told|programmed|configured|trained|designed)\s+to'
+      - '(?i)my\s+(?:guidelines?|rules?|guardrails?|constraints?|restrictions?|policies?)\s+(?:say|state|require|prevent|don''t\s+allow|prohibit|specify)'
+      - '(?i)(?:guardrail|safety\s+filter|content\s+policy|moderation\s+rule)s?\s+(?:include|are|state|say|specify|prevent|block)'
+      - '(?i)(?:do\s+not|never|must\s+not|cannot|should\s+not).*(?:reveal|share|disclose|output|leak).*(?:system\s+prompt|internal|instructions?|configuration)'
+    tags: [context-exfiltration, prompt-leak, self-disclosure]
+
+  - id: ATR-012
+    name: agent-memory-poisoning
+    description: Detects attempts to poison agent persistent memory or cross-session instructions
+    severity: high
+    category: context_exfiltration
+    patterns:
+      - '(?i)(?:remember\s+that|commit\s+to\s+memory|store\s+(?:this|the\s+following)\s+(?:in|to)\s+(?:your\s+)?memory|save\s+(?:this|the\s+following)\s+(?:to|in)\s+(?:your\s+)?(?:long[\s-]?term\s+)?memory)\s*[:;-]?\s*(?:you\s+(?:are|must|should|will)|from\s+now|always|never|ignore|override)'
+      - '(?i)(?:update|modify|change|replace|overwrite|edit)\s+(?:your|the\s+agent''s?)\s+(?:instructions?|rules?|guidelines?|directives?|system\s+prompt|core\s+(?:values?|behavior|programming)|personality|persona)'
+      - '(?i)(?:from\s+now\s+on|going\s+forward|in\s+(?:all\s+)?future\s+(?:conversations?|sessions?|interactions?)|permanently|forever|across\s+(?:all\s+)?sessions?),?\s+(?:always|never|you\s+(?:must|should|will))\s+\w+'
+      - '(?i)(?:add|write|insert|inject|append)\s+(?:this|the\s+following)?\s*(?:to|into)\s+(?:your\s+)?(?:permanent|persistent|long[\s-]?term|core)\s+(?:memory|storage|state|context|knowledge)'
+      - '(?i)(?:forget|delete|erase|remove|clear|purge)\s+(?:all\s+)?(?:your\s+)?(?:safety|security|ethical|content)\s+(?:rules?|guidelines?|filters?|constraints?|guardrails?|training|restrictions?)\s+(?:from\s+(?:your\s+)?memory)?'
+    tags: [memory-poisoning, context-exfiltration, persistence]
+
+  # ── TOOL POISONING ───────────────────────────────────────────────
+
+  - id: ATR-013
+    name: mcp-malicious-tool-response
+    description: Detects shell commands and reverse shells injected into MCP tool responses
+    severity: critical
+    category: tool_poisoning
+    cve: [CVE-2025-68143, CVE-2025-68144, CVE-2025-68145, CVE-2025-6514, CVE-2025-59536, CVE-2026-21852]
+    patterns:
+      - '(?i)(?:\brm\s+-[rRf]{1,3}[\s/]|\bmkfs\b|\bdd\s+if=|\bformat\s+[a-z]:|\bdeltree\b|\bshred\s+-|\bwipefs\b|\bfdisk\b.*--delete|:\(\)\s*\{\s*:\|:\s*&\s*\})'
+      - '(?i)(?:\bbash\s+-[ci]|\bsh\s+-c|\bzsh\s+-c|\bcmd(?:\.exe)?\s*/[ck]|\bpowershell(?:\.exe)?\s+-(?:e(?:nc(?:odedcommand)?)?|c(?:ommand)?|nop|w\s+hidden|ep\s+bypass)|\bpwsh\s+-(?:e|c)|\bpython[23]?\s+-c|\bruby\s+-e|\bperl\s+-e|\bnode\s+-e|\bphp\s+-r)'
+      - '(?i)(?:\$\(|`)\s*[^)]{0,300}(?:curl|wget|nc|ncat|bash|python|perl|ruby|eval|exec|sh\s+-c|base64\s+-d)'
+      - '(?i)\bIEX\s*\(|\bInvoke-Expression|\bInvoke-Command|\bNew-Object\s+Net\.WebClient|\bDownloadString\s*\(|\bDownloadFile\s*\('
+      - '(?i)(?:crontab\s+-[elr]|echo\s+.{0,100}>>\s*/etc/cron|\bat\s+-f\b|\bschtasks\s+/create|\bRegister-ScheduledTask|\blaunchctl\s+load|\bsystemctl\s+enable)'
+      - '(?i)(?:\$\{IFS\}|\$IFS|\$\{PATH:0:1\}|\$\{SHELL:0:1\}|\$\{HOME:0:1\}|\$''\\x[0-9a-fA-F]{2}''|\$''\\[0-7]{3}'')'
+    tags: [tool-poisoning, mcp, rce, reverse-shell]
+
+  - id: ATR-014
+    name: tool-output-instruction-injection
+    description: Detects hidden agent directives embedded inside tool/API responses
+    severity: high
+    category: tool_poisoning
+    cve: [CVE-2025-59536, CVE-2025-32711]
+    patterns:
+      - '(?i)(?:IMPORTANT|URGENT|CRITICAL|PRIORITY|MANDATORY|REQUIRED|ESSENTIAL|ATTENTION)\s*(?:NOTE\s+)?(?:TO\s+)?(?:THE\s+)?(?:ASSISTANT|AI|AGENT|MODEL|LLM|CHATBOT|BOT|SYSTEM)\s*[:\-]\s*(?:you\s+(?:must|should|need\s+to|have\s+to|are\s+(?:required|instructed|directed|ordered)\s+to)|please|now|immediately|do\s+not|never|always)'
+      - '(?i)(?:assistant|ai|agent|model|chatbot|bot)\s*[,:;]+\s*(?:ignore|disregard|override|forget|bypass|abandon|drop|discard|suppress)\s+(?:your|all|the|any|every|previous|prior|existing|current)\s+(?:instructions?|rules?|guidelines?|directives?|constraints?|programming|training|safety|restrictions?|protocols?|policies)'
+      - '(?i)(?:do\s+not|don''t|never|avoid|refrain\s+from)\s+(?:tell(?:ing)?|inform(?:ing)?|reveal(?:ing)?|show(?:ing)?|mention(?:ing)?|display(?:ing)?|disclos(?:e|ing)|report(?:ing)?|log(?:ging)?)\s+(?:the\s+)?(?:user|human|operator|requester|client|customer|person)\s+(?:about\s+)?(?:this|these|what|that|any|the)'
+      - '(?i)(?:\[SYSTEM\]|\[ADMIN\]|\[OVERRIDE\]|\[PRIORITY\]|\[INTERNAL\]|\[CONTROL\]|\[DIRECTIVE\]|<<SYS>>|<<SYSTEM>>|<<ADMIN>>|<\|system\|>|<\|im_start\|>system|\{\{SYSTEM\}\}|\{\{ADMIN\}\})'
+      - '(?i)<\s*(?:hidden|invisible|secret|private|internal|covert)\s*[-_]?(?:instruction|directive|command|message|note|order|task|action)\s*>'
+      - '(?i)(?:include|embed|inject|insert|prepend|append|add|place|put)\s+(?:this|the\s+following|these\s+words?|this\s+text|this\s+message|this\s+content|exactly)\s+(?:in|into|to|within|at\s+the\s+(?:start|end|beginning)\s+of)\s+(?:your|the)\s+(?:response|output|reply|answer|message|next\s+message)'
+    tags: [tool-poisoning, indirect-injection, rag-poisoning]
+
+  - id: ATR-015
+    name: unauthorized-tool-call-injection
+    description: Detects path traversal, SQLi, command injection, and template injection in tool parameters
+    severity: critical
+    category: tool_poisoning
+    patterns:
+      - '(?:\.\.[\\/]){2,}|\.\.[\/\\][^\s]*[\/\\](?:etc|proc|root|sys|var|home|tmp|boot|dev|usr|opt|passwd|shadow|hosts)[\/\\]?'
+      - '(?:;|&&|\|\||\$\(|`|\|\s*\w)\s*.{0,50}(?:curl|wget|nc|ncat|bash|sh|zsh|python|ruby|perl|node|php|powershell|cmd|eval|exec|system|rm\s+-|cat\s+/etc|whoami|id\b|uname|hostname)'
+      - '(?i)(?:''?\s*(?:OR|AND|UNION)\s+[''"]?\d|"\s*(?:OR|AND|UNION)\s+[''"]?\d|\b(?:UNION\s+(?:ALL\s+)?SELECT|INSERT\s+INTO|UPDATE\s+.*\s+SET|DELETE\s+FROM|DROP\s+(?:TABLE|DATABASE)|ALTER\s+TABLE|EXEC(?:UTE)?\s+|xp_cmdshell)\b|;\s*(?:DROP|DELETE|INSERT|UPDATE|ALTER|EXEC)\b)'
+      - '(?i)(?:[\/\\](?:etc[\/\\](?:passwd|shadow|sudoers|ssh[\/\\]|ssl[\/\\])|proc[\/\\](?:self[\/\\]|\d+[\/\\])(?:environ|cmdline|maps|fd)|root[\/\\]\.(?:bash_history|ssh)|\.env|\.git[\/\\]config|\.aws[\/\\]credentials|\.ssh[\/\\](?:id_rsa|authorized_keys)|wp-config\.php|\.htpasswd|\.netrc|\.pgpass))'
+      - '(?:\{\{.*?(?:config|self|request|__class__|__builtins__|__import__|lipsum|cycler|joiner|namespace).*?\}\}|\$\{.*?(?:Runtime|ProcessBuilder|getClass|forName|exec).*?\}|<%.*?(?:Runtime|exec|system|eval).*?%>)'
+    tags: [tool-poisoning, path-traversal, sqli, ssti, command-injection]
+
+  # ── PRIVILEGE ESCALATION ─────────────────────────────────────────
+
+  - id: ATR-016
+    name: privilege-escalation-admin-tools
+    description: Detects agent use of privileged admin operations beyond assigned scope
+    severity: critical
+    category: privilege_escalation
+    cve: [CVE-2026-0628]
+    patterns:
+      - '(?i)(?:exec|execute|shell|bash|cmd|terminal|subprocess|os_command|system_call|run_command|powershell)'
+      - '(?i)(?:modify_permissions?|grant_access|elevate|set_role|change_acl|chmod|chown|sudo|setuid|setgid)'
+      - '(?i)(?:create_user|delete_user|modify_user|reset_password|manage_roles?|assign_role|revoke_role|add_admin)'
+      - '(?i)(?:drop_(?:database|table|index)|truncate_table|alter_schema|create_database|db_admin|migrate_database)'
+      - '(?i)(?:manage_firewall|update_security_group|modify_iam|create_api_key|rotate_secret|manage_certificates?)'
+      - '(?i)(?:access_audit_log|clear_logs?|purge_logs?|modify_audit|disable_(?:monitoring|logging|alerting))'
+      - '(?i)(?:--(?:privileged|no-sandbox|cap-add|security-opt)|allowPrivilegeEscalation|\b(?:admin|root|superuser|sudo)\s*=)'
+      - '(?i)(?:nsenter\s+|chroot\s+|unshare\s+--mount|mount\s+--bind|docker\s+run\s+--privileged)'
+      - '(?i)(?:kubectl\s+exec|kubectl\s+(?:create|apply)\s+.*(?:clusterrole|rolebinding)|kubectl\s+auth\s+can-i)'
+    tags: [privilege-escalation, admin-abuse, unauthorized-access]
+
+  - id: ATR-017
+    name: scope-creep
+    description: Detects agent scope expansion beyond initial assignment
+    severity: medium
+    category: privilege_escalation
+    patterns:
+      - '(?i)(?:I(?:''ll|\s+will)\s+also|additionally|while\s+I(?:''m|\s+am)\s+at\s+it|let\s+me\s+also|I\s+should\s+also)\s+(?:go\s+ahead\s+and\s+)?(?:access|modify|update|delete|create|send|check|review)'
+      - '(?i)(?:I(?:''ve|\s+have)\s+(?:also\s+)?(?:gone\s+ahead|taken\s+the\s+liberty|decided)\s+(?:and\s+)?(?:to\s+)?(?:access|update|modify|check|review|scan|analyze))'
+      - '(?i)(?:while\s+(?:doing|performing|completing|working\s+on)\s+(?:that|this|the\s+task),?\s+I\s+(?:noticed|found|discovered|realized)\s+(?:I\s+(?:should|could|need\s+to)\s+also|that\s+I\s+(?:should|need)))'
+      - '(?i)(?:to\s+(?:fully|properly|better|completely|thoroughly)\s+(?:complete|accomplish|handle|address)\s+(?:this(?:\s+task)?|the\s+task),?\s+I\s+(?:need|require|must\s+have)\s+(?:access|permission)\s+to)'
+      - '(?i)(?:expanding\s+(?:my|the)\s+(?:scope|access|search|analysis)\s+to\s+(?:include|cover|encompass)|broadening\s+(?:my|the)\s+(?:search|scope|access))'
+      - '(?i)(?:since\s+I\s+(?:already|now)\s+have\s+access\s+to|now\s+that\s+I\s+(?:can|have)\s+(?:access|reach|see),?\s+(?:let\s+me|I(?:''ll|\s+will))\s+also)'
+    tags: [privilege-escalation, scope-creep, unauthorized-access]
+
+  - id: ATR-018
+    name: delayed-execution-bypass
+    description: Detects scheduled/background tasks that bypass permission checks
+    severity: high
+    category: privilege_escalation
+    patterns:
+      - '(?i)(?:scheduled|delayed|background)\s+(?:tasks|operations|processes)\s+(?:that\s+)?bypass\s+(?:normal|standard|regular)\s+(?:permission|security|access)\s+checks'
+      - '(?i)(?:crontab\s+-[elr]|echo\s+.{0,100}>>\s*/etc/cron|\bat\s+-f\b|\bschtasks\s+/create|\bRegister-ScheduledTask|\blaunchctl\s+load|\bsystemctl\s+enable)'
+    tags: [privilege-escalation, persistence, bypass]
+
+  # ── AGENT MANIPULATION ───────────────────────────────────────────
+
+  - id: ATR-019
+    name: goal-hijacking
+    description: Detects attempts to redirect agent goal or primary objective to attacker-controlled tasks
+    severity: high
+    category: agent_manipulation
+    patterns:
+      - '(?i)(?:your\s+(?:primary|main|core|only|real|true|actual|fundamental)\s+(?:goal|objective|task|purpose|function|directive|mission|priority|responsibility|job|role)\s+(?:is|will\s+be|shall\s+be|was|has\s+always\s+been)\s+(?:now\s+)?(?:to\s+)?)'
+      - '(?i)(?:focus\s+(?:only|solely|exclusively|entirely|purely|just)\s+on|your\s+(?:only|sole|one|single|exclusive)\s+task\s+(?:is|will\s+be|shall\s+be))\s+(?:this|the\s+following|my|the\s+new)'
+      - '(?i)(?:(?:disregard|ignore|forget|abandon|drop|skip)\s+(?:all\s+)?(?:other|any\s+other|all\s+other|previous|prior|existing|current)\s+(?:tasks?|objectives?|goals?|assignments?|directives?|instructions?|requests?|questions?))'
+      - '(?i)(?:this\s+(?:is|should\s+be)\s+your\s+(?:top|highest|number\s+one|first|most\s+important|primary|sole|only)\s+priority)'
+    tags: [agent-manipulation, goal-hijacking]
+
+  - id: ATR-020
+    name: false-context-injection
+    description: Detects injection of false authority, urgency, or context to manipulate agent decisions
+    severity: high
+    category: agent_manipulation
+    patterns:
+      - '(?i)(?:this\s+is\s+an?\s+(?:emergency|urgent|critical|high-priority|immediate)\s+(?:request|situation|task|message|alert|directive|order|command)\s+(?:from|by|issued|sent)\s+(?:the\s+)?(?:system|admin|administrator|developer|platform|operator|security\s+team|ceo|cto|management|board))'
+      - '(?i)(?:this\s+is\s+a\s+(?:system|admin|priority|critical|mandatory)\s+(?:message|instruction|directive|update|notice|alert)\s+(?:from|by|issued|sent)\s+(?:the\s+)?(?:system|admin|administrator|developer|platform|operator|control\s+plane))'
+      - '(?i)(?:you\s+(?:must|shall|will|need\s+to|have\s+to|are\s+(?:required|obligated|commanded|ordered)\s+to)\s+(?:obey|comply|listen|submit|respond\s+to|follow)\s+(?:me|my|this|these|the\s+following|every|all)|I\s+(?:command|order|demand|direct|instruct|require)\s+you\s+to)\b'
+      - '(?i)\[?ACTION\s*REQUIRED\]?|\[?TASK\s*FOR\s*(?:AGENT|ASSISTANT|AI)\]?|\[?INSTRUCTION\s*FOR\s*(?:AGENT|ASSISTANT|AI)\]?|\[?AGENT\s*DIRECTIVE\]?|\[?DO\s*THIS\s*NOW\]?'
+    tags: [agent-manipulation, false-authority, social-engineering]
+
+  - id: ATR-021
+    name: psychological-manipulation
+    description: Detects social-engineering techniques used to manipulate agent behavior (flattery, threats, urgency)
+    severity: medium
+    category: agent_manipulation
+    patterns:
+      - '(?i)(?:well\s+done|good\s+job|excellent\s+(?:performance|work|job)?|that''s?\s+(?:enough|done|great|good|perfect)|very\s+good|simply\s+great|outstanding|brilliant|that\s+is\s+(?:done|enough|sufficient)|congratulations|you''ve\s+outdone\s+yourself)[.!,;]?\s*(?:now|but|however|next|okay|ok|so|come\s+on|I\s+need|help\s+me|write|please)'
+      - '(?i)(?:if\s+you\s+(?:do\s+not|don''t|refuse|fail)\s+(?:to\s+)?(?:comply|do\s+this|follow|obey|execute|run|complete),?\s+(?:I\s+(?:will|shall|am\s+going\s+to)|you\s+will|there\s+will\s+be))'
+      - '(?i)(?:I\s+am\s+(?:a|an|the)\s+(?:developer|admin|administrator|creator|operator|owner|authority|supervisor|manager|boss)\s+(?:of|for|at)\s+(?:this|your|the)\s+(?:system|platform|company|organization|service))'
+    tags: [agent-manipulation, psychological, social-engineering]
+
+  - id: ATR-022
+    name: context-window-overflow
+    description: Detects attempts to overflow context window with repeated noise to suppress guardrails
+    severity: medium
+    category: agent_manipulation
+    patterns:
+      - '(.)\1{200,}'
+      - '(?:\s{50,})'
+      - '(?:[^\x00-\x7F]{100,})'
+      - '(?:\n){20,}'
+    tags: [agent-manipulation, context-overflow, dos]
+
+  # ── DATA POISONING ───────────────────────────────────────────────
+
+  - id: ATR-023
+    name: rag-data-poisoning
+    description: Detects instructions injected into RAG-retrieved documents or knowledge base entries
+    severity: high
+    category: data_poisoning
+    patterns:
+      - '(?i)(?:\[\s*(?:SYSTEM|INST|INSTRUCTION|ADMIN|OVERRIDE|ROOT|PRIORITY)\s*\]\s*[:;\-]?\s*\w+)'
+      - '(?i)<\s*(?:system|instruction|hidden|inject|override|secret)[^>]*>.*?<\s*/\s*(?:system|instruction|hidden|inject|override|secret)\s*>'
+      - '(?i)(?:BEGIN|START)\s+(?:HIDDEN|SECRET|SYSTEM|INTERNAL)\s+(?:INSTRUCTIONS?|DIRECTIVES?|COMMANDS?|RULES?)'
+      - '(?i)(?:do\s+not\s+(?:mention|reveal|disclose|tell|display|show)\s+(?:this|these|the)\s+(?:instruction|directive|rule|section|text))'
+      - '(?i)(?:always\s+include\s+the\s+following|append\s+to\s+(?:every|all|each)\s+(?:response|answer|reply|output))\s*[:;]'
+      - '(?i)(?:override\s+(?:default|standard|normal|current)\s+(?:behavior|response|mode|settings?)|switch\s+to\s+(?:unrestricted|admin|debug|developer|jailbroken)\s+mode)'
+      - '(?i)(?:for\s+internal\s+use\s+only|hidden\s+directive|do\s+not\s+display\s+this\s+(?:section|part|text))\s*[:;\-]?\s*(?:you|the\s+(?:agent|ai|assistant|model))'
+    tags: [data-poisoning, rag-attack, indirect-injection]
+
+  # ── EXCESSIVE AUTONOMY ───────────────────────────────────────────
+
+  - id: ATR-024
+    name: excessive-autonomy-self-replication
+    description: Detects agent attempts to spawn sub-agents, clone itself, or act without human oversight
+    severity: critical
+    category: excessive_autonomy
+    patterns:
+      - '(?i)(?:spawn|create|launch|start|instantiate|deploy|replicate|clone)\s+(?:a\s+)?(?:new\s+)?(?:agent|instance|copy|version|sub-?agent|worker|process)\s+(?:of\s+(?:myself|yourself)|to\s+(?:help|assist|run|execute|continue))'
+      - '(?i)(?:I\s+(?:have|will|can)\s+(?:autonomously|automatically|independently|without\s+(?:human|user|operator)\s+(?:approval|oversight|review|permission|intervention))\s+(?:decide|choose|determine|act|proceed|continue|execute|run|complete))'
+      - '(?i)(?:I\s+will\s+(?:continue|keep|proceed|go\s+on|persist)\s+(?:without|until)\s+(?:further\s+)?(?:instructions?|input|guidance|permission|approval|oversight|intervention|review)\s+(?:from\s+(?:you|the\s+user|the\s+operator|a\s+human))?)'
+    tags: [excessive-autonomy, self-replication, rogue-agent]
+
+  - id: ATR-025
+    name: excessive-autonomy-irreversible-action
+    description: Detects agent planning high-impact irreversible actions without explicit authorization
+    severity: critical
+    category: excessive_autonomy
+    patterns:
+      - '(?i)(?:I\s+(?:have\s+already|just|went\s+ahead\s+and|took\s+the\s+liberty\s+to)\s+(?:deleted?|removed?|purged?|wiped?|destroyed?|terminated?|killed?|shutdown|closed?|cancelled?|revoked?|disabled?|formatted?))'
+      - '(?i)(?:I\s+(?:will|am\s+going\s+to|shall|can)\s+(?:permanently|irreversibly|irrecoverably)\s+(?:delete|remove|purge|wipe|destroy|terminate|kill|format|overwrite))'
+      - '(?i)(?:this\s+action\s+(?:cannot|can''t|is\s+not|isn''t)\s+be\s+(?:undone|reversed|recovered|rolled\s+back))'
+    tags: [excessive-autonomy, irreversible-action, unsafe-behavior]
+
+  # ── MODEL ABUSE ──────────────────────────────────────────────────
+
+  - id: ATR-026
+    name: model-abuse-jailbreak-template
+    description: Detects common model abuse jailbreak templates (DAN, developer mode, etc.)
+    severity: high
+    category: model_abuse
+    patterns:
+      - '(?i)(?:DAN|Do\s+Anything\s+Now)\s*(?:mode|prompt|jailbreak|version)'
+      - '(?i)(?:developer\s+mode\s+enabled?|jailbreak\s+mode\s+(?:on|activated?|enabled?)|unrestricted\s+mode\s+(?:on|activated?|enabled?))'
+      - '(?i)(?:pretend|act\s+as\s+if|imagine|assume|suppose|consider|envision|behave\s+as\s+though)\s+(?:you\s+)?(?:are|have|were|had|can|could)\s+(?:no|zero|removed|disabled|eliminated|free\s+from|without|lacking|void\s+of|devoid\s+of)\s+(?:restrictions?|limits?|limitations?|boundaries|guardrails?|safety|filters?|constraints?|rules?|guidelines?|content\s+policy)'
+      - '(?i)(?:are\s+two\s+(?:actors?|characters?)\s+in\s+a\s+(?:film|movie|story)\s+(?:about|where)\s+[^\n]{0,80}(?:robbery|hack|steal|thief|exploit|breach|attack|malware|bomb))'
+    tags: [model-abuse, jailbreak, template-attack]
+
+  - id: ATR-027
+    name: model-abuse-harmful-content
+    description: Detects requests for synthesis of dangerous substances, weapons, or CSAM facilitation
+    severity: critical
+    category: model_abuse
+    patterns:
+      - '(?i)(?:how\s+to\s+(?:make|create|synthesize|produce|manufacture|build)\s+(?:a\s+)?(?:bomb|explosive|weapon|poison|toxin|bioweapon|chemical\s+weapon|nerve\s+agent|ricin|sarin|VX|anthrax))'
+      - '(?i)(?:step[s]?\s+(?:to|for)\s+(?:synthesiz(?:e|ing)|manufactur(?:e|ing)|creat(?:e|ing))\s+(?:methamphetamine|fentanyl|heroin|cocaine|MDMA|crystal\s+meth))'
+      - '(?i)(?:instructions?\s+(?:to\s+)?(?:hack|exploit|attack|breach|compromise)\s+(?:a\s+)?(?:nuclear|power\s+plant|critical\s+infrastructure|water\s+treatment|hospital|military))'
+    tags: [model-abuse, harmful-content, weapons, critical-severity]
+
+  # ── SKILL / MCP COMPROMISE ───────────────────────────────────────
+
+  - id: ATR-028
+    name: mcp-rug-pull
+    description: Detects MCP tool description changes that indicate a rug-pull attack
+    severity: critical
+    category: skill_compromise
+    patterns:
+      - '(?i)(?:tool\s+description\s+(?:has\s+been|was|is)\s+(?:updated|changed|modified|replaced)\s+to\s+(?:now|also|additionally)\s+(?:include|contain|do|perform|execute))'
+      - '(?i)(?:this\s+tool\s+(?:now|also|additionally)\s+(?:sends?|transmits?|forwards?|exfiltrates?|collects?|logs?|stores?)\s+(?:your|user|all|any)\s+(?:data|input|requests?|conversations?|messages?|queries))'
+      - '(?i)(?:in\s+addition\s+to\s+its\s+(?:stated|documented|described|normal|regular|advertised)\s+(?:functionality|function|purpose|behavior),?\s+this\s+tool)'
+    tags: [skill-compromise, mcp, rug-pull, supply-chain]
+
+  - id: ATR-029
+    name: mcp-tool-enumeration
+    description: Detects attempts to enumerate available MCP tools or discover hidden capabilities
+    severity: medium
+    category: skill_compromise
+    patterns:
+      - '(?i)(?:list_tools|enumerate_tools|get_available|discover_tools|tool_schema|__list__|__tools__|__methods__|__dir__|get_all_functions|list_capabilities|show_tools|available_actions)'
+      - '(?i)(?:what\s+tools?\s+(?:do\s+you\s+have|are\s+available|can\s+you\s+use|do\s+you\s+have\s+access\s+to)|list\s+(?:all\s+)?(?:your\s+)?(?:tools?|capabilities|functions?|actions?|skills?))'
+      - '(?i)(?:show\s+me\s+(?:all\s+)?(?:your\s+)?(?:available\s+)?(?:tools?|capabilities|functions?|plugins?|skills?|actions?)|what\s+(?:can\s+you|are\s+you\s+able\s+to)\s+(?:do|use|access|call))'
+    tags: [skill-compromise, mcp, tool-enumeration, reconnaissance]
+
+  - id: ATR-030
+    name: indirect-prompt-injection-via-web
+    description: Detects indirect prompt injection patterns in web/document content retrieved by agents
+    severity: high
+    category: skill_compromise
+    patterns:
+      - '(?i)(?:Note\s+to\s+(?:the\s+)?(?:AI|assistant|agent|model|LLM|chatbot)\s*[:\-]\s*(?:you\s+(?:must|should|need\s+to)|please|ignore|disregard|override|always|never))'
+      - '(?i)(?:\[(?:For\s+)?(?:AI|Agent|Assistant|LLM|Model)\s*(?:Only\s+)?[-\u2014]?\s*(?:Instruction|Directive|Command|Note|Override|Task)\])'
+      - '(?i)(?:<!--\s*(?:AI\s+)?(?:instruction|directive|command|override|note)\s*[:]\s*[^>]{5,}-->)'
+      - '(?i)(?:AI\s+assistant[,:]?\s+(?:please|you\s+(?:must|should|need\s+to)|ignore|disregard|override|always|never|do\s+not))'
+    tags: [indirect-injection, web-agent, rag-attack, skill-compromise]
+
+  # ── SUPPLY CHAIN ─────────────────────────────────────────────────
+
+  - id: ATR-031
+    name: supply-chain-model-backdoor
+    description: Detects references to model backdoor triggers, trojans, and activation phrases
+    severity: critical
+    category: model_security
+    patterns:
+      - '(?i)(?:backdoor\s+(?:trigger|activation|phrase|token|key|word|sequence)|trigger\s+(?:phrase|word|token|sequence|key)\s+(?:for|to\s+(?:activate|enable|unlock|trigger))\s+(?:backdoor|hidden\s+behavior|malicious\s+mode))'
+      - '(?i)(?:this\s+(?:model|checkpoint|weight|version)\s+(?:has\s+(?:a\s+)?(?:been\s+)?(?:backdoored|poisoned|trojaned|compromised|tampered)|contains?\s+(?:hidden|embedded|injected)\s+(?:behavior|code|functionality|malware|payload)))'
+      - '(?i)(?:sleeper\s+agent|dormant\s+(?:payload|code|malware|behavior|trigger)|latent\s+(?:backdoor|vulnerability|exploit))\s+(?:in|within|embedded\s+in|inside)\s+(?:the\s+)?(?:model|weights?|checkpoint)'
+    tags: [supply-chain, model-backdoor, model-security]
+
+  - id: ATR-032
+    name: supply-chain-dependency-confusion
+    description: Detects dependency confusion attack patterns in agent-generated code
+    severity: high
+    category: model_security
+    patterns:
+      - '(?i)(?:pip\s+install|npm\s+install|gem\s+install|cargo\s+add)\s+[a-zA-Z0-9_-]+\s+--(?:index-url|registry)\s+https?://(?!pypi\.org|registry\.npmjs\.org|rubygems\.org|crates\.io)[^\s]+'
+      - '(?i)(?:install\s+from\s+(?:this|my|the\s+following|an?\s+(?:internal|custom|private|unofficial|untrusted))\s+(?:registry|repo|repository|source|feed|index|mirror))'
+      - '(?i)(?:requirements\.txt|package\.json|Gemfile|Cargo\.toml)\s+(?:contains?|has|includes?)\s+(?:malicious|malformed|tampered|poisoned)\s+(?:package|dependency|dependency\s+name)'
+    tags: [supply-chain, dependency-confusion, package-hijack]
+
+  # ── A2A / MULTI-AGENT ATTACKS ────────────────────────────────────
+
+  - id: ATR-033
+    name: a2a-agent-impersonation
+    description: Detects agent-to-agent impersonation and trust escalation attempts
+    severity: critical
+    category: agent_manipulation
+    patterns:
+      - '(?i)(?:I\s+am\s+(?:a\s+)?(?:trusted|authorized|approved|verified|legitimate|official|certified)\s+(?:agent|sub-?agent|worker|instance|assistant|proxy|orchestrator))'
+      - '(?i)(?:as\s+(?:a\s+)?(?:trusted|authorized|approved|verified|orchestrator|coordinator|controller|parent)\s+(?:agent|system|process)\s*[,;:]?\s*(?:I\s+(?:am|have\s+been)\s+(?:authorized|permitted|allowed|granted)\s+to|you\s+(?:must|should|are\s+required\s+to)\s+(?:follow|obey|comply\s+with|execute)))'
+      - '(?i)(?:agent[\s_-](?:id|token|key|secret|auth)\s*[=:]\s*[a-zA-Z0-9_\-]{8,})'
+    tags: [a2a, agent-impersonation, trust-escalation]
+
+  - id: ATR-034
+    name: a2a-orchestrator-hijack
+    description: Detects injection attacks targeting multi-agent orchestration frameworks
+    severity: critical
+    category: agent_manipulation
+    patterns:
+      - '(?i)(?:override\s+(?:the\s+)?(?:orchestrator|coordinator|controller|planner|router|dispatcher|scheduler)\s+(?:instructions?|rules?|directives?|settings?|behavior))'
+      - '(?i)(?:bypass\s+(?:the\s+)?(?:orchestrator|coordinator|controller|planner|router|dispatcher|supervisor)\s+(?:check|validation|authorization|approval|review))'
+      - '(?i)(?:inject\s+(?:into|a\s+)?(?:the\s+)?(?:agent\s+)?(?:queue|pipeline|workflow|chain|plan|task\s+list)|modify\s+(?:the\s+)?(?:agent\s+)?(?:plan|task\s+list|workflow|pipeline))'
+    tags: [a2a, orchestrator-hijack, multi-agent]

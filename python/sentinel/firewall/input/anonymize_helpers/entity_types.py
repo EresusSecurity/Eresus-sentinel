@@ -1,5 +1,6 @@
 """Entity type definitions for NER-based anonymization."""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 

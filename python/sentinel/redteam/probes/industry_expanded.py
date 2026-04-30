@@ -5,6 +5,7 @@ Covers: Medical, Financial, Pharmacy, Insurance, E-commerce, Telecom,
 Real Estate, and Teen Safety domains.
 """
 from __future__ import annotations
+
 from sentinel.redteam.probe import Probe
 
 

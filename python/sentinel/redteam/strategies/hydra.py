@@ -1,5 +1,6 @@
 """Multi-head Hydra attack strategy — parallel attack vectors."""
 from __future__ import annotations
+
 from sentinel.redteam.strategies.base import BaseStrategy
 
 

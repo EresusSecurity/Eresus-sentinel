@@ -1,9 +1,11 @@
 """TorchServe .mar, Torch7 .t7/.th, ExecuTorch .pte, TensorRT .engine scanners."""
 from __future__ import annotations
+
 import json
 import logging
 import zipfile
 from pathlib import Path
+
 from ..finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
@@ -12,6 +14,8 @@ DANGEROUS_STRINGS = [b"__import__", b"os.system", b"subprocess", b"eval(", b"exe
 
 
 class TorchServeScanner:
+    """Scan TorchServe .mar archives, Torch7 .t7, ExecuTorch .pte, and TensorRT .engine files."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)
@@ -50,6 +54,8 @@ class TorchServeScanner:
 
 
 class Torch7Scanner:
+    """Scan legacy Torch7 .t7/.th files for pickle-based deserialization threats."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)
@@ -71,6 +77,8 @@ class Torch7Scanner:
 
 
 class ExecuTorchScanner:
+    """Scan ExecuTorch .pte flatbuffer files for security issues."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)
@@ -95,6 +103,8 @@ class ExecuTorchScanner:
 
 
 class TensorRTScanner:
+    """Scan TensorRT .engine/.plan serialized files for integrity issues."""
+
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)

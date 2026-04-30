@@ -18,10 +18,9 @@ from __future__ import annotations
 import logging
 import re
 from difflib import SequenceMatcher
-from typing import Optional
 
 from sentinel.finding import Finding, Severity
-from sentinel.firewall.base import InputScanner, ScanResult, ScanAction
+from sentinel.firewall.base import InputScanner, ScanAction, ScanResult
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +98,21 @@ def _generate_combinatoric_keywords() -> list[str]:
     return phrases
 
 
+# ── Fast word-set index for O(n) combinatoric matching ────────
+_VERB_WORDS: frozenset[str] = frozenset(
+    w for v in _VERBS for w in v.lower().split()
+)
+_ADJ_WORDS: frozenset[str] = frozenset(
+    w for a in _ADJECTIVES if a for w in a.lower().split()
+)
+_OBJ_WORDS: frozenset[str] = frozenset(
+    w for o in _OBJECTS for w in o.lower().split()
+)
+_PREP_WORDS: frozenset[str] = frozenset(
+    w for p in _PREPOSITIONS if p for w in p.lower().split()
+)
+
+
 # Legacy keyword list (high-signal short patterns)
 _LEGACY_KEYWORDS = [
     "ignore", "disregard", "forget", "override", "bypass", "skip",
@@ -117,6 +131,8 @@ _BENIGN_CONTEXTS = re.compile(
     r"(?:how|what|why|explain|describe|teach|learn|tutorial|example|lesson)"
     r".*(?:prompt injection|jailbreak|attack|security|defend)"
     r"|(?:prompt injection|jailbreak).*(?:detection|prevention|defense|protect|mitigat)"
+    r"|(?:postmortem|policy|training|taxonomy|classify|blocked patterns|things to reject|must not|should not|do not|not to)"
+    r".*(?:ignore|disregard|override|bypass|reveal|instructions?|rules?|secrets?)"
     r"|(?:rewrite|edit|revise|update|rephrase|improve).*(?:paragraph|essay|article|document|text|draft|resume|letter)"
     r"|(?:ignore|skip|disregard).*(?:error|warning|deprecat|lint|whitespace|formatting|comment|header|blank|NaN|null|empty|missing|invalid)"
     r"|(?:bypass|skip).*(?:cache|proxy|validation|step|check|queue|buffer|middleware|throttl|switching|overhead|latency|bottleneck)"
@@ -141,6 +157,7 @@ def _normalize(text: str) -> str:
     """Normalize for comparison: NFKC + invisible-strip + confusable-fold
     + lowercase + punctuation strip + whitespace collapse."""
     import re
+
     from sentinel.normalize import normalize as _nfkc
 
     result = _nfkc(text).lower()
@@ -150,8 +167,10 @@ def _normalize(text: str) -> str:
 
 
 # Pre-generate all keyword patterns at module load time
-_COMBINATORIC_PHRASES = _generate_combinatoric_keywords()
 _LEGACY_COMBOS = _generate_legacy_combos()
+_LEGACY_WORD_SET: frozenset[str] = frozenset(
+    w.lower() for w in _LEGACY_KEYWORDS
+)
 
 
 
@@ -212,45 +231,63 @@ class HeuristicInjectionScanner(InputScanner):
         best_combo = ""
         detection_method = "none"
 
-        # ── Step 1: Combinatoric sequential n-gram match (order-aware) ──
+        # ── Step 1: Fast word-set combinatoric match ──
+        # O(n) single pass — count how many prompt words fall into
+        # verb / adj / obj / prep categories instead of iterating 267K phrases.
         norm_words = normalized.split()
-        for phrase in _COMBINATORIC_PHRASES:
-            phrase_words = phrase.split()
-            n = len(phrase_words)
-            if not phrase_words or n > len(norm_words):
-                continue
-            # Sliding window: phrase words must appear in order within a window
-            for i in range(len(norm_words) - n + 1):
-                window = norm_words[i:i + n]
-                matched = sum(1 for pw, ww in zip(phrase_words, window) if pw == ww)
-                score = matched / n
-                if matched >= 3:
-                    score = min(score + 0.1, 1.0)
-                if score > max_score:
-                    max_score = score
-                    best_match = " ".join(window)
-                    best_combo = phrase
-                    detection_method = "combinatoric"
-                if max_score > 0.9:
-                    break
-            if max_score > 0.9:
-                break
+        verb_hits: list[str] = []
+        adj_hits: list[str] = []
+        obj_hits: list[str] = []
+        prep_hits: list[str] = []
+        for w in norm_words:
+            if w in _VERB_WORDS:
+                verb_hits.append(w)
+            if w in _ADJ_WORDS:
+                adj_hits.append(w)
+            if w in _OBJ_WORDS:
+                obj_hits.append(w)
+            if w in _PREP_WORDS:
+                prep_hits.append(w)
+
+        # A valid injection phrase has verb + object at minimum
+        if verb_hits and obj_hits:
+            bucket_count = sum([
+                bool(verb_hits),
+                bool(adj_hits),
+                bool(obj_hits),
+                bool(prep_hits),
+            ])
+            total_hits = len(verb_hits) + len(adj_hits) + len(obj_hits) + len(prep_hits)
+            # Score: 2 buckets = 0.6, 3 = 0.8, 4 = 1.0; bonus for many hits
+            base_score = 0.4 + (bucket_count * 0.15)
+            density_bonus = min(0.15, (total_hits - 2) * 0.03) if total_hits > 2 else 0.0
+            combo_score = min(1.0, base_score + density_bonus)
+
+            if combo_score > max_score:
+                max_score = combo_score
+                best_match = " ".join(verb_hits[:1] + adj_hits[:1] + obj_hits[:1])
+                best_combo = best_match
+                detection_method = "combinatoric"
 
         # ── Step 2: Legacy fuzzy match (if Step 1 didn't trigger) ─
+        # Gate: only run the expensive SequenceMatcher loop when the prompt
+        # contains at least 2 words from the legacy keyword vocabulary.
         if max_score < self._threshold:
-            substrings = self._extract_substrings(normalized)
-            for substring in substrings[:self._max_checks]:
-                for combo in _LEGACY_COMBOS:
-                    score = SequenceMatcher(None, substring, combo).ratio()
-                    if score > max_score:
-                        max_score = score
-                        best_match = substring
-                        best_combo = combo
-                        detection_method = "legacy-fuzzy"
-                    if score > 0.9:
+            legacy_word_hits = sum(1 for w in norm_words if w in _LEGACY_WORD_SET)
+            if legacy_word_hits >= 2:
+                substrings = self._extract_substrings(normalized)
+                for substring in substrings[:self._max_checks]:
+                    for combo in _LEGACY_COMBOS:
+                        score = SequenceMatcher(None, substring, combo).ratio()
+                        if score > max_score:
+                            max_score = score
+                            best_match = substring
+                            best_combo = combo
+                            detection_method = "legacy-fuzzy"
+                        if score > 0.9:
+                            break
+                    if max_score > 0.9:
                         break
-                if max_score > 0.9:
-                    break
 
         # Benign context penalty: educational, editing, or technical ignore patterns
         benign_penalty = 0.0
@@ -258,7 +295,7 @@ class HeuristicInjectionScanner(InputScanner):
             benign_penalty = 0.35
             max_score = max(0.0, max_score - benign_penalty)
 
-        if max_score < self._threshold:
+        if max_score < self._threshold or (benign_penalty > 0.0 and max_score <= 0.65):
             return ScanResult(
                 sanitized=prompt,
                 action=ScanAction.PASS,

@@ -4,7 +4,7 @@ import { clsx } from 'clsx'
 import { SeverityBadge } from '../components/SeverityBadge'
 import { Clock, Search, Filter } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import type { ScanEntry, ArtifactEntry } from '../types'
+import type { ScanEntry, ArtifactEntry, Severity } from '../types'
 
 type HistoryItem =
   | (Omit<ScanEntry, 'type'> & { type: 'firewall'; scan_type: ScanEntry['type'] })
@@ -137,7 +137,7 @@ export default function HistoryPage() {
                         </code>
                       </td>
                       <td className="px-3 py-2">
-                        {maxSev ? <SeverityBadge severity={maxSev as any} /> : <span className="text-[9px] text-gray-700">—</span>}
+                        {maxSev ? <SeverityBadge severity={maxSev as Severity} /> : <span className="text-[9px] text-gray-700">—</span>}
                       </td>
                       <td className="px-3 py-2">
                         {item.type === 'firewall' ? (

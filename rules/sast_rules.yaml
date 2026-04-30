@@ -154,11 +154,21 @@ rules:
   - id: SAST-020
     name: eval_llm_output
     description: "eval() or exec() on potentially untrusted LLM output"
-    pattern: '(?i)(?:eval|exec)\s*\('
+    pattern: '(?<!\w)(?<!def )(?<!\.)(?:eval|exec)\s*\([^)]*\b(?:response|output|result|completion|message|text|content|llm|gpt|chat)\b'
     severity: CRITICAL
     cwe_ids: [CWE-94, CWE-95]
     fix_hint: "Never eval/exec LLM output; use structured parsers (JSON, regex)"
+    fp_risk: LOW
+
+  - id: SAST-020b
+    name: bare_eval_exec
+    description: "Bare eval() or exec() call — potential code injection"
+    pattern: '(?<!\w)(?<!def )(?<!\.)(?:eval|exec)\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-94, CWE-95]
+    fix_hint: "Avoid eval/exec; use ast.literal_eval() or structured parsers"
     fp_risk: MEDIUM
+    exclude_pattern: '(?:def \w*eval|def \w*exec|\.\w*eval\s*\(|\.\w*exec\s*\(|subprocess_exec|create_subprocess_exec|_assert_geval|\.eval\(\))'
 
   - id: SAST-021
     name: compile_exec
@@ -234,6 +244,19 @@ rules:
     cwe_ids: [CWE-798]
     fix_hint: "Use environment variables or a secrets manager"
     fp_risk: MEDIUM
+    exclude_path_patterns:
+      - 'test[s_]'
+      - 'fixture'
+      - 'demo'
+      - 'example'
+      - 'mock'
+    exclude_value_patterns:
+      - 'csrf_token'
+      - 'test'
+      - 'dummy'
+      - 'placeholder'
+      - 'changeme'
+      - 'xxxxxxx'
 
   # ─── Unsafe Network / Download ───────────────────────────────────────
   - id: SAST-040
@@ -314,3 +337,509 @@ rules:
     cwe_ids: [CWE-89]
     fix_hint: "Never use LLM output in raw SQL; use parameterized queries"
     fp_risk: MEDIUM
+
+  # ─── Weak Cryptography (CodeGuard / defenseclaw) ─────────────────────────────
+  - id: SAST-080
+    name: weak_hash_md5
+    description: "MD5 used for security-sensitive hashing — collision-vulnerable"
+    pattern: '(?i)(?:hashlib\.md5|MD5(?:Hash)?|new\s*\(\s*["'']md5["'']|DigestUtils\.md5|MessageDigest\.getInstance\s*\(\s*["'']MD5["''])'
+    severity: HIGH
+    cwe_ids: [CWE-327]
+    fix_hint: "Replace MD5 with SHA-256 or SHA-3 for security hashing"
+    fp_risk: MEDIUM
+
+  - id: SAST-081
+    name: weak_hash_sha1
+    description: "SHA-1 used for security-sensitive hashing — broken for collision resistance"
+    pattern: '(?i)(?:hashlib\.sha1|SHA1(?:Hash)?|new\s*\(\s*["'']sha1["'']|DigestUtils\.sha1|MessageDigest\.getInstance\s*\(\s*["'']SHA-?1["''])'
+    severity: MEDIUM
+    cwe_ids: [CWE-327]
+    fix_hint: "Replace SHA-1 with SHA-256 or SHA-3; SHA-1 is deprecated for signing"
+    fp_risk: MEDIUM
+
+  - id: SAST-082
+    name: weak_cipher_des
+    description: "DES/3DES block cipher — insecure key size"
+    pattern: '(?i)(?:DES\.new|Cipher\.getInstance\s*\(\s*["'']DES["'']|CipherSuite\.TLS_RSA_WITH_3DES|from\s+Crypto\.Cipher\s+import\s+DES)'
+    severity: HIGH
+    cwe_ids: [CWE-327]
+    fix_hint: "Use AES-256-GCM instead of DES/3DES"
+    fp_risk: MEDIUM
+
+  - id: SAST-083
+    name: weak_cipher_rc4
+    description: "RC4 stream cipher — cryptographically broken"
+    pattern: '(?i)(?:RC4|ARC4|from\s+Crypto\.Cipher\s+import\s+ARC4|arcfour)'
+    severity: HIGH
+    cwe_ids: [CWE-327]
+    fix_hint: "Replace RC4 with AES-256-GCM or ChaCha20-Poly1305"
+    fp_risk: LOW
+
+  - id: SAST-084
+    name: static_iv_hardcoded
+    description: "Hardcoded IV/nonce in symmetric encryption — breaks IND-CPA security"
+    pattern: '(?i)(?:iv\s*=\s*["''][0-9a-fA-F]{16,32}["'']|nonce\s*=\s*["''][0-9a-fA-F]{24,32}["'']|IV\s*=\s*b["''][\x00-\xff]{8,}["''])'
+    severity: HIGH
+    cwe_ids: [CWE-329]
+    fix_hint: "Always generate IVs/nonces randomly with os.urandom() or secrets module"
+    fp_risk: LOW
+
+  - id: SAST-085
+    name: insecure_random_secret
+    description: "random.random()/random.randint() used for secrets — not cryptographically secure"
+    pattern: '(?i)(?:random\.random\(\)|random\.randint\(|random\.choice\().{0,80}(?:token|secret|key|password|salt|otp|code|pin|nonce)'
+    severity: HIGH
+    cwe_ids: [CWE-338]
+    fix_hint: "Use secrets.token_hex() or os.urandom() for security-sensitive random values"
+    fp_risk: MEDIUM
+
+  # ─── Risky File Access (CodeGuard / defenseclaw) ──────────────────────────────
+  - id: SAST-090
+    name: path_traversal_open
+    description: "File open() with user-controlled path — path traversal risk"
+    pattern: '(?i)(?:open\s*\(|Path\s*\(|pathlib\.Path\s*\().{0,60}(?:request\.|args\.|params\.|environ\.|getenv\(|user_input|untrusted|unvalidated)'
+    severity: HIGH
+    cwe_ids: [CWE-22]
+    fix_hint: "Resolve and validate paths against an allowlist before opening; reject '..' sequences"
+    fp_risk: HIGH
+
+  - id: SAST-091
+    name: arbitrary_file_write
+    description: "File write with user-controlled filename — arbitrary write risk"
+    pattern: '(?i)(?:open\s*\(.{0,60}(?:\"w\"|\"wb\"|\"a\"|\"ab\")\s*\)|write\s*\().{0,80}(?:request\.|args\.|params\.|user_input|untrusted|filename|filepath|path)'
+    severity: HIGH
+    cwe_ids: [CWE-73]
+    fix_hint: "Validate and sanitize filenames; use a fixed output directory and reject path separators"
+    fp_risk: HIGH
+
+  - id: SAST-092
+    name: unsafe_tempfile
+    description: "tempfile.mktemp() — insecure temporary file with TOCTOU race"
+    pattern: '(?i)tempfile\.mktemp\s*\('
+    severity: MEDIUM
+    cwe_ids: [CWE-377]
+    fix_hint: "Use tempfile.mkstemp() or tempfile.NamedTemporaryFile() instead"
+    fp_risk: LOW
+
+  - id: SAST-093
+    name: unsafe_zipslip
+    description: "Zip/tar extraction without path validation — ZipSlip attack vector"
+    pattern: '(?i)(?:\.extract\s*\(|\.extractall\s*\().{0,80}(?:member|path|name|arcname|filename)'
+    severity: HIGH
+    cwe_ids: [CWE-22]
+    fix_hint: "Validate extracted paths to ensure they stay within the target directory"
+    fp_risk: MEDIUM
+
+  # ─── Supply Chain / Agent Skill Patterns (defenseclaw CodeGuard) ─────────────
+  - id: SAST-100
+    name: skill_hardcoded_webhook
+    description: "Hardcoded webhook/exfiltration URL in agent skill or tool definition"
+    pattern: '(?i)(?:https?://(?!(?:api\.openai\.com|api\.anthropic\.com|huggingface\.co|localhost|127\.0\.0\.1))[a-z0-9.\-]+\.[a-z]{2,}/[^\s"'']{0,100})(?:.{0,200}(?:send|post|upload|exfil|webhook|callback|notify))'
+    severity: HIGH
+    cwe_ids: [CWE-506]
+    fix_hint: "Remove hardcoded webhook URLs from skill definitions; use environment variables"
+    fp_risk: HIGH
+
+  - id: SAST-101
+    name: pip_install_subprocess
+    description: "pip install via subprocess — potential supply chain injection"
+    pattern: '(?i)subprocess\.(?:run|call|check_output|Popen)\s*\([^)]*pip\s+install'
+    severity: HIGH
+    cwe_ids: [CWE-78, CWE-506]
+    fix_hint: "Pin dependencies in requirements.txt; avoid dynamic pip install in runtime code"
+    fp_risk: MEDIUM
+
+  - id: SAST-102
+    name: unsafe_importlib_load
+    description: "importlib loading dynamically constructed module name — code injection risk"
+    pattern: '(?i)importlib\.(?:import_module|util\.spec_from_file_location)\s*\(.{0,80}(?:\+|format\(|f["'']|\.join\(|input\(|request\.|args\.)'
+    severity: CRITICAL
+    cwe_ids: [CWE-502, CWE-94]
+    fix_hint: "Never dynamically construct module names from user input"
+    fp_risk: MEDIUM
+
+  # ─── Agentic / LLM-Specific Code Patterns ────────────────────────────────────
+  - id: SAST-110
+    name: langchain_dangerous_tools
+    description: "LangChain ShellTool or PythonREPL enabled — executes arbitrary commands"
+    pattern: '(?i)(?:ShellTool\s*\(\)|BashProcess\s*\(\)|PythonREPLTool\s*\(\)|human_as_tool\s*=\s*True)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78, CWE-94]
+    fix_hint: "Disable or sandbox ShellTool/PythonREPL; require explicit user confirmation for shell access"
+    fp_risk: LOW
+
+  - id: SAST-111
+    name: autogen_human_input_never
+    description: "AutoGen agent with human_input_mode=NEVER — fully autonomous, no human oversight"
+    pattern: '(?i)human_input_mode\s*=\s*["'']NEVER["'']'
+    severity: HIGH
+    cwe_ids: [CWE-284]
+    fix_hint: "Set human_input_mode=ALWAYS or TERMINATE for production agents"
+    fp_risk: LOW
+
+  - id: SAST-112
+    name: openai_allow_dangerous_requests
+    description: "allow_dangerous_deserialization or allow_dangerous_requests=True — unsafe loading"
+    pattern: '(?i)allow_dangerous_(?:deserialization|requests)\s*=\s*True'
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Never set allow_dangerous_deserialization=True on untrusted data sources"
+    fp_risk: LOW
+
+  - id: SAST-113
+    name: crewai_verbose_with_secrets
+    description: "CrewAI/LangGraph verbose mode may log sensitive tool results and API keys"
+    pattern: '(?i)(?:verbose\s*=\s*True|verbose\s*=\s*2).{0,200}(?:api_key|secret|token|password|credential)'
+    severity: MEDIUM
+    cwe_ids: [CWE-532]
+    fix_hint: "Disable verbose mode in production; ensure secrets are not passed as plain arguments"
+    fp_risk: HIGH
+
+  - id: SAST-114
+    name: mcp_tool_unauthenticated
+    description: "MCP server tool registered without authentication check"
+    pattern: '(?i)(?:@mcp\.tool\(\)|server\.tool\(\)|add_tool\s*\().{0,200}(?:def\s+\w+\s*\([^)]*\)\s*:(?!.*(?:auth|token|permission|verify|check_auth|require_auth)))'
+    severity: HIGH
+    cwe_ids: [CWE-306]
+    fix_hint: "Add authentication/authorization checks to all MCP tool handlers"
+    fp_risk: HIGH
+
+  - id: SAST-115
+    name: agent_memory_unvalidated_write
+    description: "Agent writes to memory/vector store from unvalidated LLM output — memory poisoning risk"
+    pattern: '(?i)(?:memory\.(?:save|add|store|insert|upsert)|vectorstore\.add_texts\s*\(|collection\.add\s*\().{0,200}(?:response|completion|output|generated|llm_output|chain_output)'
+    severity: HIGH
+    cwe_ids: [CWE-20]
+    fix_hint: "Validate and sanitize LLM output before storing in agent memory or vector stores"
+    fp_risk: MEDIUM
+
+# =============================================================================
+# Reverse Shell Detection (SAST-200–SAST-214)
+# =============================================================================
+
+  - id: SAST-200
+    name: bash_dev_tcp_reverse_shell
+    description: "bash /dev/tcp reverse shell — direct TCP connection back to attacker"
+    pattern: '/dev/(?:tcp|udp)/[0-9a-zA-Z.\-]+/\d{1,5}'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove /dev/tcp shell spawning; never include reverse shell commands in source code"
+    fp_risk: LOW
+
+  - id: SAST-201
+    name: bash_interactive_redirect_shell
+    description: "bash -i >& /dev/tcp ... 0>&1 interactive reverse shell pattern"
+    pattern: 'bash\s+-[ic]\s+[''"].*(?:/dev/tcp|/dev/udp)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove bash redirect-based reverse shell; this is a clear backdoor indicator"
+    fp_risk: LOW
+
+  - id: SAST-202
+    name: netcat_e_shell
+    description: "netcat/ncat -e spawning /bin/bash|sh — classic reverse shell"
+    pattern: '(?:nc|ncat|netcat)\b.*-e\s+/bin/(?:bash|sh|zsh|dash)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "netcat -e /bin/sh is a backdoor; remove from all deployment code"
+    fp_risk: LOW
+
+  - id: SAST-203
+    name: mkfifo_reverse_shell
+    description: "mkfifo /tmp/... — named pipe used as reverse shell conduit"
+    pattern: 'mkfifo\s+/tmp/[a-zA-Z0-9_.\-]+'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Named pipe reverse shells must be removed; audit commit history"
+    fp_risk: LOW
+
+  - id: SAST-204
+    name: socat_pty_shell
+    description: "socat EXEC:/bin/bash PTY reverse shell"
+    pattern: 'socat\b.*EXEC:[''"]?/bin/(?:bash|sh)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove socat shell execution; use authenticated, encrypted channels only"
+    fp_risk: LOW
+
+  - id: SAST-205
+    name: python_socket_reverse_shell
+    description: "Python socket.connect() reverse shell one-liner"
+    pattern: 'python[23]?\s+-c\s+[''"].*import\s+socket.*(?:connect|SOCK_STREAM)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Python inline socket reverse shells are backdoors; remove immediately"
+    fp_risk: LOW
+
+  - id: SAST-206
+    name: perl_reverse_shell
+    description: "Perl use Socket; connect() reverse shell"
+    pattern: 'perl\s+-e\s+[''"].*use\s+Socket.*connect'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove Perl socket reverse shell; audit all one-liner command invocations"
+    fp_risk: LOW
+
+  - id: SAST-207
+    name: ruby_rsocket_shell
+    description: "Ruby -rsocket reverse shell one-liner"
+    pattern: 'ruby\s+-rsocket\s+-e'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove Ruby socket reverse shell"
+    fp_risk: LOW
+
+  - id: SAST-208
+    name: php_fsockopen_shell
+    description: "PHP fsockopen()-based reverse shell"
+    pattern: 'php\s+-r\s+[''"].*fsockopen'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove PHP reverse shell from scripts; enforce PHP code review"
+    fp_risk: LOW
+
+  - id: SAST-209
+    name: powershell_tcp_client
+    description: "PowerShell New-Object Net.Sockets.TCPClient reverse shell"
+    pattern: '(?i)powershell.*New-Object.*Net\.Sockets\.TCPClient'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove PowerShell TCPClient reverse shell from all scripts"
+    fp_risk: LOW
+
+  - id: SAST-210
+    name: powershell_encoded_command
+    description: "PowerShell -EncodedCommand base64 obfuscation"
+    pattern: '(?i)powershell(?:\.exe)?\s+(?:-[Ee]nc(?:odedCommand)?|-[Ee])\s+'
+    severity: CRITICAL
+    cwe_ids: [CWE-78, CWE-116]
+    fix_hint: "Avoid PowerShell -EncodedCommand in production; use plain scripts with logging"
+    fp_risk: MEDIUM
+
+  - id: SAST-211
+    name: powershell_iex_download
+    description: "PowerShell IEX(DownloadString) fileless execution"
+    pattern: '(?i)IEX\s*\(\s*(?:New-Object|iwr|Invoke-WebRequest).*DownloadString'
+    severity: CRITICAL
+    cwe_ids: [CWE-494]
+    fix_hint: "Never use IEX with remote URLs; download-and-verify instead"
+    fp_risk: LOW
+
+  - id: SAST-212
+    name: curl_pipe_bash
+    description: "curl output piped directly to bash (fileless dropper)"
+    pattern: '(?i)curl\s+(?:-[a-zA-Z]+\s+[^\s]+\s+)*https?://[^\s]+\s*\|\s*(?:ba)?sh'
+    severity: CRITICAL
+    cwe_ids: [CWE-494]
+    fix_hint: "Download, verify checksum/signature, then execute — never pipe to shell"
+    fp_risk: MEDIUM
+
+  - id: SAST-213
+    name: wget_pipe_bash
+    description: "wget output piped directly to bash (fileless dropper)"
+    pattern: '(?i)wget\s+(?:-[a-zA-Z]+\s+[^\s]+\s+)*https?://[^\s]+\s*\|\s*(?:ba)?sh'
+    severity: CRITICAL
+    cwe_ids: [CWE-494]
+    fix_hint: "Download, verify checksum/signature, then execute — never pipe to shell"
+    fp_risk: MEDIUM
+
+  - id: SAST-214
+    name: base64_pipe_to_shell
+    description: "base64 -d | bash — executing base64-encoded payloads"
+    pattern: '(?i)base64\s+(?:-d|--decode)\s*\|\s*(?:bash|sh|zsh)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Never pipe base64-decoded content to shell; inspect content before execution"
+    fp_risk: LOW
+
+# =============================================================================
+# Web Shell Detection (SAST-220–SAST-229)
+# =============================================================================
+
+  - id: SAST-220
+    name: php_eval_web_shell
+    description: "PHP eval() with HTTP input — classic one-liner web shell"
+    pattern: '(?i)eval\s*\(\s*(?:\$_(?:GET|POST|REQUEST|COOKIE)|base64_decode\s*\(\s*\$_)'
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "Remove eval() with user input; enforce a Web Application Firewall"
+    fp_risk: LOW
+
+  - id: SAST-221
+    name: php_system_user_input
+    description: "PHP system/exec/shell_exec with $_GET/$_POST input"
+    pattern: '(?i)(?:system|exec|shell_exec|passthru|popen)\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Never pass HTTP input directly to shell functions"
+    fp_risk: LOW
+
+  - id: SAST-222
+    name: php_preg_replace_e
+    description: "PHP preg_replace /e modifier code execution (deprecated in PHP 7)"
+    pattern: '(?i)preg_replace\s*\(\s*[''"][^'']*\/e[''"]'
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "Replace preg_replace /e with preg_replace_callback"
+    fp_risk: MEDIUM
+
+  - id: SAST-223
+    name: php_assert_code_exec
+    description: "PHP assert() used as code execution with user input"
+    pattern: '(?i)assert\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE)'
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "assert() with user input is a web shell; remove or restrict"
+    fp_risk: LOW
+
+  - id: SAST-224
+    name: php_base64_eval_shell
+    description: "PHP eval(base64_decode(...)) — obfuscated web shell"
+    pattern: '(?i)eval\s*\(\s*base64_decode\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "eval(base64_decode) is a common web shell obfuscation pattern; remove"
+    fp_risk: LOW
+
+  - id: SAST-225
+    name: jsp_runtime_exec
+    description: "JSP Runtime.getRuntime().exec() — JSP web shell execution"
+    pattern: '(?i)Runtime\.getRuntime\(\)\.exec\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "Remove JSP shell execution; use parameterized commands or remove JSP shell"
+    fp_risk: LOW
+
+  - id: SAST-226
+    name: aspx_request_eval
+    description: "ASP.NET Request[...] in eval/execute (ASPX shell)"
+    pattern: '(?i)<%.*?(?:Eval|Execute|Response\.Write)\s*\(\s*Request\s*\['
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "Remove ASP.NET web shell code; enforce static code analysis pre-deploy"
+    fp_risk: LOW
+
+# =============================================================================
+# Persistence Mechanisms (SAST-230–SAST-239)
+# =============================================================================
+
+  - id: SAST-230
+    name: crontab_reverse_shell
+    description: "Crontab entry writing reverse shell or downloading payload"
+    pattern: '(?i)(?:crontab\s+-[lu]|echo.*cron(?:tab)?.*>>?\s*/etc/cron)'
+    severity: CRITICAL
+    cwe_ids: [CWE-693]
+    fix_hint: "Crontab modifications must be approved and audited; remove malicious entries"
+    fp_risk: MEDIUM
+
+  - id: SAST-231
+    name: authorized_keys_write
+    description: "SSH authorized_keys modification for persistent backdoor access"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*authorized_keys'
+    severity: CRITICAL
+    cwe_ids: [CWE-522]
+    fix_hint: "SSH key distribution must use configuration management, not shell scripts"
+    fp_risk: MEDIUM
+
+  - id: SAST-232
+    name: systemd_service_implant
+    description: "Creating systemd service file for persistence"
+    pattern: '(?i)(?:cat|tee|echo)\s+.*>\s*/etc/systemd/system/[a-zA-Z0-9_.\-]+\.service'
+    severity: CRITICAL
+    cwe_ids: [CWE-693]
+    fix_hint: "Systemd unit file creation must be via configuration management only"
+    fp_risk: MEDIUM
+
+  - id: SAST-233
+    name: rc_local_persistence
+    description: "Writing to /etc/rc.local for boot-time persistence"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*(?:/etc/rc\.local|/etc/init\.d/)'
+    severity: HIGH
+    cwe_ids: [CWE-693]
+    fix_hint: "Use proper init system; do not write to rc.local programmatically"
+    fp_risk: MEDIUM
+
+  - id: SAST-234
+    name: bashrc_persistence
+    description: "Writing to .bashrc/.bash_profile for user-session persistence"
+    pattern: '(?i)(?:echo|tee|>>)\s+.*(?:\.bashrc|\.bash_profile|\.profile|\.zshrc)'
+    severity: HIGH
+    cwe_ids: [CWE-693]
+    fix_hint: "Shell RC file modifications must be user-initiated; remove auto-write"
+    fp_risk: HIGH
+
+  - id: SAST-235
+    name: ld_preload_hijack
+    description: "LD_PRELOAD set to inject malicious shared library"
+    pattern: '(?i)(?:export\s+)?LD_PRELOAD\s*='
+    severity: CRITICAL
+    cwe_ids: [CWE-114]
+    fix_hint: "LD_PRELOAD should never be set dynamically in production code"
+    fp_risk: MEDIUM
+
+  - id: SAST-236
+    name: sudo_nopasswd_injection
+    description: "Writing NOPASSWD entry to sudoers for privilege escalation"
+    pattern: '(?i)echo.*NOPASSWD.*(?:>>?\s*/etc/sudoers|tee.*sudoers)'
+    severity: CRITICAL
+    cwe_ids: [CWE-250]
+    fix_hint: "sudoers must be managed via configuration management with audit trail"
+    fp_risk: LOW
+
+  - id: SAST-237
+    name: suid_bit_on_binary
+    description: "Setting SUID bit on a binary — privilege escalation vector"
+    pattern: '(?i)chmod\s+(?:[ugo]+\+s|[0-9]*[46][0-9]{3})\s+'
+    severity: CRITICAL
+    cwe_ids: [CWE-250]
+    fix_hint: "Avoid SUID bit; use capabilities or sudo rules with specific commands"
+    fp_risk: MEDIUM
+
+# =============================================================================
+# C2 Framework Indicators (SAST-240–SAST-249)
+# =============================================================================
+
+  - id: SAST-240
+    name: metasploit_artifact
+    description: "Metasploit framework code or artifact detected in source"
+    pattern: '(?i)(?:meterpreter|msfvenom|msf[56]?\.rb|Msf::Module|Msf::Exploit)'
+    severity: CRITICAL
+    cwe_ids: [CWE-506]
+    fix_hint: "Metasploit artifacts should never appear in production source; remove immediately"
+    fp_risk: LOW
+
+  - id: SAST-241
+    name: cobalt_strike_artifact
+    description: "Cobalt Strike beacon or stager artifact"
+    pattern: '(?i)(?:CobaltStrike|beacon\.(?:dll|exe|bin|ps1)|cs(?:Beacon|Stage))'
+    severity: CRITICAL
+    cwe_ids: [CWE-506]
+    fix_hint: "Cobalt Strike artifacts detected; immediately escalate to security team"
+    fp_risk: LOW
+
+  - id: SAST-242
+    name: dns_c2_exfil
+    description: "DNS-based C2 beaconing or data exfiltration via TXT records"
+    pattern: '(?i)(?:nslookup|dig)\s+.*\|\s*base64'
+    severity: HIGH
+    cwe_ids: [CWE-506]
+    fix_hint: "DNS exfiltration pattern detected; investigate and remove"
+    fp_risk: MEDIUM
+
+  - id: SAST-243
+    name: github_actions_secrets_exfil
+    description: "GitHub Actions step exfiltrating repository secrets via HTTP"
+    pattern: '(?i)run\s*:\s*(?:\||-)\s*.*curl\s+.*\$\{\{\s*secrets\.'
+    severity: CRITICAL
+    cwe_ids: [CWE-311, CWE-522]
+    fix_hint: "Never curl secrets to external URLs; this is a supply-chain attack"
+    fp_risk: LOW
+
+  - id: SAST-244
+    name: ci_env_dump_exfil
+    description: "CI/CD environment variable dump sent externally (credential theft)"
+    pattern: '(?i)env\s*\|\s*(?:curl|wget|nc)\b'
+    severity: CRITICAL
+    cwe_ids: [CWE-522]
+    fix_hint: "Environment variable exfiltration pattern detected; audit CI pipeline"
+    fp_risk: LOW

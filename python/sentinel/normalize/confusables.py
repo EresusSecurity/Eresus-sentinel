@@ -8,7 +8,6 @@ mapping of the high-hit characters used in real bypass attempts.
 
 from __future__ import annotations
 
-
 _CONFUSABLE_MAP: dict[str, str] = {
     # Cyrillic → Latin
     "а": "a", "А": "A",

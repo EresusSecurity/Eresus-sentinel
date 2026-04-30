@@ -1,7 +1,9 @@
 """CNTK, JAX checkpoint, RKNN model format scanners."""
 from __future__ import annotations
+
 import logging
 from pathlib import Path
+
 from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)

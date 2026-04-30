@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { useAuth } from '../contexts/AuthContext'
+import axios from 'axios'
+import { useAuth } from '../contexts/useAuth'
 import { Shield } from 'lucide-react'
 
 export default function LoginPage() {
@@ -15,8 +16,10 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(username, password)
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Authentication failed'
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.detail || err.message
+        : err instanceof Error ? err.message : 'Authentication failed'
       setError(msg)
     } finally {
       setLoading(false)

@@ -7,7 +7,7 @@ import struct
 from typing import Optional
 
 from ..base import Mutator
-from .opcodes import OPCODE_REGISTRY, SAFE_PUSH_OPCODES, ArgType, opcode_by_byte
+from .opcodes import ArgType, opcode_by_byte
 
 
 class PickleMutator(Mutator):

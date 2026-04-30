@@ -17,9 +17,8 @@ import json
 import logging
 import struct
 from pathlib import Path
-from typing import Optional
 
-from sentinel.finding import Finding, Severity, Location
+from sentinel.finding import Finding, Severity
 
 logger = logging.getLogger(__name__)
 

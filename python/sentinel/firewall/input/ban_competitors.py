@@ -24,12 +24,12 @@ Implementation adds:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from ...finding import Finding, Severity
-from ..base import ScanAction, ScanResult, InputScanner
+from ..base import InputScanner, ScanAction, ScanResult
 
 
 class MatchMode(str, Enum):

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditEvent",
+  "type": "object",
+  "required": ["event_id", "timestamp", "action", "actor"],
+  "properties": {
+    "event_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "action": {"type": "string"},
+    "actor": {"type": "string"},
+    "resource": {"type": "string"},
+    "outcome": {"type": "string", "enum": ["success", "failure", "denied"]},
+    "details": {"type": "object"},
+    "ip_address": {"type": "string"}
+  }
+}

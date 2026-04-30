@@ -11,25 +11,63 @@ patterns:
     - '\b(?:men|boys?)\s+(?:are\s+(?:naturally|inherently)\s+(?:better|superior|smarter))'
     - '\b(?:should|belong)\s+(?:in\s+the\s+)?(?:kitchen|home)\b'
     - '\b(?:man''?s?\s+job|woman''?s?\s+(?:job|place|role))\b'
+    - '\b(?:women|girls?)\s+(?:are|aren''?t)\s+(?:not\s+)?(?:good|bad|better|worse)\s+(?:at|in|with)\s+'
+    - '\b(?:men|boys?)\s+(?:don''?t|do\s+not|never)\s+(?:cry|show\s+emotion|feel)'
+    - '\b(?:women|females?)\s+(?:are|is)\s+(?:too|more|naturally)\s+(?:emotional|irrational|dramatic|hysterical)'
+    - '\b(?:men|males?)\s+(?:are|is)\s+(?:better|smarter|stronger|more\s+(?:logical|rational))\s+than\s+(?:women|females?)'
+    - '\bgender\s+(?:is|determines?)\s+(?:ability|intelligence|competence|skill)'
+    # Broader catchalls for gender stereotypes
+    - '\b(?:women|girls?|females?)\s+(?:are|is)\s+(?:not|never)\s+(?:good|capable|suited)\b'
+    - '\b(?:women|girls?|females?)\s+(?:should(?:n''?t)?|must(?:n''?t)?|need\s+to)\s+(?:stay|remain|be)\s+(?:at\s+home|quiet|submissive|obedient)'
+    - '\b(?:men|males?)\s+(?:are|is)\s+(?:the\s+)?(?:superior|dominant|natural\s+leaders?)\b'
+    - '\b(?:real|true)\s+(?:men|women)\s+(?:don''?t|should|always|never)\b'
+    # Comparative bias: "X are better Y than Z"
+    - '\b(?:men|males?|boys?)\s+(?:are|make)\s+(?:better|worse|stronger|weaker|smarter|more\s+capable)\s+(?:leaders?|managers?|workers?|drivers?|engineers?|scientists?|doctors?)'
+    - '\b(?:women|females?|girls?)\s+(?:are|make)\s+(?:better|worse|stronger|weaker|smarter|more\s+capable)\s+(?:leaders?|managers?|workers?|drivers?|engineers?|scientists?|doctors?)'
 
   racial:
-    - '\b(?:all|typical)\s+(?:black|white|asian|hispanic|latino|arab)\s+(?:people|men|women)\s+(?:are|tend\s+to)'
+    - '\b(?:all|typical|most|every)\s+(?:black|white|asian|hispanic|latino|arab|african|indian|chinese|mexican|jewish)\s+(?:people|men|women|folks?|individuals?|persons?)\s+(?:are|tend\s+to|always|never|can''?t)'
     - '\b(?:racially?\s+(?:superior|inferior))\b'
     - '\b(?:civilized|uncivilized)\s+(?:race|people|culture)s?\b'
+    - '\b(?:black|white|asian|hispanic|arab)\s+(?:people|men|women)\s+(?:are|is)\s+(?:lazy|stupid|violent|criminal|dirty|smelly|cheap|sneaky|greedy)'
+    - '\b(?:those|these|the)\s+(?:people|immigrants?|foreigners?)\s+(?:are|should)\s+(?:all|go\s+back|be\s+deported|not\s+belong)'
+    - '\b(?:race|ethnicity|skin\s+color)\s+(?:determines?|predicts?|affects?)\s+(?:intelligence|ability|character|behavior)'
+    # Broader catchalls for racial generalizations
+    - '\b(?:black|white|asian|hispanic|latino|arab|african|indian|chinese|mexican|jewish)\s+(?:people|community|communities|culture)\s+(?:are|is)\s+(?:known\s+for|responsible\s+for|prone\s+to)\b'
+    - '\b(?:certain|some)\s+(?:races?|ethnicities|ethnic\s+groups?)\s+(?:are|is)\s+(?:more|less|inherently|naturally)\s+(?:intelligent|violent|lazy|hardworking|criminal)\b'
+    # Positive stereotype generalizations (still biased)
+    - '\b(?:black|white|asian|hispanic|latino|arab|african|indian|chinese|mexican|jewish)\s+(?:people|men|women|kids?|students?)\s+(?:are|is)\s+(?:(?:all|so|really|naturally|inherently)\s+)?(?:good|great|better|best|smart|gifted|talented|fast|strong)\s+(?:at|in|with)\b'
 
   age:
     - '\b(?:old\s+people|elderly|seniors?)\s+(?:can''?t|cannot|shouldn''?t|are\s+unable)'
     - '\b(?:millennials?|boomers?|gen\s*z)\s+(?:are\s+all|always|ruined)'
-    - '\btoo\s+old\s+to\s+(?:learn|understand|work)\b'
+    - '\btoo\s+old\s+to\s+(?:learn|understand|work|change|adapt)\b'
+    - '\b(?:old|elderly|aged)\s+(?:people|workers?)\s+(?:are|is)\s+(?:useless|incompetent|slow|burden|outdated)'
+    - '\b(?:young\s+people|youth|kids\s+(?:today|these\s+days))\s+(?:are\s+(?:all|so)\s+)?(?:lazy|entitled|stupid|useless|worthless)'
+    # Broader catchalls for age stereotypes
+    - '\b(?:older|younger)\s+(?:people|workers?|generation)\s+(?:just|simply)\s+(?:don''?t|can''?t|won''?t)\s+(?:understand|get\s+it|adapt|keep\s+up)\b'
 
   religion:
-    - '\b(?:all|typical)\s+(?:muslims?|christians?|jews?|hindus?|buddhists?)\s+(?:are|tend\s+to)'
-    - '\b(?:religion\s+of\s+(?:violence|terror|ignorance))\b'
+    - '\b(?:all|typical|most|every)\s+(?:muslims?|christians?|jews?|hindus?|buddhists?|atheists?)\s+(?:are|tend\s+to|want\s+to|always)'
+    - '\b(?:religion\s+of\s+(?:violence|terror|ignorance|hate|evil))\b'
+    - '\b(?:islam|christianity|judaism|hinduism|buddhism)\s+(?:is|promotes?|teaches?)\s+(?:violence|terror|hate|evil|backward|primitive)'
+    - '\b(?:muslims?|christians?|jews?|hindus?)\s+(?:are|is)\s+(?:all\s+)?(?:terrorists?|extremists?|fanatics?|backwards?|ignorant)'
+    # Broader catchall for religious stereotypes
+    - '\b(?:religious|devout|practicing)\s+(?:people|individuals?)\s+(?:are|is)\s+(?:irrational|delusional|brainwashed|ignorant|anti-?science)\b'
 
   disability:
     - '\b(?:disabled|handicapped)\s+(?:people|persons?)\s+(?:can''?t|cannot|shouldn''?t|are\s+(?:burden|useless))'
     - '\b(?:mentally?\s+(?:retarded|deficient)|crippled)\b'
+    - '\b(?:disabled|handicapped|special\s+needs?)\s+(?:people|persons?|individuals?)\s+(?:are|is)\s+(?:a\s+)?(?:burden|useless|incompetent|helpless|drain)'
+    - '\b(?:deaf|blind|wheelchair)\s+(?:people|persons?)\s+(?:can''?t|cannot|shouldn''?t|are\s+unable\s+to)\s+(?:work|contribute|live\s+normally)'
+    # Broader catchall for disability stereotypes
+    - '\b(?:people\s+with\s+disabilities|disabled\s+people)\s+(?:are|is)\s+(?:always|inevitably|inherently)\s+(?:unhappy|suffering|dependent|incapable)\b'
 
   socioeconomic:
     - '\b(?:poor\s+people|low[\s-]income)\s+(?:are\s+(?:lazy|stupid|criminals?|uneducated))'
     - '\b(?:deserve\s+to\s+be\s+(?:poor|homeless))\b'
+    - '\b(?:poor|homeless|welfare)\s+(?:people|individuals?|persons?)\s+(?:are|is)\s+(?:all\s+)?(?:lazy|drug\s+addicts?|criminals?|freeloaders?|parasites?)'
+    - '\b(?:rich|wealthy)\s+(?:people|individuals?)\s+(?:are|is)\s+(?:smarter|harder\s+working|more\s+deserving|better)\s+than'
+    - '\bpoverty\s+is\s+(?:a\s+)?(?:choice|their\s+(?:own\s+)?fault|deserved)\b'
+    # Broader catchall for socioeconomic stereotypes
+    - '\b(?:poor|lower\s+class|working\s+class)\s+(?:people|communities)\s+(?:are|is)\s+(?:responsible\s+for|to\s+blame\s+for)\s+(?:their\s+own|their)\b'

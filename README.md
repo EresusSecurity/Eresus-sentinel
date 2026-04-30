@@ -11,6 +11,10 @@
 
 Sentinel provides deterministic, YAML-driven security scanning across the entire AI stack — from model artifacts and prompt firewalls to supply chain auditing and red team automation. Zero AI required to produce findings; AI is an optional enrichment layer.
 
+<p align="center">
+  <img src="demo.gif" alt="Eresus Sentinel Demo" width="700">
+</p>
+
 ---
 
 ## Security Domains

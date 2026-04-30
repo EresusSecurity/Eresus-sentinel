@@ -7,7 +7,7 @@
 #   docker run --gpus all -p 8080:8080 eresus/sentinel:cuda
 # ============================================================================
 
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.2.1-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.source="https://github.com/eresus-security/sentinel"
 LABEL org.opencontainers.image.title="Eresus Sentinel (CUDA)"

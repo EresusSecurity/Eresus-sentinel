@@ -102,7 +102,7 @@ jobs:
           cp scripts/completions/sentinel.zsh  completions-bundle/
           cp scripts/completions/sentinel.fish completions-bundle/
           tar czf dist/sentinel-completions.tar.gz -C completions-bundle .
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true

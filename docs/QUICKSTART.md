@@ -92,6 +92,15 @@ sentinel dashboard
 Open `http://127.0.0.1:8080`. For a remote server, bind explicitly with
 `sentinel dashboard --host 0.0.0.0 --port 8080` and put it behind TLS/auth.
 
+When running from source, build the dashboard assets first. Vite requires
+Node.js 20.19+:
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
 ## Python API
 
 ```python

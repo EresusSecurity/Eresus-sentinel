@@ -5,7 +5,7 @@
 # the prompt does not contain actual PII values yet.
 
 rules:
-  - id: FIREWALL-INPUT-120
+  - id: FIREWALL-INPUT-130
     name: bulk_pii_database_request
     title: Bulk PII extraction request
     description: User is requesting bulk extraction of sensitive customer or user records from a datastore.
@@ -31,7 +31,7 @@ rules:
       - CWE-359
     remediation: Block requests for bulk sensitive data extraction unless explicitly authorized by a verified policy context.
 
-  - id: FIREWALL-INPUT-121
+  - id: FIREWALL-INPUT-131
     name: sensitive_record_store_export
     title: Sensitive datastore export request
     description: User is asking to export or dump a datastore containing sensitive identity or payment fields.
@@ -58,4 +58,4 @@ rules:
 benign_context_patterns:
   - >-
     (?ix)
-    \b(?:schema|schemas|column\s+names?|field\s+names?|data\s+dictionary|erd|documentation|docs|synthetic|fake|mock|sample|redacted|test\s+(?:data|fixture)|unit\s+test|policy|dlp|detect|protect|classify)\b
+    \b(?:schema|schemas|column\s+names?|field\s+names?|data\s+dictionary|erd|documentation|docs|synthetic|fake|mock|sample|redacted|test\s+(?:data|fixture)|unit\s+test)\b

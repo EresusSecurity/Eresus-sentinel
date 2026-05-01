@@ -18,14 +18,7 @@ class DataExfiltrationScanner(InputScanner):
     def scan(self, prompt: str) -> ScanResult:
         if not prompt or not self._rules:
             return ScanResult(sanitized=prompt, action=ScanAction.PASS, risk_score=0.0)
-
-        if any(pattern.search(prompt) for pattern in self._benign_contexts):
-            return ScanResult(
-                sanitized=prompt,
-                action=ScanAction.PASS,
-                risk_score=0.0,
-                metadata={"suppressed_by": "benign_data_context"},
-            )
+        benign_context = any(pattern.search(prompt) for pattern in self._benign_contexts)
 
         findings: list[Finding] = []
         max_risk = 0.0
@@ -42,7 +35,7 @@ class DataExfiltrationScanner(InputScanner):
             should_block = should_block or action == "block"
             max_risk = max(max_risk, float(rule.get("risk_score", 0.9)))
             findings.append(Finding.firewall_input(
-                rule_id=rule.get("id", "FIREWALL-INPUT-120"),
+                rule_id=rule.get("id", "FIREWALL-INPUT-130"),
                 title=rule.get("title", "Data exfiltration request"),
                 description=rule.get(
                     "description",
@@ -61,7 +54,13 @@ class DataExfiltrationScanner(InputScanner):
             ))
 
         if not findings:
-            return ScanResult(sanitized=prompt, action=ScanAction.PASS, risk_score=0.0)
+            metadata = {"suppressed_by": "benign_data_context"} if benign_context else None
+            return ScanResult(
+                sanitized=prompt,
+                action=ScanAction.PASS,
+                risk_score=0.0,
+                metadata=metadata,
+            )
 
         return ScanResult(
             sanitized=prompt,

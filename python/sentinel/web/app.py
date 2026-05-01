@@ -39,7 +39,7 @@ def create_dashboard_app(
     try:
         from fastapi import FastAPI, HTTPException, Request
         from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import FileResponse, JSONResponse
+        from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
         from fastapi.staticfiles import StaticFiles
     except ImportError:
         raise ImportError(
@@ -154,5 +154,29 @@ def create_dashboard_app(
                 if file_path.is_file() and str(file_path).startswith(str(_DIST_DIR.resolve())):
                     return FileResponse(file_path)
             return FileResponse(_DIST_DIR / "index.html")
+    else:
+        @app.get("/{path:path}")
+        async def spa_missing(path: str):
+            if path.startswith("api/") or path == "health":
+                raise HTTPException(status_code=404, detail="Not found")
+            return HTMLResponse(
+                status_code=503,
+                content=(
+                    "<!doctype html><html><head><meta charset='utf-8'>"
+                    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                    "<title>Eresus Sentinel Dashboard</title>"
+                    "<style>body{font-family:system-ui,sans-serif;background:#0b0f19;"
+                    "color:#e5e7eb;margin:0;display:grid;place-items:center;min-height:100vh}"
+                    "main{max-width:720px;padding:32px}code{background:#111827;"
+                    "padding:2px 6px;border-radius:4px}</style></head><body><main>"
+                    "<h1>Dashboard frontend is not built</h1>"
+                    "<p>The Sentinel API is running, but the React dashboard assets "
+                    "are missing from <code>python/sentinel/web/dist</code>.</p>"
+                    "<p>Build with Node.js 20.19+:</p>"
+                    "<pre><code>cd frontend\nnpm install\nnpm run build</code></pre>"
+                    "<p>API docs remain available at <code>/api/docs</code>.</p>"
+                    "</main></body></html>"
+                ),
+            )
 
     return app

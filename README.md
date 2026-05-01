@@ -191,6 +191,10 @@ export SENTINEL_PASSWORD=change-me
 sentinel dashboard
 # Open http://127.0.0.1:8080
 
+# If running from source and the UI is missing:
+# Node.js 20.19+ is required by Vite/React Router.
+cd frontend && npm install && npm run build
+
 # Start API server
 sentinel serve --host 0.0.0.0 --port 8080
 

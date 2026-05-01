@@ -711,6 +711,7 @@ def dispatch_multi_agent(
     from sentinel.agent.multi_agent import (
         CascadingHallucinationDetector,
         CrossContaminationTester,
+        MemoryPoisoningSimulator,
     )
 
     findings: list[Finding] = []
@@ -732,6 +733,13 @@ def dispatch_multi_agent(
         tester = CrossContaminationTester()
         for ma, mb in agent_pairs:
             findings.extend(tester.run_from_manifests(ma, mb))
+
+    if "memory_poisoning" in enabled:
+        simulator = MemoryPoisoningSimulator()
+        for manifest in agents:
+            findings.extend(simulator.scan_manifest(manifest))
+        for ma, mb in agent_pairs:
+            findings.extend(simulator.run_from_manifests(ma, mb))
 
     return findings
 

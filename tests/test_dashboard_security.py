@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+import sentinel.web.app as web_app_module
 from sentinel.web.app import create_dashboard_app
 
 
@@ -45,6 +46,20 @@ def test_dashboard_public_health_does_not_expose_instance_id(monkeypatch):
 
     assert response.status_code == 200
     assert "instance_id" not in response.json()
+    assert response.json()["web_ui"] in {"ready", "missing"}
+
+
+def test_dashboard_missing_dist_returns_build_hint(monkeypatch, tmp_path):
+    monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
+    missing_dist = tmp_path / "missing-dist"
+    monkeypatch.setattr(web_app_module, "_DIST_DIR", missing_dist)
+    client = TestClient(web_app_module.create_dashboard_app())
+
+    response = client.get("/")
+
+    assert response.status_code == 503
+    assert "Dashboard frontend is not built" in response.text
+    assert "/api/docs" in response.text
 
 
 def test_dashboard_http_demo_does_not_upgrade_assets(monkeypatch):

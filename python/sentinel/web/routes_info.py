@@ -3,6 +3,7 @@
 import logging
 import sys
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -149,10 +150,13 @@ async def api_history():
 
 @router.get("/health")
 async def health():
+    dist_dir = Path(__file__).parent / "dist"
+    web_ui_ready = dist_dir.is_dir() and (dist_dir / "index.html").is_file()
     return {
         "status": "healthy",
         "version": _version,
         "uptime_s": round(time.time() - _state.start_time, 1),
         "scans_processed": len(_state.scan_history),
         "artifacts_processed": len(_state.artifact_history),
+        "web_ui": "ready" if web_ui_ready else "missing",
     }

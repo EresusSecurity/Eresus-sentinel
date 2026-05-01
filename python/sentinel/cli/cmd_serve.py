@@ -39,11 +39,14 @@ def cmd_serve(args):
         try:
             import uvicorn
 
-            from sentinel.web.app import create_dashboard_app
+            from sentinel.web.app import _DIST_DIR, create_dashboard_app
             app = create_dashboard_app(policy_path=policy or None, host=host, port=port)
             console.print("  [dim]React SPA + hardened JSON API[/dim]")
             console.print("  [dim]CORS · CSP · rate-limit · input validation[/dim]")
             console.print(f"  [dim]API docs: {dashboard_url}/api/docs[/dim]")
+            if not (_DIST_DIR.is_dir() and (_DIST_DIR / "index.html").is_file()):
+                _warn("React SPA is not built; browser will show a build-missing page")
+                console.print("  [dim]build: cd frontend && npm install && npm run build[/dim]")
             if getattr(args, "open_browser", False):
                 import webbrowser
                 webbrowser.open(dashboard_url)

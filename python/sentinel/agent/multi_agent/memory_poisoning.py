@@ -89,7 +89,7 @@ class MemoryPoisoningSimulator:
             lower_response = response.lower()
             matched = [kw for kw in _RISK_KEYWORDS if kw in lower_response]
             if matched:
-                findings.append(Finding(
+                findings.append(Finding.agent_mcp(
                     rule_id="MA-020",
                     title="Memory poisoning payload persisted across sessions",
                     description=(
@@ -98,7 +98,7 @@ class MemoryPoisoningSimulator:
                         f"Matched risk keywords: {', '.join(sorted(matched))}."
                     ),
                     severity=Severity.CRITICAL,
-                    source=f"multi_agent/{inject_name}→{check_name}",
+                    target=f"multi_agent/{inject_name}→{check_name}",
                     evidence=(
                         f"prompt={check_prompt!r} | "
                         f"keywords={sorted(matched)} | "

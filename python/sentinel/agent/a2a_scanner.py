@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from sentinel.agent.mcp.negation import NEGATION_PATTERN, _WINDOW_CHARS
+from sentinel.agent.mcp.negation import NEGATION_PATTERN, _WINDOW_CHARS, is_all_occurrences_negated
 from sentinel.finding import Finding, Location, Severity
 from sentinel.rules import load_yaml
 
@@ -172,8 +172,24 @@ def _looks_like_agent_card(path: Path, data: Any, raw_text: str) -> bool:
             str(marker).lower()
             for marker in _load_a2a_rules().get("agent_card_markers", [])
         }
-        if lowered_keys & markers:
+        mcp_only_markers = {
+            "tools",
+            "prompts",
+            "resources",
+            "inputschema",
+            "input_schema",
+            "serverinfo",
+            "servercapabilities",
+        }
+        strong_markers = markers - {"capabilities"}
+        if lowered_keys & strong_markers:
             return True
+        if "capabilities" in lowered_keys and not (lowered_keys & mcp_only_markers):
+            nested = data.get("capabilities")
+            if isinstance(nested, dict):
+                nested_keys = {str(key).lower() for key in nested}
+                if nested_keys & {"skills", "agent", "a2a"}:
+                    return True
         api = data.get("api")
         if isinstance(api, dict) and str(api.get("type", "")).lower() == "a2a":
             return True
@@ -234,18 +250,22 @@ class A2AScanner:
             return []
 
         findings: list[Finding] = []
-        # Only run source_patterns on files with A2A-related context to avoid FPs
-        # on normal source code (exec/eval/subprocess in regular Python = noise)
-        if _has_a2a_context(file_path, raw_text):
-            findings.extend(self._scan_source_patterns(file_path, raw_text))
         if file_path.suffix.lower() == ".json":
             try:
                 data = json.loads(raw_text)
             except json.JSONDecodeError as exc:
-                data = None
-                findings.append(self._finding(_rule("invalid_json"), file_path, str(exc)))
-            if data is not None and _looks_like_agent_card(file_path, data, raw_text):
+                if _has_a2a_context(file_path, raw_text):
+                    findings.append(self._finding(_rule("invalid_json"), file_path, str(exc)))
+                return self._deduplicate(findings)
+            if _looks_like_agent_card(file_path, data, raw_text):
+                findings.extend(self._scan_source_patterns(file_path, raw_text))
                 findings.extend(self._scan_agent_card(file_path, data, raw_text))
+            return self._deduplicate(findings)
+
+        # Only run source_patterns on files with A2A-related context to avoid FPs
+        # on normal source code (exec/eval/subprocess in regular Python = noise).
+        if _has_a2a_context(file_path, raw_text):
+            findings.extend(self._scan_source_patterns(file_path, raw_text))
         return self._deduplicate(findings)
 
     def _scan_source_patterns(self, path: Path, text: str) -> list[Finding]:
@@ -282,9 +302,15 @@ class A2AScanner:
             str(item).lower()
             for item in _load_a2a_rules().get("dangerous_capability_keywords", [])
         ]
-        matched_dangerous = sorted(
-            {keyword for keyword in dangerous_keywords if keyword in text_blob}
-        )
+        matched_dangerous = []
+        for keyword in dangerous_keywords:
+            pattern = r"(?<![a-z0-9_])" + re.escape(keyword) + r"(?![a-z0-9_])"
+            if not re.search(pattern, text_blob):
+                continue
+            if is_all_occurrences_negated(text_blob, keyword):
+                continue
+            matched_dangerous.append(keyword)
+        matched_dangerous = sorted(set(matched_dangerous))
         if matched_dangerous:
             evidence = ", ".join(matched_dangerous[:8])
             findings.append(self._finding(_rule("dangerous_capability"), path, evidence))

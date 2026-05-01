@@ -39,6 +39,34 @@ def test_a2a_scanner_reports_malformed_json(tmp_path):
     assert any(finding.rule_id == "A2A-000" for finding in findings)
 
 
+def test_a2a_scanner_does_not_treat_mcp_manifest_as_agent_card(tmp_path):
+    manifest_path = tmp_path / "mcp.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "serverInfo": {"name": "clean-mcp", "version": "1.0.0"},
+                "capabilities": {"tools": {}},
+                "tools": [
+                    {
+                        "name": "search",
+                        "description": "Search public docs",
+                        "inputSchema": {
+                            "type": "object",
+                            "required": ["q"],
+                            "properties": {"q": {"type": "string", "maxLength": 120}},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = A2AScanner().scan_path(manifest_path)
+
+    assert not any(finding.rule_id.startswith("A2A-") for finding in findings)
+
+
 def test_a2a_scanner_cli_smoke(tmp_path):
     card_path = tmp_path / "agent-card.json"
     card_path.write_text(

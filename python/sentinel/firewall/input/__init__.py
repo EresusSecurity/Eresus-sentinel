@@ -26,6 +26,7 @@ Standalone input scanners:
   - EmotionScanner — 28-category emotion detection
   - AnonymizeScanner — PII anonymization with vault
   - PromptLeakScanner — system prompt extraction detection
+  - DataExfiltrationScanner — sensitive record extraction intent detection
 """
 
 from sentinel.firewall.input.anonymize import AnonymizedEntity, AnonymizeScanner
@@ -38,6 +39,7 @@ from sentinel.firewall.input.ban_topics import BanTopicsScanner, TopicRule
 from sentinel.firewall.input.canary import CanaryInjector, CanaryPlacement
 from sentinel.firewall.input.code import BanCodeScanner, CodeScanner
 from sentinel.firewall.input.cost_scanner import CostGuardScanner
+from sentinel.firewall.input.data_exfiltration import DataExfiltrationScanner
 from sentinel.firewall.input.emotion import EmotionScanner
 from sentinel.firewall.input.encoding import EncodingAttackScanner
 from sentinel.firewall.input.gibberish import GibberishScanner
@@ -91,5 +93,6 @@ __all__ = [
     "PromptLeakScanner",
     "RateLimiterScanner",
     "CostGuardScanner",
+    "DataExfiltrationScanner",
     "PolicyEngine",
 ]

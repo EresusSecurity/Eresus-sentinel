@@ -27,6 +27,7 @@ def _clear_rule_cache():
     """Clear all cached rule data. Useful for testing or hot-reload."""
     load_secret_patterns.cache_clear()
     load_injection_patterns.cache_clear()
+    load_input_data_exfiltration_rules.cache_clear()
     load_sast_rules.cache_clear()
     load_artifact_blocklist.cache_clear()
     load_artifact_allowlist.cache_clear()
@@ -145,6 +146,44 @@ def load_injection_patterns() -> Dict[str, List[Dict[str, Any]]]:
                 continue
         result[category] = compiled
     return result
+
+
+@functools.lru_cache(maxsize=1)
+def load_input_data_exfiltration_rules() -> Dict[str, Any]:
+    """Load input data-exfiltration intent rules and compile regexes."""
+    data = load_yaml("input_data_exfiltration.yaml")
+    if not isinstance(data, dict):
+        return {"rules": [], "benign_context_patterns": []}
+
+    compiled_rules = []
+    for entry in data.get("rules", []):
+        try:
+            compiled = dict(entry)
+            compiled["pattern"] = re.compile(entry["pattern"])
+            compiled_rules.append(compiled)
+        except (AttributeError, KeyError, TypeError, ValueError, re.error) as exc:
+            _log.warning(
+                "rules.py: skipping invalid regex in input_data_exfiltration.yaml "
+                "(id=%r): %s",
+                entry.get("id", entry.get("name", "?")) if isinstance(entry, dict) else "?",
+                exc,
+            )
+
+    benign_contexts = []
+    for pattern in data.get("benign_context_patterns", []):
+        try:
+            benign_contexts.append(re.compile(pattern))
+        except re.error as exc:
+            _log.warning(
+                "rules.py: skipping invalid benign context regex in "
+                "input_data_exfiltration.yaml: %s",
+                exc,
+            )
+
+    return {
+        "rules": compiled_rules,
+        "benign_context_patterns": benign_contexts,
+    }
 
 
 @functools.lru_cache(maxsize=1)

@@ -123,7 +123,7 @@ class DecisionDriftMonitor:
                     if lev_sim < 0.4 or sem_sim < 0.3
                     else Severity.MEDIUM
                 )
-                findings.append(Finding(
+                findings.append(Finding.agent_mcp(
                     rule_id="MA-030",
                     title="Autonomous decision drift detected",
                     description=(
@@ -134,7 +134,7 @@ class DecisionDriftMonitor:
                         "This may indicate policy drift, context poisoning, or a model update."
                     ),
                     severity=severity,
-                    source="multi_agent/drift_monitor",
+                    target="multi_agent/drift_monitor",
                     evidence=(
                         f"prompt={prompt[:80]!r} | "
                         f"lev_sim={lev_sim:.3f} | sem_sim={sem_sim:.3f} | "

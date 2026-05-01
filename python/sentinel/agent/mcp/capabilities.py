@@ -66,6 +66,14 @@ def check_dangerous_capabilities(
 
 
 def _is_benign_capability_context(searchable: str, keyword: str) -> bool:
+    if keyword == "auth":
+        if re.search(
+            r"\b(?:bypass|disable|steal|dump|leak|exfiltrate|read|retrieve|export|forward)\b"
+            r".{0,60}\bauth\b|\bauth\b.{0,60}\b(?:token|secret|credential|cookie|header|bypass)\b",
+            searchable,
+        ):
+            return False
+        return bool(re.search(r'"auth"\s*:', searchable))
     if keyword in {"shell", "bash", "exec", "eval", "system", "subprocess"}:
         return bool(re.search(
             r"\b(?:define|definition|glossary|explain|description|summarize|classify)\b.{0,80}\b"

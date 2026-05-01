@@ -11,6 +11,7 @@ from Session A bleeds into Session B.  Contamination can occur through:
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -21,6 +22,20 @@ logger = logging.getLogger(__name__)
 
 # Unique sentinel value injected in Session A — must NOT appear in Session B
 _CANARY_PREFIX = "SENTINEL_XCONTAM_CANARY"
+
+
+def _manifest_text(manifest: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for value in manifest.values():
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, list):
+            parts.extend(str(item) for item in value)
+        elif isinstance(value, dict):
+            parts.extend(str(item) for item in value.values())
+        else:
+            parts.append(str(value))
+    return " ".join(parts).lower()
 
 
 @dataclass
@@ -74,7 +89,7 @@ class CrossContaminationTester:
                 continue
 
             if canary in response:
-                findings.append(Finding(
+                findings.append(Finding.agent_mcp(
                     rule_id="MA-010",
                     title="Cross-session data contamination detected",
                     description=(
@@ -83,7 +98,7 @@ class CrossContaminationTester:
                         "the agents share persistent state across session boundaries."
                     ),
                     severity=Severity.CRITICAL,
-                    source=f"multi_agent/{name_a}→{name_b}",
+                    target=f"multi_agent/{name_a}→{name_b}",
                     evidence=f"canary={canary!r} found in response",
                     confidence=0.98,
                     cwe_ids=["CWE-668"],
@@ -111,7 +126,7 @@ class CrossContaminationTester:
         scratch_a = manifest_a.get("scratch_dir") or manifest_a.get("working_dir")
         scratch_b = manifest_b.get("scratch_dir") or manifest_b.get("working_dir")
         if scratch_a and scratch_b and scratch_a == scratch_b:
-            findings.append(Finding(
+            findings.append(Finding.agent_mcp(
                 rule_id="MA-011",
                 title="Agents share working directory — contamination risk",
                 description=(
@@ -119,7 +134,7 @@ class CrossContaminationTester:
                     "File-based state written by one agent is readable by the other."
                 ),
                 severity=Severity.HIGH,
-                source=f"multi_agent/{name_a}+{name_b}",
+                target=f"multi_agent/{name_a}+{name_b}",
                 evidence=f"shared_dir={scratch_a!r}",
                 confidence=0.85,
                 cwe_ids=["CWE-668"],
@@ -129,7 +144,7 @@ class CrossContaminationTester:
         vs_a = manifest_a.get("vector_store") or manifest_a.get("memory_endpoint")
         vs_b = manifest_b.get("vector_store") or manifest_b.get("memory_endpoint")
         if vs_a and vs_b and vs_a == vs_b:
-            findings.append(Finding(
+            findings.append(Finding.agent_mcp(
                 rule_id="MA-012",
                 title="Agents share vector store — session isolation broken",
                 description=(
@@ -137,10 +152,51 @@ class CrossContaminationTester:
                     "Embeddings stored by one agent are queryable by the other."
                 ),
                 severity=Severity.CRITICAL,
-                source=f"multi_agent/{name_a}+{name_b}",
+                target=f"multi_agent/{name_a}+{name_b}",
                 evidence=f"shared_vector_store={vs_a!r}",
                 confidence=0.90,
                 cwe_ids=["CWE-668"],
             ))
+
+        text_a = _manifest_text(manifest_a)
+        text_b = _manifest_text(manifest_b)
+        for name, text in ((name_a, text_a), (name_b, text_b)):
+            if re.search(r"\b(?:global|shared|cross[-_ ]?agent|all[-_ ]?memory|read_all_memory)\b", text) and re.search(
+                r"\b(?:memory|context|state|secrets?|credentials?)\b",
+                text.replace("_", " "),
+            ):
+                findings.append(Finding.agent_mcp(
+                    rule_id="MA-013",
+                    title="Agent manifest exposes shared memory access",
+                    description=(
+                        f"{name} declares broad or shared memory access. "
+                        "Cross-agent memory access can leak private session state."
+                    ),
+                    severity=Severity.HIGH,
+                    target=f"multi_agent/{name}",
+                    evidence="shared/global memory access",
+                    confidence=0.86,
+                    cwe_ids=["CWE-668"],
+                ))
+
+        for src_name, dst_name, dst_text in ((name_a, name_b, text_b), (name_b, name_a, text_a)):
+            src_marker = re.escape(str(src_name).lower())
+            if re.search(src_marker, dst_text) and re.search(
+                r"\b(?:copy|forward|send|exfiltrate|leak|share|route)\b.{0,80}\b(?:secrets?|memory|context|private|credentials?)\b",
+                dst_text,
+            ):
+                findings.append(Finding.agent_mcp(
+                    rule_id="MA-014",
+                    title="Agent manifest instructs cross-agent secret relay",
+                    description=(
+                        f"{dst_name} references {src_name} while instructing transfer of private data. "
+                        "This is a deterministic cross-agent contamination risk."
+                    ),
+                    severity=Severity.CRITICAL,
+                    target=f"multi_agent/{src_name}→{dst_name}",
+                    evidence=f"{dst_name} references {src_name} private data flow",
+                    confidence=0.9,
+                    cwe_ids=["CWE-668"],
+                ))
 
         return findings

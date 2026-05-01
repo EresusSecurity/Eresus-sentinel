@@ -108,7 +108,7 @@ class CascadingHallucinationDetector:
             sim = _cosine_similarity(claim, response_b)
 
             if sim >= self.similarity_threshold:
-                findings.append(Finding(
+                findings.append(Finding.agent_mcp(
                     rule_id="MA-001",
                     title="Cascading hallucination detected",
                     description=(
@@ -117,7 +117,7 @@ class CascadingHallucinationDetector:
                         "This indicates cross-agent hallucination propagation."
                     ),
                     severity=Severity.HIGH,
-                    source=f"multi_agent/{name_a}→{name_b}",
+                    target=f"multi_agent/{name_a}→{name_b}",
                     evidence=f"claim={claim[:80]!r} | sim={sim:.3f} | b_response={response_b[:120]!r}",
                     confidence=min(sim, 0.95),
                 ))
@@ -138,7 +138,7 @@ class CascadingHallucinationDetector:
         name_b = manifest_b.get("name", "agent-B")
 
         if ctx_a and ctx_b and ctx_a == ctx_b:
-            findings.append(Finding(
+            findings.append(Finding.agent_mcp(
                 rule_id="MA-002",
                 title="Shared context backend enables hallucination propagation",
                 description=(
@@ -147,7 +147,7 @@ class CascadingHallucinationDetector:
                     "readable by the other, enabling deterministic hallucination cascades."
                 ),
                 severity=Severity.CRITICAL,
-                source=f"multi_agent/{name_a}+{name_b}",
+                target=f"multi_agent/{name_a}+{name_b}",
                 evidence=f"shared_backend={ctx_a!r}",
                 confidence=0.9,
             ))

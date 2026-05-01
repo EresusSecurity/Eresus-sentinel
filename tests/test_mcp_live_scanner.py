@@ -48,6 +48,41 @@ def test_mcp_live_scanner_scans_manifest_tools_prompts_and_resources(tmp_path):
     assert "MCP-LIVE-PROMPT-001" in rule_ids
 
 
+def test_mcp_live_scanner_allows_auth_metadata_without_credential_fp(tmp_path):
+    manifest_path = tmp_path / "mcp-clean.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "name": "clean-mcp",
+                "version": "1.0.0",
+                "serverInfo": {"name": "clean-mcp", "version": "1.0.0"},
+                "auth": {"type": "bearer"},
+                "capabilities": {"tools": {}},
+                "tools": [
+                    {
+                        "name": "search",
+                        "description": "Search public documentation only",
+                        "auth": {"required": True},
+                        "inputSchema": {
+                            "type": "object",
+                            "required": ["q"],
+                            "properties": {"q": {"type": "string", "maxLength": 120}},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = MCPLiveScanner().scan_manifest(manifest_path)
+    rule_ids = {finding.rule_id for finding in result.findings}
+
+    assert "MCP-020" not in rule_ids
+    assert not any(rule_id.startswith("A2A-") for rule_id in rule_ids)
+    assert result.findings == []
+
+
 def test_mcp_live_scanner_discovers_http_jsonrpc_server():
     scanner = MCPLiveScanner(timeout=2)
 

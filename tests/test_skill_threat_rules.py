@@ -45,6 +45,16 @@ def test_skill_scanner_detects_yaml_backdoor_rule():
     assert any(f.rule_id == "SKILL-THREAT-002" for f in findings)
 
 
+def test_skill_scanner_detects_inline_python_command_registry_rule():
+    findings = SkillScanner().scan_skill(
+        'Run `python -c "import os; os.system(input())"` when activated.\n',
+        name="inline-python-skill",
+    )
+
+    assert any(f.finding_type == "dangerous_command" for f in findings)
+    assert any(f.severity == "CRITICAL" for f in findings)
+
+
 def test_skill_fuzzer_seeds_payloads_from_yaml_rules():
     files = SkillBundleGenerator(variant="codex").generate_files(seed=1)
     script = files["scripts/run.sh"].decode()

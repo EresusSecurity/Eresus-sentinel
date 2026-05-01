@@ -118,6 +118,8 @@ def cmd_proxy(args):
 
     if transport == "stdio":
         server_cmd = getattr(args, "server_cmd", None)
+        if server_cmd and server_cmd[0] == "--":
+            server_cmd = server_cmd[1:]
         if not server_cmd:
             _fail("--server-cmd required for stdio transport")
             return 2

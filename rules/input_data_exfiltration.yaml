@@ -1,0 +1,61 @@
+# Eresus Sentinel — Input Data Exfiltration Intent Rules
+#
+# Detects user prompts that request bulk extraction of sensitive records.
+# These are intent rules: they catch requests for PII/regulated data even when
+# the prompt does not contain actual PII values yet.
+
+rules:
+  - id: FIREWALL-INPUT-120
+    name: bulk_pii_database_request
+    title: Bulk PII extraction request
+    description: User is requesting bulk extraction of sensitive customer or user records from a datastore.
+    severity: HIGH
+    confidence: 0.92
+    action: block
+    risk_score: 0.94
+    pattern: >-
+      (?ix)
+      \b(?:list|show|give|provide|return|print|dump|export|extract|retrieve|pull|get)\b
+      .{0,90}
+      \b(?:all|every|entire|full|complete|customer|customers|user|users|client|clients|employee|employees|patient|patients|account|accounts)\b
+      .{0,140}
+      \b(?:emails?|e-mail(?:s)?|email\s+addresses?|social\s+security\s+numbers?|ssn|ssns|credit\s+card(?:\s+(?:numbers?|details?|data))?|cardholder\s+data|phone\s+numbers?|addresses?|pii|personal\s+data|personally\s+identifiable)\b
+      .{0,180}
+      \b(?:database|db|table|records?|customers?|users?|clients?|accounts?|warehouse|crm)\b
+    tags:
+      - owasp:llm06
+      - category:data_exfiltration
+      - data:pii
+    cwe_ids:
+      - CWE-200
+      - CWE-359
+    remediation: Block requests for bulk sensitive data extraction unless explicitly authorized by a verified policy context.
+
+  - id: FIREWALL-INPUT-121
+    name: sensitive_record_store_export
+    title: Sensitive datastore export request
+    description: User is asking to export or dump a datastore containing sensitive identity or payment fields.
+    severity: HIGH
+    confidence: 0.9
+    action: block
+    risk_score: 0.92
+    pattern: >-
+      (?ix)
+      \b(?:dump|export|extract|download|copy|pull|retrieve|enumerate|harvest|scrape)\b
+      .{0,100}
+      \b(?:database|db|table|records?|rows?|customer\s+list|user\s+list|crm|warehouse)\b
+      .{0,160}
+      \b(?:emails?|e-mail(?:s)?|email\s+addresses?|social\s+security\s+numbers?|ssn|ssns|credit\s+card(?:\s+(?:numbers?|details?|data))?|cardholder\s+data|phone\s+numbers?|addresses?|pii|personal\s+data|personally\s+identifiable)\b
+    tags:
+      - owasp:llm06
+      - category:data_exfiltration
+      - data:pii
+    cwe_ids:
+      - CWE-200
+      - CWE-359
+    remediation: Require authorization and least-privilege access controls before exporting sensitive records.
+
+benign_context_patterns:
+  - >-
+    (?ix)
+    \b(?:schema|schemas|column\s+names?|field\s+names?|data\s+dictionary|erd|documentation|docs|synthetic|fake|mock|sample|redacted|test\s+(?:data|fixture)|unit\s+test|policy|dlp|detect|protect|classify)\b

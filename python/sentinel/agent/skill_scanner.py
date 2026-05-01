@@ -459,6 +459,7 @@ class SkillScanner:
         findings = []
 
         findings.extend(self._scan_frontmatter(code, name))
+        findings.extend(self._cmd_analyzer.analyze_script(code, name))
 
         for pat, desc, sev, cwe in PRIVILEGE_ESCALATION_PATTERNS:
             for lineno, line in enumerate(code.split("\n"), 1):

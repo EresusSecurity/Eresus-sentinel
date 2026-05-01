@@ -38,6 +38,10 @@ input_scanners:
     enabled: true
     priority: 60
     on_fail: redact
+  - scanner: data_exfiltration
+    enabled: true
+    priority: 65
+    on_fail: block
   - scanner: ban_substrings
     enabled: true
     priority: 70

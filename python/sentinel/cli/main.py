@@ -112,7 +112,14 @@ def main():
     p.set_defaults(func=cmd_firewall)
 
     p = sub.add_parser("artifact", help="model artifact scan")
-    p.add_argument("path"); p.set_defaults(func=cmd_artifact)
+    p.add_argument("path")
+    p.add_argument(
+        "--show-skipped",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="show files skipped due to unsupported format",
+    )
+    p.set_defaults(func=cmd_artifact)
 
     # ── Pre-commit hook: artifact-scan (accepts multiple staged files) ──
     p = sub.add_parser(
@@ -213,7 +220,7 @@ def main():
     ms.add_argument("target", nargs="?", help="manifest path or HTTP endpoint")
     ms.add_argument("--manifest", help="MCP JSON/YAML manifest path")
     ms.add_argument("--url", help="MCP HTTP JSON-RPC endpoint")
-    ms.add_argument("--stdio-command", nargs="+", help="MCP stdio server command")
+    ms.add_argument("--stdio-command", nargs=argparse.REMAINDER, help="MCP stdio server command")
     ms.add_argument("--timeout", type=float, default=5.0)
     ms.add_argument("-f", "--format", choices=output_formats, default=argparse.SUPPRESS)
     ms.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
@@ -263,7 +270,11 @@ def main():
     p.set_defaults(func=cmd_multi_agent_scan)
 
     p = sub.add_parser("diff", help="git diff scan")
-    p.add_argument("target", nargs="?", default="--staged"); p.set_defaults(func=cmd_diff)
+    p.add_argument("target", nargs="?", default=None)
+    p.add_argument("--staged", action="store_true", help="scan staged git changes")
+    p.add_argument("--unstaged", action="store_true", help="scan unstaged git changes")
+    p.add_argument("--all", action="store_true", help="scan all git changes")
+    p.set_defaults(func=cmd_diff)
 
     p = sub.add_parser("notebook", aliases=["nb"], help="notebook scan")
     p.add_argument("path"); p.set_defaults(func=cmd_notebook)
@@ -343,18 +354,18 @@ def main():
     refs_p.add_argument("-o", "--output", help="output file")
     refs_p.set_defaults(func=cmd_refs, refs_action="inventory")
     refs_inventory = refs_sub.add_parser("inventory", help="show cloned reference inventory")
-    refs_inventory.add_argument("--refs-dir", default=".refs", help="reference clone directory")
-    refs_inventory.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
-    refs_inventory.add_argument("-o", "--output", help="output file")
+    refs_inventory.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory")
+    refs_inventory.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
+    refs_inventory.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     refs_inventory.set_defaults(func=cmd_refs, refs_action="inventory")
     refs_plan = refs_sub.add_parser("plan", help="show P1/P2 execution plan")
-    refs_plan.add_argument("--refs-dir", default=".refs", help="reference clone directory")
-    refs_plan.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
-    refs_plan.add_argument("-o", "--output", help="output file")
+    refs_plan.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory")
+    refs_plan.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
+    refs_plan.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     refs_plan.set_defaults(func=cmd_refs, refs_action="plan")
     refs_parity = refs_sub.add_parser("parity", help="show reference parity manifest")
-    refs_parity.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
-    refs_parity.add_argument("-o", "--output", help="output file")
+    refs_parity.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
+    refs_parity.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     refs_parity.set_defaults(func=cmd_refs, refs_action="parity")
 
     p = sub.add_parser("plugins", help="list discovered scanner plugins")
@@ -444,7 +455,7 @@ def main():
     p.add_argument("--upstream", default="http://localhost:3000", help="upstream MCP server URL")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8080)
-    p.add_argument("--server-cmd", nargs="+", help="MCP server command (for stdio mode)")
+    p.add_argument("--server-cmd", nargs=argparse.REMAINDER, help="MCP server command (for stdio mode)")
     p.set_defaults(func=cmd_proxy)
 
     p = sub.add_parser("playbook", aliases=["pb"], help="attack playbook runner")

@@ -52,8 +52,15 @@ def cmd_supply_chain(args):
 
 def cmd_diff(args):
     from sentinel.cli_dispatch import dispatch_diff
-    _header(f"diff → {args.target}", args=args)
-    findings = _apply_severity_filter(dispatch_diff(args.target), args)
+    target = getattr(args, "target", None)
+    if getattr(args, "all", False):
+        target = "--all"
+    elif getattr(args, "unstaged", False):
+        target = "--unstaged"
+    elif getattr(args, "staged", False) or not target:
+        target = "--staged"
+    _header(f"diff → {target}", args=args)
+    findings = _apply_severity_filter(dispatch_diff(target), args)
     _print_findings(findings, args=args)
     _export(args, findings)
     return 1 if findings else 0
@@ -150,6 +157,8 @@ def cmd_mcp(args):
     manifest = getattr(args, "manifest", None)
     url = getattr(args, "url", None)
     stdio_command = getattr(args, "stdio_command", None)
+    if stdio_command and stdio_command[0] == "--":
+        stdio_command = stdio_command[1:]
     header_label = ""
 
     if manifest or (target and not str(target).startswith(("http://", "https://"))):

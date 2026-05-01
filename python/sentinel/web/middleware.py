@@ -48,7 +48,8 @@ _last_cleanup = time.monotonic()
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers["Content-Security-Policy"] = (
+        is_https = _is_https_request(request)
+        csp = (
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -58,9 +59,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
-            "object-src 'none'; "
-            "upgrade-insecure-requests"
+            "object-src 'none'"
         )
+        if is_https:
+            csp += "; upgrade-insecure-requests"
+        response.headers["Content-Security-Policy"] = csp
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -69,12 +72,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "camera=(), microphone=(), geolocation=(), "
             "payment=(), usb=(), magnetometer=(), gyroscope=()"
         )
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if is_https:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         with suppress(KeyError):
             del response.headers["server"]
         return response
+
+
+def _is_https_request(request: Request) -> bool:
+    """Return true for direct HTTPS or trusted HTTPS proxy headers."""
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    return request.url.scheme == "https" or forwarded_proto.split(",", 1)[0].strip() == "https"
 
 
 # ── Rate Limit ─────────────────────────────────────────────────

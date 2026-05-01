@@ -38,7 +38,7 @@ import logging
 import sys
 from pathlib import Path
 
-from sentinel.finding import Finding, Severity
+from sentinel.finding import Finding, Location, Severity
 
 logger = logging.getLogger(__name__)
 
@@ -364,18 +364,96 @@ def dispatch_agent(target: str) -> list[Finding]:
     """Run agent/MCP security validation."""
     from sentinel.agent.a2a_scanner import A2AScanner
     from sentinel.agent.mcp_validator import MCPValidator
+    from sentinel.agent.skill_scanner import SkillScanner
 
     a2a_scanner = A2AScanner()
+    skill_scanner = SkillScanner()
     validator = MCPValidator()
     path = Path(target)
     findings: list[Finding] = []
 
+    def _is_probable_mcp_manifest(file_path: Path) -> bool:
+        if file_path.suffix.lower() not in {".json", ".yaml", ".yml"}:
+            return False
+        name = file_path.name.lower()
+        if any(token in name for token in ("mcp", "tool", "manifest")):
+            return True
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="ignore")
+            if file_path.suffix.lower() == ".json":
+                data = json.loads(text)
+            else:
+                import yaml
+                data = yaml.safe_load(text)
+        except Exception:
+            return False
+        if isinstance(data, dict):
+            keys = {str(key) for key in data}
+            return bool(keys & {"tools", "prompts", "resources", "inputSchema", "input_schema"})
+        if isinstance(data, list):
+            return any(isinstance(item, dict) and ("inputSchema" in item or "input_schema" in item) for item in data)
+        return False
+
+    def _is_probable_skill_file(file_path: Path) -> bool:
+        if file_path.suffix.lower() not in {".md", ".mdc", ".yaml", ".yml", ".json"}:
+            return False
+        lowered_parts = {part.lower() for part in file_path.parts}
+        name = file_path.name.lower()
+        stem = file_path.stem.lower()
+        if name == "skill.md" or "skills" in lowered_parts:
+            return True
+        return any(token in stem for token in ("skill", "plugin", "agent", "command"))
+
+    def _skill_findings(file_path: Path) -> list[Finding]:
+        if not _is_probable_skill_file(file_path):
+            return []
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return []
+        converted: list[Finding] = []
+        for item in skill_scanner.scan_skill(text, file_path.name):
+            try:
+                severity = Severity[str(item.severity).upper()]
+            except KeyError:
+                severity = Severity.MEDIUM
+            line_start = None
+            if item.location and ":" in item.location:
+                maybe_line = item.location.rsplit(":", 1)[-1]
+                if maybe_line.isdigit():
+                    line_start = int(maybe_line)
+            rule_id = item.rule_id or f"SKILL-{item.finding_type.upper().replace('_', '-')}"
+            tags = ["skill", item.finding_type]
+            if item.category:
+                tags.append(item.category)
+            tags.extend(item.taxonomy or [])
+            converted.append(Finding.agent_mcp(
+                rule_id=rule_id,
+                title=f"Agent skill issue: {item.finding_type.replace('_', ' ')}",
+                description=item.description,
+                severity=severity,
+                target=str(file_path),
+                evidence=item.evidence,
+                confidence=0.9,
+                remediation=item.recommendation,
+                cwe_ids=[item.cwe] if item.cwe else [],
+                location=Location(file=str(file_path), line_start=line_start) if line_start else None,
+                tags=tags,
+            ))
+        return converted
+
     if path.is_dir():
-        for file_path in path.rglob("*.json"):
-            findings.extend(validator.validate_file(str(file_path)))
+        for file_path in path.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if _is_probable_mcp_manifest(file_path):
+                findings.extend(validator.validate_file(str(file_path)))
+            findings.extend(_skill_findings(file_path))
         findings.extend(a2a_scanner.scan_path(path))
     elif path.is_file():
-        findings.extend(validator.validate_file(str(path)))
+        if _is_probable_mcp_manifest(path):
+            findings.extend(validator.validate_file(str(path)))
+        findings.extend(_skill_findings(path))
         findings.extend(a2a_scanner.scan_path(path))
     else:
         logger.warning("Target not found: %s", target)

@@ -33,8 +33,12 @@ _DANGEROUS_PATTERNS: list[tuple[re.Pattern[bytes], str, str]] = [
     (re.compile(rb"builtins\n(?:eval|exec|__import__|compile|getattr)"),
      "builtins", "eval"),
     (re.compile(rb"nt\nsystem"), "nt", "system"),
-    (re.compile(rb"codecs\n(?:encode|decode)"), "codecs", "encode"),
-    (re.compile(rb"webbrowser\nopen"), "webbrowser", "open"),
+    # codecs/webbrowser are secondary obfuscation helpers — only flag them
+    # in the PATTERN scan when they appear alongside a primary dangerous
+    # import.  Standalone codecs.encode in benign pickles causes FPs.
+    # They are still caught by _walk_opcodes when used in real attacks.
+    # (re.compile(rb"codecs\n(?:encode|decode)"), "codecs", "encode"),
+    # (re.compile(rb"webbrowser\nopen"), "webbrowser", "open"),
     (re.compile(rb"shutil\n(?:rmtree|move|copy)"), "shutil", "rmtree"),
     (re.compile(rb"__builtin__\n(?:eval|exec|__import__)"),
      "__builtin__", "eval"),

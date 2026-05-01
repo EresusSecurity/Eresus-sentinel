@@ -97,9 +97,7 @@ dangerous_globals:
     - _getfullpathname
 
   posixpath:
-    - join
-    - expanduser
-    - realpath
+    - expandvars
 
   subprocess:
     - call

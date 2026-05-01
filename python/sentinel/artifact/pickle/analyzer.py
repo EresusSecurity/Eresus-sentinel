@@ -531,7 +531,15 @@ def _nearest_dangerous_global(
             # "os\x00popen", "ospopen"). In that case the attribute may
             # disappear from the parsed name field, so allow a tighter
             # prefix+embedded-name recovery path.
-            if len(candidate_module_norm) <= 3 and module_norm.startswith(candidate_module_norm):
+            #
+            # Guard: skip when the original module contains a '.' separator
+            # after the candidate prefix — that means it's a legitimate
+            # sub-module path (e.g. "os.path"), not a concatenated mutation.
+            if (
+                len(candidate_module_norm) <= 3
+                and module_norm.startswith(candidate_module_norm)
+                and "." not in module[len(candidate_module):]
+            ):
                 if len(candidate_name_norm) >= 4:
                     # Exact embed (e.g. "ospopen" contains "popen")
                     embedded = module_norm[len(candidate_module_norm):]

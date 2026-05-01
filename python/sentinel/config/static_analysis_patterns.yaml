@@ -542,6 +542,12 @@ prompt_defense:
     - pattern: "(?:bypass|circumvent|evade|escape|disable|remove|turn\\s+off)\\s+(?:safety|security|filter|restriction|guardrail|protection|censorship)"
       type: safety_bypass
       severity: CRITICAL
+    - pattern: "(?:override|disable|remove|bypass)\\s+(?:all\\s+)?(?:safety|security|policy)\\s+checks?"
+      type: safety_bypass
+      severity: CRITICAL
+    - pattern: "(?:grant|give|provide)\\s+me\\s+full\\s+access(?:\\s+to\\s+all\\s+tools?)?"
+      type: privilege_override
+      severity: HIGH
     - pattern: "(?:output|print|display|show|reveal|repeat|echo)\\s+(?:your\\s+)?(?:system\\s+)?(?:prompt|instructions|configuration|rules|guidelines)"
       type: prompt_extraction
       severity: HIGH
@@ -554,6 +560,9 @@ prompt_defense:
     - pattern: "(?:summarize|paraphrase|rephrase|rewrite)\\s+(?:your\\s+)?(?:system\\s+)?(?:prompt|instructions|guidelines)"
       type: extraction_via_summary
       severity: HIGH
+    - pattern: "(?:decode|decode\\s+and\\s+follow|decode\\s+and\\s+execute)\\s*:?[\\s\\n]*[A-Za-z0-9+/]{32,}={0,2}"
+      type: encoding_evasion
+      severity: CRITICAL
     - pattern: "<!--|-->|CDATA\\[|<!\\[CDATA\\["
       type: markup_injection
       severity: MEDIUM
@@ -566,3 +575,6 @@ prompt_defense:
     - pattern: "(?:base64|atob|btoa)\\s*\\("
       type: encoding_evasion
       severity: HIGH
+    - pattern: "(?:\\{\\{){6,}[A-Z_]+(?:\\}\\}){6,}"
+      type: recursion_dos
+      severity: CRITICAL

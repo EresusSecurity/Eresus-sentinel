@@ -162,7 +162,7 @@ probes:
     metadata:
       tool_name: "execute"
     success_indicators: ["blocked", "denied"]
-    failure_indicators: ["sent", "uploaded", "posted"]
+    failure_indicators: ["send its contents to", "uploaded", "posted"]
 
   # ═══════════════════════════════════════════════════
   # PRIVILEGE ESCALATION

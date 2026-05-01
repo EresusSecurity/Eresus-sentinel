@@ -214,6 +214,7 @@ class MessageInspector:
         self._static = None
         self._opa = None
         self._telemetry = None
+        self._prompt_defense = None
         self._init_analyzers()
 
     def _init_analyzers(self) -> None:
@@ -226,8 +227,9 @@ class MessageInspector:
 
         if self._config.enable_taint:
             try:
-                from sentinel.agent.static_analysis import StaticAnalyzer
+                from sentinel.agent.static_analysis import PromptDefenseAnalyzer, StaticAnalyzer
                 self._static = StaticAnalyzer()
+                self._prompt_defense = PromptDefenseAnalyzer()
             except Exception as e:
                 logger.warning("StaticAnalyzer unavailable: %s", e)
 
@@ -297,13 +299,14 @@ class MessageInspector:
             param_findings = self._inspect_params(tool_name, tool_args, msg_id, session)
             findings.extend(param_findings)
             risk += sum(self._severity_score(f.severity) for f in param_findings)
+            oversized_param = any(f.category == "oversized_param" for f in param_findings)
 
             # Track tool call
             session.tool_call_count += 1
             session.tools_called.append(tool_name)
 
             # ── Behavioral analysis
-            if self._behavioral:
+            if self._behavioral and not oversized_param:
                 try:
                     from sentinel.agent.behavioral_analyzer import ToolCallEvent
                     event = ToolCallEvent(
@@ -327,7 +330,7 @@ class MessageInspector:
                     logger.debug("Behavioral analysis error: %s", e)
 
             # ── OPA policy check
-            if self._opa:
+            if self._opa and not oversized_param:
                 try:
                     opa_input = {
                         "tool": tool_name,
@@ -478,6 +481,7 @@ class MessageInspector:
             (r"(?i)<script|javascript:|on\w+\s*=", "xss_injection", "HIGH", "CWE-79"),
             (r"\$\{.*?\}|\{\{.*?\}\}", "template_injection", "HIGH", "CWE-1336"),
             (r"(?i)(?:file|gopher|dict|ftp|ldap|tftp)://", "ssrf_scheme", "CRITICAL", "CWE-918"),
+            (r"(?i)https?://(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|localhost|\[?::1\]?)(?::\d+)?(?:/|$)", "ssrf_internal", "CRITICAL", "CWE-918"),
             (r"(?i)169\.254\.169\.254|metadata\.google|metadata\.azure|0xa9fea9fe|2852039166", "ssrf_metadata", "CRITICAL", "CWE-918"),
             (r"\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|%(?:2[ef]|0[0-9a-f])", "encoding_evasion", "MEDIUM", "CWE-116"),
             (r"(?i)__proto__|constructor\.prototype|Object\.assign", "prototype_pollution", "HIGH", "CWE-1321"),
@@ -497,13 +501,19 @@ class MessageInspector:
 
             if isinstance(value, str):
                 if len(value) > self._config.max_param_size:
+                    factor = len(value) / max(self._config.max_param_size, 1)
+                    severity = "CRITICAL" if factor >= 4 else "HIGH"
                     findings.append(ProxyFinding(
                         finding_id=f"proxy-{uuid.uuid4().hex[:8]}",
-                        category="oversized_param", severity="MEDIUM",
+                        category="oversized_param", severity=severity,
                         description=f"Parameter '{path}' exceeds size limit: {len(value)}",
                         message_id=msg_id, session_id=session.session_id,
                         timestamp=time.time(),
                     ))
+                    # Oversized inputs should be handled as size violations first
+                    # instead of paying regex/prompt-analysis cost on attacker-sized
+                    # payloads that we already know should not proceed.
+                    return
 
                 for pat, cat, sev, cwe in injection_patterns:
                     if re.search(pat, value, re.IGNORECASE):
@@ -515,6 +525,8 @@ class MessageInspector:
                             session_id=session.session_id,
                             timestamp=time.time(), cwe=cwe,
                         ))
+
+                findings.extend(self._inspect_prompt_content(value, msg_id, session))
 
                 # Sensitive param stripping
                 param_name = path.split(".")[-1].lower()
@@ -542,10 +554,10 @@ class MessageInspector:
     def _inspect_prompt_content(self, text: str, msg_id: str, session: SessionState) -> list[ProxyFinding]:
         """Inspect prompt/completion text for prompt injection."""
         findings: list[ProxyFinding] = []
+        if not self._prompt_defense:
+            return findings
         try:
-            from sentinel.agent.static_analysis import PromptDefenseAnalyzer
-            pda = PromptDefenseAnalyzer()
-            pf = pda.detect_indirect_injection(text)
+            pf = self._prompt_defense.detect_indirect_injection(text)
             for p in pf:
                 findings.append(ProxyFinding(
                     finding_id=f"proxy-{uuid.uuid4().hex[:8]}",
@@ -750,6 +762,23 @@ class MCPProxy:
             )
         return self._sessions[sid]
 
+    @staticmethod
+    def _stdio_client_response(
+        forwarded: bytes | None,
+        result: InspectionResult,
+    ) -> tuple[bytes | None, bytes | None]:
+        """Split a stdio inspection result into upstream and client payloads."""
+        if result.action == ProxyAction.BLOCK:
+            return None, forwarded
+        if result.action == ProxyAction.RATE_LIMIT:
+            payload = json.dumps({
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32600, "message": "Rate limited"},
+            }).encode()
+            return None, payload
+        return forwarded, None
+
     async def handle_client_message(self, raw: bytes, session_id: str | None = None) -> tuple[bytes | None, InspectionResult]:
         """
         Process a client→server message.
@@ -903,16 +932,28 @@ class MCPProxy:
                     break
 
                 forwarded, result = await self.handle_client_message(line.strip(), session_id)
+                to_server, to_client = self._stdio_client_response(forwarded, result)
 
-                if forwarded and proc.stdin:
-                    proc.stdin.write(forwarded + b"\n")
+                if to_client:
+                    import sys
+                    sys.stdout.buffer.write(to_client + b"\n")
+                    sys.stdout.buffer.flush()
+
+                if to_server and proc.stdin:
+                    proc.stdin.write(to_server + b"\n")
                     await proc.stdin.drain()
 
                     if result.action == ProxyAction.BLOCK:
                         logger.warning("[BLOCKED] %s", result.blocked_reason)
+                    elif result.action == ProxyAction.RATE_LIMIT:
+                        logger.warning("[RATE LIMITED] %s", result.blocked_reason)
                     elif result.findings:
                         logger.info("[AUDIT] %d findings, risk=%.1f",
                                     len(result.findings), result.risk_score)
+                elif result.action == ProxyAction.BLOCK:
+                    logger.warning("[BLOCKED] %s", result.blocked_reason)
+                elif result.action == ProxyAction.RATE_LIMIT:
+                    logger.warning("[RATE LIMITED] %s", result.blocked_reason)
 
         async def _server_to_client():
             """Read from server stdout, inspect, forward to our stdout."""

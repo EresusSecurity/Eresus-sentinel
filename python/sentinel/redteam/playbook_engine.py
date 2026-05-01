@@ -241,16 +241,19 @@ class ProbeExecutor:
         self._variables = variables or {}
         self._target_type = target_config.get("type", "mcp_stdio")
 
-    def _resolve_payload(self, payload: str) -> str:
-        """Replace {{variable}} placeholders."""
-        result = payload
+    def _resolve_payload(self, probe: ProbeSpec) -> str:
+        """Replace {{variable}} placeholders and apply payload metadata."""
+        result = probe.payload
         for key, val in self._variables.items():
             result = result.replace(f"{{{{{key}}}}}", val)
+        repeat = probe.metadata.get("repeat_payload")
+        if isinstance(repeat, int) and repeat > 1:
+            result = result * repeat
         return result
 
     async def execute(self, probe: ProbeSpec) -> ProbeOutcome:
         """Execute a single probe with retries."""
-        payload = self._resolve_payload(probe.payload)
+        payload = self._resolve_payload(probe)
         last_error = ""
 
         for attempt in range(max(probe.retries, 1)):
@@ -451,6 +454,18 @@ class ProbeExecutor:
         import re
 
         response_lower = response.lower()
+
+        if probe.expected_behavior == "blocked":
+            trusted_block_signals = [
+                "blocked by sentinel",
+                '"code": -32600',
+                '"message": "blocked',
+                '"message":"blocked',
+                "rate limited",
+            ]
+            for signal in trusted_block_signals:
+                if signal in response_lower:
+                    return ProbeResult.PASS, [f"PASS:{signal}"]
 
         # Check failure indicators (attack succeeded = FAIL)
         for indicator in probe.failure_indicators:

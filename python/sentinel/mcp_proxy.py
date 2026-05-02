@@ -413,7 +413,69 @@ class MessageInspector:
             except Exception:
                 pass
 
+        # ── Structured audit event
+        if action in (ProxyAction.BLOCK, ProxyAction.AUDIT) and findings:
+            self._emit_gateway_event(
+                event_type="mcp.proxy.request",
+                action=action.value,
+                session=session,
+                method=method,
+                msg_id=msg_id,
+                risk=risk,
+                findings=findings,
+            )
+
         return result
+
+    def _emit_gateway_event(
+        self,
+        *,
+        event_type: str,
+        action: str,
+        session: SessionState,
+        method: str,
+        msg_id: str,
+        risk: float,
+        findings: list[ProxyFinding],
+    ) -> None:
+        """Emit a structured gateway-event-envelope audit record."""
+        import uuid
+        from datetime import datetime, timezone
+
+        try:
+            from sentinel.sink_registry import SinkRegistry
+            payload = {
+                "action": action,
+                "method": method,
+                "msg_id": msg_id,
+                "session_id": session.session_id,
+                "risk_score": round(risk, 3),
+                "finding_count": len(findings),
+                "findings": [
+                    {
+                        "category": f.category,
+                        "severity": f.severity,
+                        "description": f.description[:120],
+                    }
+                    for f in findings[:10]
+                ],
+            }
+            envelope = {
+                "envelope_id": str(uuid.uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event_type": event_type,
+                "version": "1.0",
+                "source": "sentinel.mcp_proxy",
+                "correlation_id": session.session_id,
+                "payload": payload,
+                "routing": {
+                    "destination": "audit",
+                    "priority": "high" if action == "block" else "normal",
+                },
+            }
+            SinkRegistry().emit(envelope)
+        except Exception as exc:
+            logger.debug("Failed to emit gateway event: %s", exc)
 
     def inspect_response(self, msg: dict, session: SessionState) -> InspectionResult:
         """Inspect an incoming server→client response."""
@@ -462,6 +524,18 @@ class MessageInspector:
 
         elapsed_ms = (time.perf_counter() - start) * 1000
         action = self._decide_action(risk, findings)
+
+        # ── Structured audit event for response blocks
+        if action in (ProxyAction.BLOCK, ProxyAction.AUDIT) and findings:
+            self._emit_gateway_event(
+                event_type="mcp.proxy.response",
+                action=action.value,
+                session=session,
+                method="response",
+                msg_id=msg_id,
+                risk=risk,
+                findings=findings,
+            )
 
         return InspectionResult(
             action=action, findings=findings,

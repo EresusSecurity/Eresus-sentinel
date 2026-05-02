@@ -300,6 +300,8 @@ docker compose up
 - [False Positive Handling](docs/FALSE_POSITIVES.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [FAQ](docs/FAQ.md)
+- [Community Notes](docs/COMMUNITY.md)
+- [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
 
 ## Authentication & Security
 

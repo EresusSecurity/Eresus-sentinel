@@ -1,0 +1,39 @@
+- name: bug
+  color: d73a4a
+  description: Something is not working.
+- name: enhancement
+  color: a2eeef
+  description: Feature request or product improvement.
+- name: false-positive
+  color: fef2c0
+  description: A benign target is flagged incorrectly.
+- name: scanner
+  color: 7057ff
+  description: Scanner, parser, or rule engine work.
+- name: docs
+  color: 0075ca
+  description: Documentation changes.
+- name: security
+  color: b60205
+  description: Security-sensitive work. Vulnerabilities should use private disclosure.
+- name: good-first-issue
+  color: 7057ff
+  description: Small, well-scoped contribution.
+- name: needs-triage
+  color: fbca04
+  description: Needs maintainer review.
+- name: phase-roadmap
+  color: 5319e7
+  description: Roadmap phase implementation.
+- name: p0
+  color: b60205
+  description: Blocks safe use.
+- name: p1
+  color: d93f0b
+  description: Important hardening.
+- name: p2
+  color: fbca04
+  description: Useful workflow.
+- name: p3
+  color: cfd3d7
+  description: Future idea.

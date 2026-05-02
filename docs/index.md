@@ -42,4 +42,6 @@ See the [Quick Start guide](QUICKSTART.md) for more details.
 - [False Positive Handling](FALSE_POSITIVES.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 - [FAQ](FAQ.md)
+- [Community Notes](COMMUNITY.md)
+- [Good First Issues](GOOD_FIRST_ISSUES.md)
 - [Turkish Quick Start](TR_QUICKSTART.md)

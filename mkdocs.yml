@@ -82,6 +82,8 @@ nav:
       - Troubleshooting: TROUBLESHOOTING.md
       - FAQ: FAQ.md
   - Development:
+      - Community Notes: COMMUNITY.md
+      - Good First Issues: GOOD_FIRST_ISSUES.md
       - Contributing: ../CONTRIBUTING.md
       - Security Policy: ../SECURITY.md
       - Changelog: ../CHANGELOG.md

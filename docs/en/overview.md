@@ -68,4 +68,4 @@ Session history also matters: once a session's cumulative score crosses `SESSION
 ```
 
 > [!WARNING]
-> The deception engine is designed for **authenticated internal APIs** and security operations contexts. A classification error in a public consumer-facing product would serve fabricated content to a legitimate user. See [Known Limitations](how-it-works.md#known-limitations) before deploying in consumer-facing or regulated environments.
+> The deception engine is designed for **authenticated internal APIs** and security operations contexts. A classification error in a public consumer-facing product would serve fabricated content to a legitimate user. Use stricter review or higher thresholds before deploying in consumer-facing or regulated environments.

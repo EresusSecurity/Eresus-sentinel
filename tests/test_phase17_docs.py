@@ -43,3 +43,11 @@ def test_no_limitations_document_or_links():
     for path in scanned:
         text = path.read_text(encoding="utf-8")
         assert "LIMITATIONS.md" not in text
+
+
+def test_public_docs_do_not_link_known_limitations_section():
+    how_it_works = (ROOT / "docs" / "en" / "how-it-works.md").read_text(encoding="utf-8")
+    overview = (ROOT / "docs" / "en" / "overview.md").read_text(encoding="utf-8")
+
+    assert "Known limitations" not in how_it_works
+    assert "known-limitations" not in overview

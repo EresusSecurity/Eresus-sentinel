@@ -237,13 +237,21 @@ def _write_aibom_output(args, rendered: str) -> None:
 
 
 def cmd_refs(args):
-    """Inspect cloned `.refs` repositories and parity plan."""
-    from sentinel.parity import manifest_to_json, manifest_to_markdown
+    """Inspect cloned reference repositories and parity gaps."""
+    from sentinel.parity import (
+        build_parity_manifest,
+        gap_features,
+        manifest_to_json,
+        manifest_to_markdown,
+        summarize_manifest,
+        summarize_manifest_by_tool,
+    )
     from sentinel.refs import (
         refs_inventory_json,
         refs_inventory_markdown,
         refs_plan_json,
         refs_plan_markdown,
+        refs_summary,
     )
 
     action = getattr(args, "refs_action", None) or "inventory"
@@ -252,6 +260,52 @@ def cmd_refs(args):
 
     if action == "parity":
         content = manifest_to_json() if output_format == "json" else manifest_to_markdown()
+    elif action == "gap":
+        manifest = build_parity_manifest()
+        gaps = gap_features(manifest)
+        if output_format == "json":
+            payload = {
+                "schema_version": "refs.gap-ledger.v1",
+                "summary": {
+                    "refs": refs_summary(refs_dir),
+                    "parity": summarize_manifest(manifest),
+                    "gap_count": len(gaps),
+                },
+                "by_tool": summarize_manifest_by_tool(manifest),
+                "inventory": json.loads(refs_inventory_json(refs_dir))["inventory"],
+                "fix_queue": [feature.to_dict() for feature in gaps],
+            }
+            content = json.dumps(payload, indent=2, sort_keys=True)
+        else:
+            refs = refs_summary(refs_dir)
+            lines = [
+                "# Reference Gap Ledger",
+                "",
+                f"- Expected repos: `{refs['expected']}`",
+                f"- Present repos: `{refs['present']}`",
+                f"- Missing repos: `{', '.join(refs['missing']) or '-'}`",
+                f"- Gap count: `{len(gaps)}`",
+                "",
+                "## Fix Queue",
+                "",
+                "| Tool | Priority | Status | Feature | Next Step |",
+                "|---|---|---|---|---|",
+            ]
+            for feature in gaps:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            feature.tool,
+                            feature.priority,
+                            feature.status,
+                            feature.feature.replace("|", "/"),
+                            feature.next_step.replace("|", "/"),
+                        ]
+                    )
+                    + " |"
+                )
+            content = "\n".join(lines) + "\n"
     elif action == "plan":
         content = refs_plan_json(refs_dir) if output_format == "json" else refs_plan_markdown(refs_dir)
     else:

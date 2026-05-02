@@ -436,7 +436,7 @@ def main():
 
     refs_p = sub.add_parser("refs", help="inspect `.refs` inventory and parity")
     refs_sub = refs_p.add_subparsers(dest="refs_action")
-    refs_p.add_argument("--refs-dir", default=".refs", help="reference clone directory")
+    refs_p.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory (auto-detected when omitted)")
     refs_p.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
     refs_p.add_argument("-o", "--output", help="output file")
     refs_p.set_defaults(func=cmd_refs, refs_action="inventory")
@@ -454,6 +454,11 @@ def main():
     refs_parity.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
     refs_parity.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     refs_parity.set_defaults(func=cmd_refs, refs_action="parity")
+    refs_gap = refs_sub.add_parser("gap", help="show reference parity fix queue")
+    refs_gap.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory")
+    refs_gap.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
+    refs_gap.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    refs_gap.set_defaults(func=cmd_refs, refs_action="gap")
 
     p = sub.add_parser("plugins", help="list discovered scanner plugins")
     _add_output_args(p, severity=False)

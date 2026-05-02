@@ -1,9 +1,10 @@
 # ruff: noqa: E501
-"""Local `.refs` inventory, parity plan, and clone-status utilities."""
+"""Local reference-suite inventory, parity plan, and clone-status utilities."""
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -26,6 +27,9 @@ class ReferenceInventoryItem:
     url: str
     path: str
     present: bool
+    source_root: str = ""
+    priority: str = ""
+    domains: tuple[str, ...] = ()
     remote_url: str = ""
     head: str = ""
     file_count: int = 0
@@ -46,6 +50,22 @@ class ReferencePhase:
 
 
 EXPECTED_REFERENCE_REPOS: tuple[ReferenceRepo, ...] = (
+    ReferenceRepo(
+        name="promptfoo",
+        url="https://github.com/promptfoo/promptfoo.git",
+        priority="P1/P2",
+        domains=("redteam", "eval", "providers"),
+        p1_targets=("provider matrix", "assertion engine", "eval CLI shape"),
+        p2_targets=("viewer parity", "share/import flows", "cloud adapters"),
+    ),
+    ReferenceRepo(
+        name="modelaudit",
+        url="https://github.com/promptfoo/modelaudit.git",
+        priority="P1/P2",
+        domains=("artifact", "registry", "supply_chain"),
+        p1_targets=("scanner registry split", "auto format routing", "artifact result contract"),
+        p2_targets=("remote source resolvers", "license SBOM", "weight distribution fixtures"),
+    ),
     ReferenceRepo(
         name="pickle-fuzzer",
         url="https://github.com/cisco-ai-defense/pickle-fuzzer.git",
@@ -71,22 +91,6 @@ EXPECTED_REFERENCE_REPOS: tuple[ReferenceRepo, ...] = (
         p2_targets=("HTML dashboard snapshots", "catalog DB fixtures", "repo triage UX"),
     ),
     ReferenceRepo(
-        name="skill-scanner",
-        url="https://github.com/cisco-ai-defense/skill-scanner.git",
-        priority="P1/P2",
-        domains=("agent_skill", "rules", "evals"),
-        p1_targets=("policy presets", "benchmark runner", "expected finding updater"),
-        p2_targets=("wizard stance", "policy TUI stance", "pre-commit wrapper"),
-    ),
-    ReferenceRepo(
-        name="ai-defense-langchain-middleware",
-        url="https://github.com/cisco-ai-defense/ai-defense-langchain-middleware.git",
-        priority="P1/P2",
-        domains=("runtime", "middleware", "langchain"),
-        p1_targets=("AgentSec aliases", "chat/tool inspection clients", "monitor/enforce modes"),
-        p2_targets=("middleware ordering tests", "env contract snapshots", "composed chain docs"),
-    ),
-    ReferenceRepo(
         name="mcp-scanner",
         url="https://github.com/cisco-ai-defense/mcp-scanner.git",
         priority="P1/P2",
@@ -95,12 +99,20 @@ EXPECTED_REFERENCE_REPOS: tuple[ReferenceRepo, ...] = (
         p2_targets=("tree-sitter stance", "OAuth probing fixtures", "API route snapshots"),
     ),
     ReferenceRepo(
-        name="a2a-scanner",
-        url="https://github.com/cisco-ai-defense/a2a-scanner.git",
+        name="skill-scanner",
+        url="https://github.com/cisco-ai-defense/skill-scanner.git",
         priority="P1/P2",
-        domains=("agent_a2a", "rules", "endpoint"),
-        p1_targets=("agent card validator", "YAML A2A rules", "CLI scan command"),
-        p2_targets=("policy presets", "endpoint live probe stance", "API/report snapshots"),
+        domains=("agent_skill", "rules", "evals"),
+        p1_targets=("policy presets", "benchmark runner", "expected finding updater"),
+        p2_targets=("wizard stance", "policy TUI stance", "pre-commit wrapper"),
+    ),
+    ReferenceRepo(
+        name="model-provenance-kit",
+        url="https://github.com/cisco-ai-defense/model-provenance-kit.git",
+        priority="P1/P2",
+        domains=("provenance", "supply_chain", "fingerprints"),
+        p1_targets=("8-signal extraction", "db integrity", "pairwise compare CLI"),
+        p2_targets=("streaming fingerprints", "cache integrity", "download workflow"),
     ),
     ReferenceRepo(
         name="adversarial-hubness-detector",
@@ -118,26 +130,34 @@ EXPECTED_REFERENCE_REPOS: tuple[ReferenceRepo, ...] = (
         p1_targets=(),
         p2_targets=("offline model catalog", "task fixtures", "HF model ID validation"),
     ),
+    ReferenceRepo(
+        name="ai-defense-hybrid",
+        url="https://github.com/cisco-ai-defense/ai-defense-hybrid.git",
+        priority="P2",
+        domains=("deployment", "runtime", "kubernetes"),
+        p1_targets=("gateway deployment contract", "policy bundle layout", "runtime topology"),
+        p2_targets=("helm chart parity", "redis/cache wiring", "GPU/runtime examples"),
+    ),
 )
 
 
 REFERENCE_PHASES: tuple[ReferencePhase, ...] = (
-    ReferencePhase(1, "Clone and normalize references", "P1", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), (".refs",), ("normalized URL map", "clone status"), "native-live"),
-    ReferencePhase(2, "Build reference inventory", "P1", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.refs",), ("file/code counts", "remote/head metadata"), "native-live"),
-    ReferencePhase(3, "A2A static security parity", "P1", ("a2a-scanner",), ("agent.a2a_scanner", "rules/a2a_rules.yaml"), ("agent card findings", "endpoint URL risk"), "native-live"),
-    ReferencePhase(4, "A2A policy/report parity", "P2", ("a2a-scanner",), ("cli a2a", "parity manifest"), ("CLI scan command", "smoke contract"), "native-live"),
+    ReferencePhase(1, "Clone and normalize references", "P1", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.refs",), ("normalized URL map", "clone status"), "native-live"),
+    ReferencePhase(2, "Build reference inventory", "P1", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.refs", "sentinel.parity"), ("file/code counts", "remote/head metadata"), "native-live"),
+    ReferencePhase(3, "Promptfoo eval parity", "P1", ("promptfoo",), ("redteam", "evaluator", "providers"), ("provider matrix", "assertion contract"), "partial"),
+    ReferencePhase(4, "ModelAudit artifact parity", "P1", ("modelaudit",), ("artifact", "scanner_selection", "cli"), ("scanner split IDs", "auto format routing"), "partial"),
     ReferencePhase(5, "Pickle fuzzer contract parity", "P1", ("pickle-fuzzer",), ("fuzzer.pickle", "artifact.PickleScanner"), ("protocol/mutator manifest", "self-test smoke"), "native-live"),
-    ReferencePhase(6, "Pickle fuzzing CI parity", "P2", ("pickle-fuzzer",), ("fuzzer.ci_pipeline", "scripts"), ("Atheris/libFuzzer stance", "corpus policy"), "partial"),
+    ReferencePhase(6, "Rust pickle parity", "P1", ("modelaudit", "pickle-fuzzer"), ("rust/sentinel-pickle", "artifact.pickle"), ("nested/expansion/tamper coverage", "backend selector"), "partial"),
     ReferencePhase(7, "Runtime gateway governance", "P1", ("defenseclaw",), ("runtime_gateway", "gateway", "policy"), ("provider adapter contract", "verdict model"), "partial"),
     ReferencePhase(8, "Runtime audit observability", "P2", ("defenseclaw",), ("event_schemas", "sink_registry", "notifier"), ("sink schema map", "event contracts"), "partial"),
     ReferencePhase(9, "AIBOM scanner parity", "P1", ("aibom",), ("aibom.scanners", "aibom.scan_pipeline"), ("registry smoke", "endpoint classifier"), "partial"),
-    ReferencePhase(10, "AIBOM reporting parity", "P2", ("aibom",), ("aibom.reporters", "aibom.catalog_db"), ("dashboard/report stance", "catalog fixtures"), "partial"),
+    ReferencePhase(10, "MCP scanner parity", "P1", ("mcp-scanner",), ("agent.mcp.live_scanner", "agent.mcp"), ("manifest/http/stdio matrix", "prompt/resource scan"), "native-live"),
     ReferencePhase(11, "Skill scanner policy parity", "P1", ("skill-scanner",), ("agent.skill_scanner", "agent.scan_policy"), ("policy presets", "strict schema checks"), "native-live"),
-    ReferencePhase(12, "Skill scanner eval parity", "P2", ("skill-scanner",), ("agent.rule_packs", "tests"), ("benchmark fixture map", "expected updater stance"), "partial"),
-    ReferencePhase(13, "LangChain middleware parity", "P1", ("ai-defense-langchain-middleware",), ("integrations.middleware", "middleware"), ("AgentSec aliases", "chat/tool client contract"), "native-live"),
-    ReferencePhase(14, "MCP scanner transport parity", "P1", ("mcp-scanner",), ("agent.mcp.live_scanner", "agent.mcp"), ("manifest/http/stdio matrix", "prompt/resource scan"), "native-live"),
-    ReferencePhase(15, "Hubness detection parity", "P1/P2", ("adversarial-hubness-detector",), ("supply_chain.hubness_detector",), ("robust/concept/modality detectors", "ranking stance"), "native-live"),
-    ReferencePhase(16, "SecureBERT2 catalog parity", "P2", ("securebert2",), ("supply_chain.securebert2",), ("model catalog", "offline eval fixtures"), "native-live"),
+    ReferencePhase(12, "Model provenance parity", "P1", ("model-provenance-kit",), ("provenance", "cli provenance"), ("8 signals", "reference DB contract"), "partial"),
+    ReferencePhase(13, "Hubness detection parity", "P1/P2", ("adversarial-hubness-detector",), ("supply_chain.hubness_detector",), ("robust/concept/modality detectors", "ranking stance"), "native-live"),
+    ReferencePhase(14, "SecureBERT2 catalog parity", "P2", ("securebert2",), ("supply_chain.securebert2",), ("model catalog", "offline eval fixtures"), "native-live"),
+    ReferencePhase(15, "Hybrid deployment parity", "P2", ("ai-defense-hybrid",), ("deploy", "gateway", "docs"), ("helm/runtime topology", "cluster docs"), "partial"),
+    ReferencePhase(16, "Gap ledger and fixture import", "P1/P2", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.refs", "sentinel.parity", "tests"), ("fix queue", "fixture source map"), "partial"),
     ReferencePhase(17, "Parity manifest enforcement", "P1/P2", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.parity", "tests"), ("dynamic smoke checks", "native/partial/missing matrix"), "native-live"),
 )
 
@@ -152,19 +172,46 @@ _NOTABLE_NAMES = {
     "FEATURE.md",
     "TESTING.md",
 }
+_DEFAULT_REFS_DIR_NAMES = (".refs", "ai-security-tools/refs", "refs")
 
 
 def _strip_git_suffix(value: str) -> str:
     return value[:-4] if value.endswith(".git") else value
 
 
-def default_refs_dir(start: str | Path = ".") -> Path:
+def available_refs_dirs(start: str | Path = ".") -> tuple[Path, ...]:
     root = Path(start).resolve()
-    for candidate in (root, *root.parents):
-        refs_dir = candidate / ".refs"
-        if refs_dir.exists():
-            return refs_dir
-    return root / ".refs"
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+
+    def register(candidate: Path) -> None:
+        candidate = candidate.expanduser().resolve()
+        if candidate.exists() and candidate not in seen:
+            seen.add(candidate)
+            ordered.append(candidate)
+
+    explicit = os.getenv("SENTINEL_REFS_DIR")
+    if explicit:
+        register(Path(explicit))
+
+    extra = os.getenv("SENTINEL_EXTRA_REFS_DIRS", "")
+    for raw in extra.split(os.pathsep):
+        raw = raw.strip()
+        if raw:
+            register(Path(raw))
+
+    for candidate_root in (root, *root.parents):
+        for relative in _DEFAULT_REFS_DIR_NAMES:
+            register(candidate_root / relative)
+
+    return tuple(ordered)
+
+
+def default_refs_dir(start: str | Path = ".") -> Path:
+    discovered = available_refs_dirs(start)
+    if discovered:
+        return discovered[0]
+    return (Path(start).resolve() / ".refs").resolve()
 
 
 def _git_value(path: Path, *args: str) -> str:
@@ -181,12 +228,20 @@ def _git_value(path: Path, *args: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def _candidate_roots(refs_dir: str | Path | None = None) -> tuple[Path, ...]:
+    if refs_dir is not None:
+        return (Path(refs_dir).resolve(),)
+    return available_refs_dirs()
+
+
 def inspect_references(refs_dir: str | Path | None = None) -> list[ReferenceInventoryItem]:
-    root = Path(refs_dir) if refs_dir is not None else default_refs_dir()
+    roots = _candidate_roots(refs_dir)
+    fallback_root = Path(refs_dir).resolve() if refs_dir is not None else default_refs_dir()
     items: list[ReferenceInventoryItem] = []
 
     for repo in EXPECTED_REFERENCE_REPOS:
-        path = root / repo.name
+        located_root = next((root for root in roots if (root / repo.name / ".git").is_dir()), fallback_root)
+        path = located_root / repo.name
         present = (path / ".git").is_dir()
         if not present:
             items.append(
@@ -195,6 +250,9 @@ def inspect_references(refs_dir: str | Path | None = None) -> list[ReferenceInve
                     url=repo.url,
                     path=str(path),
                     present=False,
+                    source_root=str(located_root),
+                    priority=repo.priority,
+                    domains=repo.domains,
                 )
             )
             continue
@@ -217,6 +275,7 @@ def inspect_references(refs_dir: str | Path | None = None) -> list[ReferenceInve
         remote_url = _git_value(path, "remote", "get-url", "origin")
         head = _git_value(path, "rev-parse", "--short", "HEAD")
         remote_matches = _strip_git_suffix(remote_url) == _strip_git_suffix(repo.url)
+        status = "present" if not remote_url or remote_matches else "remote-mismatch"
 
         items.append(
             ReferenceInventoryItem(
@@ -224,12 +283,15 @@ def inspect_references(refs_dir: str | Path | None = None) -> list[ReferenceInve
                 url=repo.url,
                 path=str(path),
                 present=True,
+                source_root=str(located_root),
+                priority=repo.priority,
+                domains=repo.domains,
                 remote_url=remote_url,
                 head=head,
                 file_count=len(files),
                 code_config_count=len(code_config_files),
                 notable_paths=notable_paths,
-                status="present" if remote_matches else "remote-mismatch",
+                status=status,
             )
         )
     return items
@@ -258,6 +320,7 @@ def refs_summary(refs_dir: str | Path | None = None) -> dict[str, Any]:
         "files": sum(item.file_count for item in inventory),
         "code_config_files": sum(item.code_config_count for item in inventory),
         "phases": len(REFERENCE_PHASES),
+        "roots": [str(path) for path in _candidate_roots(refs_dir)],
     }
 
 
@@ -283,11 +346,12 @@ def refs_plan_json(refs_dir: str | Path | None = None) -> str:
 def refs_plan_markdown(refs_dir: str | Path | None = None) -> str:
     summary = refs_summary(refs_dir)
     lines = [
-        "# `.refs` P1/P2 Execution Plan",
+        "# Reference Suite P1/P2 Plan",
         "",
         f"- Expected repos: `{summary['expected']}`",
         f"- Present repos: `{summary['present']}`",
         f"- Missing repos: `{', '.join(summary['missing']) or '-'}`",
+        f"- Roots: `{', '.join(summary['roots']) or '-'}`",
         f"- Phases: `{summary['phases']}`",
         "",
         "## Repository Targets",
@@ -340,18 +404,19 @@ def refs_inventory_markdown(refs_dir: str | Path | None = None) -> str:
     summary = refs_summary(refs_dir)
     inventory = inspect_references(refs_dir)
     lines = [
-        "# `.refs` Reference Inventory",
+        "# Reference Suite Inventory",
         "",
         f"- Expected repos: `{summary['expected']}`",
         f"- Present repos: `{summary['present']}`",
         f"- Total files: `{summary['files']}`",
         f"- Code/config files: `{summary['code_config_files']}`",
+        f"- Roots: `{', '.join(summary['roots']) or '-'}`",
         f"- Phases: `{summary['phases']}`",
         "",
         "## Clone Status",
         "",
-        "| Repo | Status | Files | Code/Config | HEAD | Remote |",
-        "|---|---|---:|---:|---|---|",
+        "| Repo | Status | Files | Code/Config | HEAD | Root | Remote |",
+        "|---|---|---:|---:|---|---|---|",
     ]
     for item in inventory:
         lines.append(
@@ -363,6 +428,7 @@ def refs_inventory_markdown(refs_dir: str | Path | None = None) -> str:
                     str(item.file_count),
                     str(item.code_config_count),
                     item.head or "-",
+                    item.source_root.replace("|", "/") or "-",
                     (item.remote_url or item.url).replace("|", "/"),
                 ]
             )
@@ -424,6 +490,7 @@ __all__ = [
     "ReferenceInventoryItem",
     "ReferencePhase",
     "ReferenceRepo",
+    "available_refs_dirs",
     "default_refs_dir",
     "inspect_references",
     "p1_p2_matrix",

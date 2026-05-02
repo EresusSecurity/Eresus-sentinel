@@ -329,6 +329,11 @@ STATIC_FEATURES.extend([
     _feature("ref-vector-hubness-suite", "Modality-aware hubness detection", "P2", STATUS_PARTIAL, "sentinel.supply_chain.ModalityAwareHubnessDetector", "modality-aware scorer", "Multimodal bucket scans were missing.", "Run hubness detection within metadata-defined modality buckets.", acceptance_tests=("tests/test_hubness_securebert2.py",)),
     _feature("ref-cyber-model-suite", "SecureBERT2 model catalog", "P2", STATUS_PARTIAL, "sentinel.supply_chain.securebert2", "SecureBERT2 Hugging Face model table", "SecureBERT2 model/task map needed offline deterministic parity.", "Expose model IDs, aliases, and task metadata without downloading models.", acceptance_tests=("tests/test_hubness_securebert2.py",)),
     _feature("ref-cyber-model-suite", "SecureBERT2 offline eval fixtures", "P2", STATUS_PARTIAL, "sentinel.supply_chain.securebert2_eval_fixtures", "SecureBERT2 eval scripts/datasets", "Heavy ML eval scripts are not suitable for core deterministic tests.", "Provide small task-specific fixtures for optional enrichment/eval adapters.", acceptance_tests=("tests/test_hubness_securebert2.py",)),
+    _feature("ref-model-provenance-suite", "Eight-signal provenance extraction", "P1", STATUS_PARTIAL, "sentinel.provenance.signals", "model-provenance-kit signals", "Signal extraction exists but reference-grade corpus and thresholds are still thin.", "Add signal regression fixtures and top-k threshold snapshots.", acceptance_tests=("tests/test_model_provenance.py",)),
+    _feature("ref-model-provenance-suite", "Fingerprint database integrity", "P1", STATUS_PARTIAL, "sentinel.provenance.database", "model-provenance-kit database", "Local fingerprint DB exists; manifest/parquet parity and shard metadata need expansion.", "Add shard manifest contract and integrity fixtures.", acceptance_tests=("tests/test_model_provenance.py",)),
+    _feature("ref-model-provenance-suite", "Pairwise compare CLI", "P1", STATUS_PARTIAL, "sentinel.cli.cmd_provenance", "model-provenance-kit compare", "CLI exists but parity output richness and streamed model coverage need more fixtures.", "Add pairwise report snapshots and large-model streaming contract tests.", acceptance_tests=("tests/test_model_provenance.py",)),
+    _feature("ref-deployment-hybrid-suite", "Hybrid deployment topology", "P2", STATUS_MISSING, "deploy/runtime docs", "ai-defense-hybrid helm/eks topology", "No first-class deployment topology mapping for the hybrid reference stack.", "Add deployment inventory doc generator and cluster bundle smoke fixtures."),
+    _feature("ref-deployment-hybrid-suite", "Helm and runtime bundle parity", "P2", STATUS_MISSING, "deploy/runtime_gateway", "ai-defense-hybrid charts", "Sentinel lacks packaged runtime charts and cluster overlays.", "Add optional deployment bundle export with values schema snapshots."),
 ])
 
 
@@ -1024,11 +1029,39 @@ def summarize_manifest(features: list[ParityFeature]) -> dict[str, int]:
     return summary
 
 
+def summarize_manifest_by_tool(features: list[ParityFeature]) -> dict[str, dict[str, int]]:
+    by_tool: dict[str, dict[str, int]] = {}
+    for feature in features:
+        bucket = by_tool.setdefault(feature.tool, summarize_manifest([]))
+        bucket[feature.status] = bucket.get(feature.status, 0) + 1
+    return by_tool
+
+
+def summarize_manifest_by_domain(features: list[ParityFeature]) -> dict[str, dict[str, int]]:
+    by_domain: dict[str, dict[str, int]] = {}
+    for feature in features:
+        bucket = by_domain.setdefault(feature.owner_domain, summarize_manifest([]))
+        bucket[feature.status] = bucket.get(feature.status, 0) + 1
+    return by_domain
+
+
+def gap_features(
+    features: list[ParityFeature],
+    *,
+    include_statuses: tuple[str, ...] = (STATUS_PARTIAL, STATUS_DEAD, STATUS_MISSING),
+) -> list[ParityFeature]:
+    return [feature for feature in features if feature.status in include_statuses]
+
+
 def manifest_to_json(features: list[ParityFeature] | None = None) -> str:
     manifest = features if features is not None else build_parity_manifest()
     payload = {
         "summary": summarize_manifest(manifest),
+        "by_tool": summarize_manifest_by_tool(manifest),
+        "by_domain": summarize_manifest_by_domain(manifest),
+        "gap_count": len(gap_features(manifest)),
         "features": [feature.to_dict() for feature in manifest],
+        "gaps": [feature.to_dict() for feature in gap_features(manifest)],
     }
     return json.dumps(payload, indent=2, sort_keys=True)
 
@@ -1046,6 +1079,12 @@ def manifest_to_markdown(features: list[ParityFeature] | None = None) -> str:
     ]
     for status, count in summary.items():
         lines.append(f"- `{status}`: {count}")
+    lines.extend(["", "## Tool Summary", ""])
+    for tool, counts in summarize_manifest_by_tool(manifest).items():
+        lines.append(
+            f"- `{tool}`: native={counts[STATUS_NATIVE]} partial={counts[STATUS_PARTIAL]} "
+            f"dead={counts[STATUS_DEAD]} missing={counts[STATUS_MISSING]} out={counts[STATUS_OUT]}"
+        )
     lines.extend(
         [
             "",
@@ -1093,8 +1132,11 @@ def write_manifest(
 __all__ = [
     "ParityFeature",
     "build_parity_manifest",
+    "gap_features",
     "manifest_to_json",
     "manifest_to_markdown",
     "summarize_manifest",
+    "summarize_manifest_by_domain",
+    "summarize_manifest_by_tool",
     "write_manifest",
 ]

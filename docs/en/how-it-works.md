@@ -11,7 +11,6 @@
 - [Worked examples](#worked-examples)
 - [What data leaves your server](#what-data-leaves-your-server)
 - [Attacker opacity](#attacker-opacity)
-- [Known limitations](#known-limitations)
 
 ---
 
@@ -154,21 +153,3 @@ Eresus Sentinel       ← SENTINEL_ENV=production, internal network only
    ▼
 LLM Provider
 ```
-
-## Known limitations
-
-### Detection
-
-- **Regex-only by default.** Novel phrasings, paraphrased attacks, and non-English queries can evade per-query detection. The optional LLM examiner improves coverage at the cost of added latency.
-- **Last user message only.** Attacks distributed across many turns are partially mitigated by session escalation but not directly detected.
-- **English-centric patterns.** Multilingual deployments will have higher miss rates for non-English attacks.
-
-### Deception quality
-
-- **LLM compliance is heuristic.** Templates are prompt-engineering heuristics — a given LLM may comply inconsistently across model versions or query contexts.
-- **Hypothetical framing may persist.** If re-query also produces hypothetical framing, the framed response is returned.
-
-### Applicability
-
-- **Not suitable as-is for public consumer products.** A classification error serves fabricated content to a legitimate user. Consider routing borderline scores (40–59) to a human review queue, or applying deception only above a higher threshold.
-- **Legally regulated outputs.** Intentionally false AI-generated outputs may create compliance exposure in medical, legal, or financial contexts. Legal review is recommended.

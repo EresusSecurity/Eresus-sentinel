@@ -111,6 +111,8 @@ def cmd_proxy(args):
         "enforce": ProxyMode.ENFORCE,
         "audit": ProxyMode.AUDIT,
         "passthrough": ProxyMode.PASSTHROUGH,
+        "observe": ProxyMode.AUDIT,
+        "action": ProxyMode.ENFORCE,
     }
     config = ProxyConfig(mode=mode_map.get(args.mode, ProxyMode.ENFORCE))
 

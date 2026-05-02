@@ -766,6 +766,136 @@ def cmd_cache(args):
     return 0
 
 
+def cmd_audit(args):
+    """Query or export the SQLite audit store."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    from sentinel.audit_store import AuditStore
+
+    store = AuditStore(getattr(args, "db", None))
+    action = getattr(args, "audit_action", "query") or "query"
+    if action == "query":
+        events = store.query(
+            since=getattr(args, "since", None),
+            event_type=getattr(args, "type", None),
+            verdict=getattr(args, "verdict", None),
+            limit=getattr(args, "limit", 100),
+        )
+        payload = {
+            "schema_version": "audit.query.v1",
+            "summary": {"event_count": len(events), "db": str(store.path)},
+            "events": events,
+            "stats": store.stats(),
+        }
+        if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
+            _emit_info(args, payload)
+            return 0
+        _header("audit query", args=args)
+        table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+        table.add_column("timestamp")
+        table.add_column("type")
+        table.add_column("verdict")
+        table.add_column("target")
+        for event in events:
+            table.add_row(event["timestamp"], event["event_type"], event["verdict"], event["target"][:80])
+        console.print(table)
+        return 0
+
+    if action == "export":
+        output = getattr(args, "output_path", None)
+        if not output:
+            _fail("audit export requires --output-path")
+            return 2
+        count = store.export_jsonl(output, since=getattr(args, "since", None))
+        payload = {
+            "schema_version": "audit.export.v1",
+            "summary": {"event_count": count, "output": output},
+            "event_count": count,
+            "output": output,
+        }
+        if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "json_output", False):
+            _emit_info(args, payload)
+        else:
+            _ok(f"exported {count} audit events to {output}")
+        return 0
+
+    _fail(f"unknown audit action: {action}")
+    return 2
+
+
+def cmd_setup(args):
+    """Persist local integration setup knobs."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    action = getattr(args, "setup_action", "")
+    config_path = Path.home() / ".sentinel" / "setup.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
+    except json.JSONDecodeError:
+        config = {}
+
+    if action == "webhook":
+        config["webhook"] = {
+            "url": args.url,
+            "events": [item.strip() for item in getattr(args, "events", "block,critical").split(",") if item.strip()],
+        }
+    elif action == "splunk":
+        config["splunk"] = {"url": args.url, "token_configured": bool(args.token)}
+    elif action == "guardrail":
+        config["guardrail"] = {"mode": args.mode}
+    else:
+        _fail(f"unknown setup action: {action}")
+        return 2
+
+    config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+    payload = {
+        "schema_version": "setup.v1",
+        "summary": {"action": action, "path": str(config_path), "status": "ok"},
+        "config": config,
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+    else:
+        _ok(f"updated {action} setup at {config_path}")
+    return 0
+
+
+def cmd_tui(args):
+    """Lightweight operator dashboard for terminal environments."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    from sentinel.audit_store import AuditStore
+    from sentinel.aibom.scanners import scanner_registry
+
+    store = AuditStore(getattr(args, "db", None))
+    stats = store.stats()
+    payload = {
+        "schema_version": "tui.status.v1",
+        "panels": {
+            "alerts": {"recent_events": stats["total_events"], "by_verdict": stats["by_verdict"]},
+            "health": {"audit_db": stats["path"], "scanner_count": len(scanner_registry())},
+            "policy": {"mode": os.environ.get("SENTINEL_PROXY_MODE", "action")},
+        },
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+        return 0
+
+    _header("sentinel tui", args=args)
+    table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+    table.add_column("panel", style="bold")
+    table.add_column("status")
+    table.add_row("alerts", f"{stats['total_events']} recent audit events")
+    table.add_row("health", f"{len(scanner_registry())} scanners, audit db {stats['path']}")
+    table.add_row("policy", payload["panels"]["policy"]["mode"])
+    console.print(table)
+    return 0
+
+
 def cmd_shell(args):
     """Interactive REPL."""
     from sentinel.cli_dispatch import dispatch_firewall_input, dispatch_firewall_output

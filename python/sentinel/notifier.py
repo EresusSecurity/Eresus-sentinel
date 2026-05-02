@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -58,18 +60,38 @@ class FileNotifier(Notifier):
 
 
 class WebhookNotifier(Notifier):
-    """Stub webhook notifier — disabled by default."""
+    """Generic JSON webhook notifier."""
 
-    def __init__(self, url: str = "", token: str = "") -> None:
+    def __init__(self, url: str = "", token: str = "", timeout: float = 5.0) -> None:
         self._url = url
         self._token = token
+        self._timeout = timeout
 
     def send(self, notification: Notification) -> bool:
         if not self._url:
             logger.debug("Webhook URL not configured — skipping")
             return False
-        logger.debug("Would POST to %s: %s", self._url, notification.title)
-        return True
+        parsed = urlparse(self._url)
+        if parsed.scheme not in {"http", "https"}:
+            logger.warning("Webhook URL must be http(s): %s", self._url)
+            return False
+        payload = json.dumps({
+            "title": notification.title,
+            "message": notification.message,
+            "severity": notification.severity,
+            "source": notification.source,
+            "metadata": notification.metadata,
+        }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        req = urllib.request.Request(self._url, data=payload, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as response:
+                return 200 <= getattr(response, "status", 200) < 300
+        except Exception as exc:
+            logger.warning("WebhookNotifier failed: %s", exc)
+            return False
 
 
 class NotifierChain:

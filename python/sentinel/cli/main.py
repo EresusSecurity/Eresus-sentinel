@@ -378,6 +378,7 @@ def main():
     # ── Tool commands ──────────────────────────────────────────────
     from sentinel.cli.cmd_tools import (
         cmd_aibom,
+        cmd_audit,
         cmd_benchmark,
         cmd_cache,
         cmd_config,
@@ -391,7 +392,9 @@ def main():
         cmd_rules,
         cmd_scanners,
         cmd_shell,
+        cmd_setup,
         cmd_stats,
+        cmd_tui,
         cmd_version,
         cmd_watch,
     )
@@ -499,6 +502,49 @@ def main():
     cache_cleanup.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
     cache_cleanup.set_defaults(func=cmd_cache, cache_action="cleanup")
     cache_p.set_defaults(func=cmd_cache, cache_action="stats")
+
+    audit_p = sub.add_parser("audit", help="query durable SQLite audit history")
+    audit_sub = audit_p.add_subparsers(dest="audit_action")
+    audit_query = audit_sub.add_parser("query", help="query audit events")
+    audit_query.add_argument("--since", help="relative duration (1h, 7d) or ISO timestamp")
+    audit_query.add_argument("--type", help="event type filter")
+    audit_query.add_argument("--verdict", help="verdict filter")
+    audit_query.add_argument("--limit", type=int, default=100)
+    audit_query.add_argument("--db", help="audit.db path")
+    audit_query.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    _add_output_args(audit_query, severity=False)
+    audit_query.set_defaults(func=cmd_audit, audit_action="query")
+    audit_export = audit_sub.add_parser("export", help="export audit events")
+    audit_export.add_argument("--since", help="relative duration (1h, 7d) or ISO timestamp")
+    audit_export.add_argument("--format", choices=["jsonl", "json"], default="jsonl")
+    audit_export.add_argument("--output-path", required=True)
+    audit_export.add_argument("--db", help="audit.db path")
+    audit_export.add_argument("--json", dest="json_output", action="store_true", help="output command summary as JSON")
+    audit_export.set_defaults(func=cmd_audit, audit_action="export")
+    audit_p.set_defaults(func=cmd_audit, audit_action="query")
+
+    setup_p = sub.add_parser("setup", help="configure local integrations")
+    setup_sub = setup_p.add_subparsers(dest="setup_action")
+    setup_webhook = setup_sub.add_parser("webhook", help="configure webhook notifier")
+    setup_webhook.add_argument("--url", required=True)
+    setup_webhook.add_argument("--events", default="block,critical")
+    setup_webhook.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    setup_webhook.set_defaults(func=cmd_setup, setup_action="webhook")
+    setup_splunk = setup_sub.add_parser("splunk", help="configure Splunk HEC")
+    setup_splunk.add_argument("--url", required=True)
+    setup_splunk.add_argument("--token", required=True)
+    setup_splunk.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    setup_splunk.set_defaults(func=cmd_setup, setup_action="splunk")
+    setup_guardrail = setup_sub.add_parser("guardrail", help="configure proxy guardrail mode")
+    setup_guardrail.add_argument("--mode", choices=["observe", "action"], required=True)
+    setup_guardrail.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    setup_guardrail.set_defaults(func=cmd_setup, setup_action="guardrail")
+
+    p = sub.add_parser("tui", help="operator terminal dashboard")
+    p.add_argument("--db", help="audit.db path")
+    p.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    _add_output_args(p, severity=False)
+    p.set_defaults(func=cmd_tui)
 
     prov_p = sub.add_parser("provenance", help="model lineage fingerprinting")
     prov_sub = prov_p.add_subparsers(dest="provenance_action")
@@ -624,7 +670,7 @@ def main():
     p.set_defaults(func=cmd_validate)
 
     p = sub.add_parser("proxy", help="live MCP intercepting proxy")
-    p.add_argument("--mode", choices=["enforce", "audit", "passthrough"], default="enforce")
+    p.add_argument("--mode", choices=["enforce", "audit", "passthrough", "observe", "action"], default="action")
     p.add_argument("--transport", choices=["stdio", "http"], default="http")
     p.add_argument("--upstream", default="http://localhost:3000", help="upstream MCP server URL")
     p.add_argument("--host", default="127.0.0.1")

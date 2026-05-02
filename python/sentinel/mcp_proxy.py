@@ -504,6 +504,17 @@ class MessageInspector:
                 },
             }
             SinkRegistry().emit(envelope)
+            try:
+                from sentinel.audit_store import AuditStore
+                AuditStore().record(
+                    event_type=event_type,
+                    target=method,
+                    verdict=action,
+                    session_id=session.session_id,
+                    payload=payload,
+                )
+            except Exception as audit_exc:
+                logger.debug("Failed to persist gateway audit event: %s", audit_exc)
         except Exception as exc:
             logger.debug("Failed to emit gateway event: %s", exc)
 

@@ -399,6 +399,7 @@ def main():
         cmd_watch,
     )
     from sentinel.cli.cmd_codeguard import cmd_codeguard, cmd_sandbox
+    from sentinel.cli.cmd_phase26 import cmd_cloud, cmd_compliance, cmd_plugin
     from sentinel.cli.cmd_provenance import cmd_provenance
 
     p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanners or LLM targets")
@@ -567,6 +568,57 @@ def main():
     sandbox_run.add_argument("cmd", nargs=argparse.REMAINDER)
     sandbox_run.set_defaults(func=cmd_sandbox, sandbox_action="run")
     sandbox_p.set_defaults(func=cmd_sandbox, sandbox_action="setup")
+
+    compliance_p = sub.add_parser("compliance", help="run AI compliance pack checks")
+    compliance_sub = compliance_p.add_subparsers(dest="compliance_action")
+    compliance_check = compliance_sub.add_parser("check", help="check an AIBOM or repository against a framework")
+    compliance_check.add_argument("path", nargs="?", default=".")
+    compliance_check.add_argument(
+        "--framework",
+        default="owasp-llm",
+        choices=[
+            "owasp-llm",
+            "owasp_llm",
+            "eu-ai-act",
+            "eu_ai_act",
+            "nist-ai-rmf",
+            "nist_ai_rmf",
+            "owasp-agentic-top10",
+            "owasp_agentic_top10",
+            "eresus",
+            "all",
+        ],
+    )
+    compliance_check.add_argument("-f", "--format", choices=["table", "json", "html"], default="json")
+    compliance_check.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    compliance_check.set_defaults(func=cmd_compliance, compliance_action="check")
+    compliance_p.set_defaults(func=cmd_compliance, compliance_action="check")
+
+    plugin_p = sub.add_parser("plugin", help="create and install scanner plugins")
+    plugin_sub = plugin_p.add_subparsers(dest="plugin_action")
+    plugin_new = plugin_sub.add_parser("new", help="scaffold a scanner plugin")
+    plugin_new.add_argument("name")
+    plugin_new.add_argument("--output", dest="output_dir", default=".")
+    plugin_new.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    plugin_new.set_defaults(func=cmd_plugin, plugin_action="new")
+    plugin_install = plugin_sub.add_parser("install", help="install a scanner plugin pack zip")
+    plugin_install.add_argument("pack")
+    plugin_install.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    plugin_install.set_defaults(func=cmd_plugin, plugin_action="install")
+    plugin_guide = plugin_sub.add_parser("guide", help="show plugin authoring contract")
+    plugin_guide.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    plugin_guide.set_defaults(func=cmd_plugin, plugin_action="guide")
+    plugin_p.set_defaults(func=cmd_plugin, plugin_action="guide")
+
+    cloud_p = sub.add_parser("cloud", help="remote model scan planning")
+    cloud_sub = cloud_p.add_subparsers(dest="cloud_action")
+    cloud_scan = cloud_sub.add_parser("scan", help="plan a cloud model scan")
+    cloud_scan.add_argument("uri")
+    cloud_scan.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    cloud_scan.add_argument("-f", "--format", choices=["table", "json"], default="json")
+    cloud_scan.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    cloud_scan.set_defaults(func=cmd_cloud, cloud_action="scan")
+    cloud_p.set_defaults(func=cmd_cloud, cloud_action="scan")
 
     prov_p = sub.add_parser("provenance", help="model lineage fingerprinting")
     prov_sub = prov_p.add_subparsers(dest="provenance_action")

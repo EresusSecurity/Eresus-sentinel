@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlparse
 
 CLOUD_SCAN_SCHEMA_VERSION = "sentinel.cloud-target.v1"
@@ -43,3 +44,26 @@ def parse_cloud_target(uri: str) -> CloudTarget:
     if uri.endswith(".dvc"):
         return CloudTarget("dvc", uri, path=uri, auth_env=("DVC_REMOTE",))
     raise ValueError(f"Unsupported cloud target URI: {uri}")
+
+
+def plan_cloud_scan(uri: str) -> dict[str, object]:
+    """Return a deterministic cloud scan plan without downloading remote data."""
+    import os
+
+    target = parse_cloud_target(uri)
+    auth = {name: bool(os.environ.get(name)) for name in target.auth_env}
+    return {
+        "schema_version": "sentinel.cloud-scan.v1",
+        "summary": {
+            "status": "ready" if any(auth.values()) or target.provider == "dvc" else "auth-required",
+            "provider": target.provider,
+            "dry_run": True,
+        },
+        "target": target.to_dict(),
+        "auth": auth,
+        "scan": {
+            "mode": "remote-plan",
+            "downloaded": False,
+            "local_path": str(Path(target.path)) if target.provider == "dvc" else "",
+        },
+    }

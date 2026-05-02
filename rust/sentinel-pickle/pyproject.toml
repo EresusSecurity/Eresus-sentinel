@@ -1,0 +1,38 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "sentinel-picklescan"
+version = "0.1.0"
+description = "Standalone Rust-backed pickle opcode scanner for Eresus Sentinel"
+readme = "README.md"
+license = "LicenseRef-ESL-1.1"
+requires-python = ">=3.10,<3.15"
+authors = [
+    { name = "Eresus Security", email = "engineering@eresussec.com" },
+]
+keywords = ["pickle", "security", "model-scanning", "rust", "pyo3"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+]
+
+[project.urls]
+Homepage = "https://eresussec.com"
+Repository = "https://github.com/eresus-security/sentinel"
+Security = "https://github.com/eresus-security/sentinel/blob/main/SECURITY.md"
+
+[tool.maturin]
+module-name = "sentinel_pickle"
+features = ["pyo3/extension-module", "pyo3/abi3-py38"]
+bindings = "pyo3"

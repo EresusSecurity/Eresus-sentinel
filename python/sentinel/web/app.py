@@ -29,6 +29,13 @@ logger = logging.getLogger(__name__)
 _WEB_DIR = Path(__file__).parent
 _DIST_DIR = _WEB_DIR / "dist"
 
+_LOCAL_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+]
+
 
 def create_dashboard_app(
     policy_path: str | None = None,
@@ -65,6 +72,7 @@ def create_dashboard_app(
         SecurityHeadersMiddleware,
         create_auth_middleware,
     )
+    from sentinel.web.api_errors import api_error_payload
     from sentinel.web.state import AppState
 
     # ── State ────────────────────────────────────────────────────
@@ -86,13 +94,25 @@ def create_dashboard_app(
         openapi_url="/api/openapi.json",
     )
 
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException):
+        message = str(exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=api_error_payload("http_error", message, exc.status_code),
+            headers=exc.headers,
+        )
+
     # Global exception handler — never leak stack traces
     @app.exception_handler(Exception)
     async def _global_exception_handler(request: Request, exc: Exception):
         logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
         env = os.environ.get("SENTINEL_ENV", "production")
         detail = str(exc) if env == "development" else "Internal server error"
-        return JSONResponse(status_code=500, content={"detail": detail})
+        return JSONResponse(
+            status_code=500,
+            content=api_error_payload("internal_error", detail, 500),
+        )
 
     # Middleware (Starlette runs the last added middleware outermost).
     app.add_middleware(RateLimitMiddleware)
@@ -100,10 +120,7 @@ def create_dashboard_app(
     app.add_middleware(AuthMiddleware)
 
     # CORS
-    allowed_origins = os.environ.get(
-        "SENTINEL_CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:8080"
-    ).split(",")
+    allowed_origins = _dashboard_cors_origins()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -147,6 +164,8 @@ def create_dashboard_app(
 
         @app.get("/{path:path}")
         async def spa_fallback(path: str):
+            if path.startswith("api/") or path == "health":
+                raise HTTPException(status_code=404, detail="Not found")
             if ".." in path or path.startswith("/"):
                 raise HTTPException(status_code=400, detail="Invalid path")
             if path:
@@ -180,3 +199,13 @@ def create_dashboard_app(
             )
 
     return app
+
+
+def _dashboard_cors_origins() -> list[str]:
+    configured = os.environ.get("SENTINEL_CORS_ORIGINS")
+    if configured is not None:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    env = os.environ.get("SENTINEL_ENV", "production").lower()
+    if env in {"development", "dev", "local", "test"}:
+        return list(_LOCAL_CORS_ORIGINS)
+    return []

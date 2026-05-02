@@ -152,11 +152,22 @@ async def api_history():
 async def health():
     dist_dir = Path(__file__).parent / "dist"
     web_ui_ready = dist_dir.is_dir() and (dist_dir / "index.html").is_file()
+    web_ui_status = "ready" if web_ui_ready else "missing"
     return {
         "status": "healthy",
         "version": _version,
         "uptime_s": round(time.time() - _state.start_time, 1),
         "scans_processed": len(_state.scan_history),
         "artifacts_processed": len(_state.artifact_history),
-        "web_ui": "ready" if web_ui_ready else "missing",
+        "web_ui": web_ui_status,
+        "web_ui_build": {
+            "ready": web_ui_ready,
+            "status": web_ui_status,
+            "dist": str(dist_dir),
+            "message": (
+                "React dashboard assets are available"
+                if web_ui_ready
+                else "React dashboard assets are missing; API remains available"
+            ),
+        },
     }

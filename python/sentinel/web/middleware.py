@@ -7,6 +7,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from sentinel.web.api_errors import api_error_payload
 from sentinel.web.state import RATE_LIMIT_BURST, RATE_LIMIT_RPS
 
 # ── Token Bucket Rate Limiter ──────────────────────────────────
@@ -98,7 +99,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not rate_limiter.allow(client_ip):
             return JSONResponse(
                 status_code=429,
-                content={"detail": "Rate limit exceeded. Try again later."},
+                content=api_error_payload(
+                    "rate_limit_exceeded",
+                    "Rate limit exceeded. Try again later.",
+                    429,
+                ),
                 headers={"Retry-After": "1"},
             )
         now = time.monotonic()
@@ -134,7 +139,7 @@ def create_auth_middleware(state):
             if not auth.startswith("Bearer "):
                 return JSONResponse(
                     status_code=401,
-                    content={"detail": "Authentication required"},
+                    content=api_error_payload("auth_required", "Authentication required", 401),
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             token = auth[7:]
@@ -142,7 +147,7 @@ def create_auth_middleware(state):
             if user_id is None:
                 return JSONResponse(
                     status_code=401,
-                    content={"detail": "Invalid or expired token"},
+                    content=api_error_payload("invalid_token", "Invalid or expired token", 401),
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             # Attach state so route guards can resolve the user

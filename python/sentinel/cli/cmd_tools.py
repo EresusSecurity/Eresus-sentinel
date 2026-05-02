@@ -429,18 +429,36 @@ def cmd_stats(args):
 
 
 def cmd_doctor(args):
-    """Health check — validate environment, dependencies, and scanners."""
+    """Health check: validate environment, dependencies, and scanners."""
     if getattr(args, "json_output", False):
         args.format = "json"
         console.file = sys.stderr
     fmt = getattr(args, "format", "table")
-    _doctor_checks = []
+    show_failed = bool(getattr(args, "show_failed", False))
 
-    _header("doctor · system health check", args=args)
+    checks: list[dict] = []
+
+    def _record(status: str, label: str, *, passed: bool, detail: str | None = None) -> int:
+        check = {"status": status, "label": label, "passed": passed}
+        if detail:
+            check["detail"] = detail
+        checks.append(check)
+        if fmt == "table" and (not show_failed or status in {"warn", "fail"}):
+            message = f"{label} — {detail}" if detail else label
+            if status == "pass":
+                _ok(message)
+            elif status == "warn":
+                _warn(message)
+            else:
+                _fail(message)
+        return 1 if passed else 0
+
+    if fmt == "table":
+        _header("doctor · system health check", args=args)
+
     checks_passed = 0
     checks_total = 0
 
-    # 1. Python version + GIL info
     checks_total += 1
     py_ver = sys.version.split()[0]
     major, minor = sys.version_info[:2]
@@ -448,22 +466,20 @@ def cmd_doctor(args):
     if major >= 3 and minor >= 13:
         try:
             gil_status = sys._is_gil_enabled()  # type: ignore[attr-defined]
-            gil_info = f" · GIL={'on' if gil_status else '[green]free-threaded[/green]'}"
+            gil_info = f"GIL={'on' if gil_status else 'free-threaded'}"
         except AttributeError:
-            gil_info = " · GIL=on"
+            gil_info = "GIL=on"
     if major >= 3 and minor >= 10:
-        _ok(f"Python {py_ver}{gil_info}")
-        checks_passed += 1
+        checks_passed += _record("pass", f"Python {py_ver}", passed=True, detail=gil_info or None)
     else:
-        _warn(f"Python {py_ver} — 3.10+ recommended{gil_info}")
+        checks_passed += _record("warn", f"Python {py_ver}", passed=False, detail="3.10+ recommended")
 
-    # 2. CPU/Platform
     import platform
     cpu = platform.machine()
     plat = platform.system()
-    console.print(f"  [dim]  {plat}/{cpu} · {os.cpu_count()} cores[/dim]")
+    if fmt == "table" and not show_failed:
+        console.print(f"  [dim]  {plat}/{cpu} · {os.cpu_count()} cores[/dim]")
 
-    # 3. Core imports
     core_modules = [
         ("sentinel.finding", "Finding model"),
         ("sentinel.artifact", "Artifact scanners"),
@@ -478,12 +494,10 @@ def cmd_doctor(args):
         checks_total += 1
         try:
             __import__(mod_name)
-            _ok(f"{label} ({mod_name})")
-            checks_passed += 1
-        except ImportError as e:
-            _fail(f"{label} — import failed: {e}")
+            checks_passed += _record("pass", f"{label} ({mod_name})", passed=True)
+        except ImportError as exc:
+            checks_passed += _record("fail", label, passed=False, detail=f"import failed: {exc}")
 
-    # 3. Optional dependencies
     opt_deps = [
         ("rich", "Rich terminal UI"),
         ("yaml", "YAML rule loader"),
@@ -491,19 +505,18 @@ def cmd_doctor(args):
         ("uvicorn", "ASGI runner"),
         ("huggingface_hub", "HuggingFace Hub"),
     ]
-    console.print("\n  [bold]Optional Dependencies[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Optional Dependencies[/bold]")
     for mod_name, label in opt_deps:
         checks_total += 1
         try:
             __import__(mod_name)
-            _ok(f"{label} ({mod_name})")
-            checks_passed += 1
+            checks_passed += _record("pass", f"{label} ({mod_name})", passed=True)
         except ImportError:
-            _warn(f"{label} ({mod_name}) — not installed")
-            checks_passed += 1  # optional, don't fail
+            checks_passed += _record("warn", f"{label} ({mod_name})", passed=True, detail="not installed")
 
-    # 4. YAML rules validation
-    console.print("\n  [bold]Rule Databases[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Rule Databases[/bold]")
     try:
         from sentinel.data_loader import load_data
         yaml_files = [
@@ -515,65 +528,182 @@ def cmd_doctor(args):
             checks_total += 1
             try:
                 load_data(yf)
-                _ok(f"{yf}")
-                checks_passed += 1
-            except Exception as e:
-                _fail(f"{yf} — {e}")
+                checks_passed += _record("pass", yf, passed=True)
+            except Exception as exc:
+                checks_passed += _record("fail", yf, passed=False, detail=str(exc))
     except ImportError:
-        _warn("data_loader unavailable")
+        _record("warn", "data_loader unavailable", passed=True)
 
-    # 5. Scanner count
-    console.print("\n  [bold]Scanner Registry[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Scanner Registry[/bold]")
     checks_total += 1
     try:
         from sentinel.policy import PolicyEngine
         engine = PolicyEngine.default()
-        s = engine.list_scanners()
-        inp = len(s["input"])
-        out = len(s["output"])
-        _ok(f"{inp} input + {out} output = {inp + out} firewall scanners")
-        checks_passed += 1
-    except Exception as e:
-        _fail(f"scanner registry — {e}")
+        scanners = engine.list_scanners()
+        inp = len(scanners["input"])
+        out = len(scanners["output"])
+        checks_passed += _record("pass", f"{inp} input + {out} output = {inp + out} firewall scanners", passed=True)
+    except Exception as exc:
+        checks_passed += _record("fail", "scanner registry", passed=False, detail=str(exc))
 
     checks_total += 1
     try:
         from sentinel._plugins import list_all_plugins
         artifact_scanners = list_all_plugins().get("artifact", [])
-        _ok(f"{len(artifact_scanners)} artifact scanners")
-        checks_passed += 1
-    except Exception as e:
-        _fail(f"artifact scanners — {e}")
+        checks_passed += _record("pass", f"{len(artifact_scanners)} artifact scanners", passed=True)
+    except Exception as exc:
+        checks_passed += _record("fail", "artifact scanners", passed=False, detail=str(exc))
 
-    # Web Dashboard
-    console.print("\n  [bold]Web Dashboard[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Web Dashboard[/bold]")
     checks_total += 1
     try:
-        from sentinel.web.app import create_dashboard_app
+        from sentinel.web.app import create_dashboard_app  # noqa: F401
         dist_dir = Path(__file__).parent.parent / "web" / "dist"
         if dist_dir.is_dir() and (dist_dir / "index.html").is_file():
-            _ok(f"React SPA built ({sum(1 for _ in dist_dir.rglob('*') if _.is_file())} files)")
+            detail = f"{sum(1 for _ in dist_dir.rglob('*') if _.is_file())} files"
+            checks_passed += _record("pass", "React SPA built", passed=True, detail=detail)
         else:
-            _warn("React SPA not built — run: cd frontend && npm run build")
-        checks_passed += 1
-    except ImportError as e:
-        _warn(f"Web dashboard unavailable — {e}")
-        checks_passed += 1  # optional
+            checks_passed += _record("warn", "React SPA not built", passed=True, detail="run: cd frontend && npm run build")
+    except ImportError as exc:
+        checks_passed += _record("warn", "Web dashboard unavailable", passed=True, detail=str(exc))
 
-    # Summary
-    color = "green" if checks_passed == checks_total else "yellow"
-    console.print(f"\n  [{color}]{checks_passed}/{checks_total}[/{color}] checks passed")
+    status = "ok" if checks_passed >= checks_total - 2 else "degraded"
+    if fmt == "table":
+        color = "green" if checks_passed == checks_total else "yellow"
+        console.print(f"\n  [{color}]{checks_passed}/{checks_total}[/{color}] checks passed")
 
-    import platform as _plat
     data = {
-        "checks_passed": checks_passed, "checks_total": checks_total,
+        "schema_version": "doctor.v1",
+        "checks_passed": checks_passed,
+        "checks_total": checks_total,
         "python": sys.version.split()[0],
-        "platform": _plat.system(), "machine": _plat.machine(),
-        "status": "ok" if checks_passed >= checks_total - 2 else "degraded",
+        "platform": plat,
+        "machine": cpu,
+        "status": status,
+        "checks": checks,
+        "failed_checks": [check for check in checks if check["status"] == "fail"],
+        "degraded_checks": [check for check in checks if check["status"] == "warn"],
     }
     if fmt in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
         _emit_info(args, data)
-    return 0 if checks_passed >= checks_total - 2 else 1
+    return 0 if status == "ok" else 1
+
+
+def cmd_debug(args):
+    """Emit environment and configuration diagnostics."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    import importlib.util
+    import platform
+    import shutil
+
+    from sentinel import __version__
+    from sentinel.artifact import _scanner_catalog
+
+    payload = {
+        "schema_version": "debug.v1",
+        "summary": {"status": "ok", "version": __version__},
+        "python": {
+            "version": sys.version.split()[0],
+            "executable": sys.executable,
+            "prefix": sys.prefix,
+        },
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+        },
+        "paths": {
+            "cwd": os.getcwd(),
+            "sentinel_home": str(Path.home() / ".sentinel"),
+            "git": shutil.which("git"),
+            "docker": shutil.which("docker"),
+        },
+        "features": {
+            "artifact_scanners": len(_scanner_catalog()),
+            "rust_pickle_module": importlib.util.find_spec("sentinel_pickle") is not None,
+            "huggingface_hub": importlib.util.find_spec("huggingface_hub") is not None,
+        },
+        "env": {
+            "SENTINEL_PICKLE_BACKEND": os.environ.get("SENTINEL_PICKLE_BACKEND", ""),
+            "SENTINEL_CONFIG": os.environ.get("SENTINEL_CONFIG", ""),
+            "values_redacted": True,
+        },
+    }
+
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+        return 0
+
+    _header("debug diagnostics", args=args)
+    table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+    table.add_column("field", style="bold")
+    table.add_column("value")
+    table.add_row("version", __version__)
+    table.add_row("python", payload["python"]["version"])
+    table.add_row("platform", f"{payload['platform']['system']}/{payload['platform']['machine']}")
+    table.add_row("artifact scanners", str(payload["features"]["artifact_scanners"]))
+    table.add_row("rust pickle module", str(payload["features"]["rust_pickle_module"]))
+    console.print(table)
+    return 0
+
+
+def cmd_cache(args):
+    """Manage lightweight scan caches."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    action = getattr(args, "cache_action", "stats") or "stats"
+    from sentinel.artifact import _SCAN_CACHE
+
+    cache_dir = Path(os.environ.get("SENTINEL_CACHE_DIR", Path.home() / ".cache" / "eresus-sentinel"))
+    disk_files = list(cache_dir.rglob("*")) if cache_dir.is_dir() else []
+    removed = 0
+    if action in {"clear", "cleanup"}:
+        removed += len(_SCAN_CACHE)
+        _SCAN_CACHE.clear()
+        if action == "clear" and cache_dir.is_dir():
+            for path in disk_files:
+                if path.is_file() and path.suffix in {".json", ".cache", ".tmp"}:
+                    try:
+                        path.unlink()
+                        removed += 1
+                    except OSError:
+                        pass
+        elif action == "cleanup" and cache_dir.is_dir():
+            now = time.time()
+            for path in disk_files:
+                if path.is_file() and now - path.stat().st_mtime > 7 * 24 * 60 * 60:
+                    try:
+                        path.unlink()
+                        removed += 1
+                    except OSError:
+                        pass
+
+    payload = {
+        "schema_version": "cache.v1",
+        "summary": {"action": action, "removed": removed, "status": "ok"},
+        "memory": {"artifact_entries": len(_SCAN_CACHE)},
+        "disk": {
+            "path": str(cache_dir),
+            "exists": cache_dir.is_dir(),
+            "files": sum(1 for path in disk_files if path.is_file()),
+        },
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+        return 0
+
+    _header(f"cache {action}", args=args)
+    console.print(f"  memory artifact entries: {payload['memory']['artifact_entries']}")
+    console.print(f"  disk path: {payload['disk']['path']}")
+    if action in {"clear", "cleanup"}:
+        _ok(f"removed {removed} cache entr{'y' if removed == 1 else 'ies'}")
+    return 0
 
 
 def cmd_shell(args):

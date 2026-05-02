@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import sys
+import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import urlretrieve
 
+from rich import box
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
 
 from sentinel.cli._export import _export, _sanitize_for_json
 from sentinel.cli._helpers import (
@@ -33,6 +40,417 @@ def _fails_threshold(findings, fail_on: str | None) -> bool:
 
     threshold = order.get(fail_on.upper(), 3)
     return any(order.get(_sev(f)[0], 0) >= threshold for f in findings)
+
+
+_ARTIFACT_OUTPUT_FORMATS = ["table", "json", "sarif", "csv", "markdown", "html", "junit"]
+
+
+def _add_artifact_output_args(parser: argparse.ArgumentParser, *, severity: bool = True) -> None:
+    parser.add_argument("-f", "--format", choices=_ARTIFACT_OUTPUT_FORMATS, default=argparse.SUPPRESS)
+    parser.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    if severity:
+        parser.add_argument(
+            "--min-severity",
+            choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+            default=argparse.SUPPRESS,
+        )
+
+
+def _inherit_artifact_globals(parsed: argparse.Namespace, root_args: argparse.Namespace) -> argparse.Namespace:
+    for attr, default in (
+        ("format", getattr(root_args, "format", "table")),
+        ("output", getattr(root_args, "output", None)),
+        ("min_severity", getattr(root_args, "min_severity", None)),
+        ("show_skipped", getattr(root_args, "show_skipped", False)),
+    ):
+        if not hasattr(parsed, attr):
+            setattr(parsed, attr, default)
+    parsed.command = "artifact"
+    return parsed
+
+
+def _scanner_tokens(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(token.strip().lower() for token in value.split(",") if token.strip())
+
+
+def _parse_size_limit(value: str | None) -> int | None:
+    if not value:
+        return None
+    text = value.strip().lower()
+    units = {
+        "b": 1,
+        "kb": 1000,
+        "kib": 1024,
+        "mb": 1000**2,
+        "mib": 1024**2,
+        "gb": 1000**3,
+        "gib": 1024**3,
+        "tb": 1000**4,
+        "tib": 1024**4,
+    }
+    for suffix, multiplier in sorted(units.items(), key=lambda item: len(item[0]), reverse=True):
+        if text.endswith(suffix):
+            number = text[: -len(suffix)].strip()
+            return int(float(number) * multiplier)
+    return int(float(text))
+
+
+def _download_stream_target(target: str) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"}:
+        return Path(target), None
+    tmpdir = tempfile.TemporaryDirectory(prefix="sentinel-artifact-stream-")
+    suffix = Path(parsed.path).suffix or ".artifact"
+    local_path = Path(tmpdir.name) / f"streamed{suffix}"
+    urlretrieve(target, local_path)
+    return local_path, tmpdir
+
+
+def _artifact_scanner_rows() -> list[dict]:
+    from sentinel.artifact import _scanner_catalog
+
+    return [
+        {
+            "id": spec.key,
+            "class": spec.scanner_cls.__name__,
+            "extensions": list(spec.extensions),
+            "unsafe_serialization": spec.unsafe_serialization,
+        }
+        for spec in _scanner_catalog()
+    ]
+
+
+def _emit_artifact_info(args: argparse.Namespace, payload: dict) -> None:
+    from sentinel.cli.cmd_tools import _emit_info
+
+    _emit_info(args, payload)
+
+
+def _cmd_artifact_list_scanners(args: argparse.Namespace) -> int:
+    scanners = _artifact_scanner_rows()
+    payload = {
+        "schema_version": "artifact.scanners.v1",
+        "summary": {"total": len(scanners), "unsafe_serialization": sum(1 for row in scanners if row["unsafe_serialization"])},
+        "scanners": scanners,
+        "errors": [],
+        "metadata": {"command": "artifact scan --list-scanners"},
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+        _emit_artifact_info(args, payload)
+        return 0
+
+    table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+    table.add_column("id", style="bold")
+    table.add_column("class")
+    table.add_column("extensions")
+    table.add_column("unsafe", justify="center")
+    for row in scanners:
+        table.add_row(row["id"], row["class"], ", ".join(row["extensions"]), "yes" if row["unsafe_serialization"] else "")
+    _header(f"artifact scanners · {len(scanners)} registered", args=args)
+    console.print(table)
+    return 0
+
+
+def _artifact_options(args: argparse.Namespace):
+    from sentinel.artifact import ArtifactScanOptions
+
+    return ArtifactScanOptions(
+        include=_scanner_tokens(getattr(args, "scanners", None)),
+        exclude=_scanner_tokens(getattr(args, "exclude_scanner", None)),
+        cache=True,
+        fail_closed=True,
+    )
+
+
+def _artifact_plan(path: Path, args: argparse.Namespace) -> tuple[list[dict], list[dict]]:
+    from sentinel.artifact import _find_scanner_spec, _scanner_selected
+
+    options = _artifact_options(args)
+    max_size = _parse_size_limit(getattr(args, "max_size", None))
+    candidates = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
+    planned: list[dict] = []
+    skipped: list[dict] = []
+    for candidate in candidates:
+        try:
+            size = candidate.stat().st_size
+        except OSError as exc:
+            skipped.append({"path": str(candidate), "reason": f"stat failed: {exc}"})
+            continue
+        spec = _find_scanner_spec(candidate)
+        if spec is None:
+            skipped.append({"path": str(candidate), "reason": "unsupported format"})
+            continue
+        if not _scanner_selected(spec, options):
+            skipped.append({"path": str(candidate), "reason": "scanner excluded"})
+            continue
+        if max_size is not None and size > max_size:
+            skipped.append({"path": str(candidate), "reason": "max-size exceeded", "size": size})
+            continue
+        planned.append(
+            {
+                "path": str(candidate),
+                "scanner": spec.key,
+                "class": spec.scanner_cls.__name__,
+                "size": size,
+                "extensions": list(spec.extensions),
+            }
+        )
+    return planned, skipped
+
+
+def _max_size_finding(path: str, max_size: str):
+    from sentinel.finding import Finding, Severity
+
+    return Finding.artifact(
+        rule_id="ARTIFACT-MAX-SIZE",
+        title="Artifact skipped by CLI max-size limit",
+        description="The artifact was not scanned because it exceeds the requested CLI max-size budget.",
+        severity=Severity.MEDIUM,
+        target=path,
+        evidence=f"max_size={max_size}",
+        confidence=0.9,
+        remediation="Raise --max-size for trusted large artifacts, or scan the file in a controlled environment.",
+    )
+
+
+def _write_artifact_sbom(path: Path, planned: list[dict], output: str) -> None:
+    components = []
+    for item in planned:
+        component_path = Path(item["path"])
+        hashes = []
+        if component_path.is_file():
+            digest = hashlib.sha256()
+            with open(component_path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            hashes.append({"alg": "SHA-256", "content": digest.hexdigest()})
+        components.append(
+            {
+                "type": "file",
+                "name": component_path.name,
+                "bom-ref": str(component_path),
+                "hashes": hashes,
+                "properties": [
+                    {"name": "sentinel:scanner", "value": item["scanner"]},
+                    {"name": "sentinel:size", "value": str(item["size"])},
+                ],
+            }
+        )
+    sbom = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "version": 1,
+        "metadata": {"component": {"type": "file", "name": path.name, "bom-ref": str(path)}},
+        "components": components,
+    }
+    Path(output).write_text(json.dumps(sbom, indent=2, ensure_ascii=True), encoding="utf-8")
+
+
+def _scan_artifact_planned(planned: list[dict], skipped: list[dict], args: argparse.Namespace):
+    from sentinel.artifact import scan_file
+
+    findings = []
+    max_size = getattr(args, "max_size", None)
+    for item in planned:
+        findings.extend(
+            scan_file(
+                item["path"],
+                options=_artifact_options(args),
+            )
+        )
+    if max_size:
+        findings.extend(_max_size_finding(item["path"], max_size) for item in skipped if item.get("reason") == "max-size exceeded")
+    return findings
+
+
+def _cmd_artifact_scan(args: argparse.Namespace) -> int:
+    if getattr(args, "list_scanners", False):
+        return _cmd_artifact_list_scanners(args)
+
+    target = getattr(args, "path", None)
+    if not target:
+        _fail("path required unless --list-scanners is used")
+        return 2
+
+    tmpdir = None
+    try:
+        path, tmpdir = _download_stream_target(target) if getattr(args, "stream", False) else (Path(target), None)
+        if not path.exists():
+            _fail(f"path not found: {target}")
+            return 2
+
+        planned, skipped = _artifact_plan(path, args)
+
+        if getattr(args, "sbom", None):
+            _write_artifact_sbom(path, planned, args.sbom)
+
+        if getattr(args, "dry_run", False):
+            payload = {
+                "schema_version": "artifact.plan.v1",
+                "summary": {"target": str(path), "planned": len(planned), "skipped": len(skipped)},
+                "plan": planned,
+                "skipped": skipped,
+                "errors": [],
+                "metadata": {
+                    "include": list(_scanner_tokens(getattr(args, "scanners", None))),
+                    "exclude": list(_scanner_tokens(getattr(args, "exclude_scanner", None))),
+                    "max_size": getattr(args, "max_size", None),
+                    "sbom": getattr(args, "sbom", None),
+                },
+            }
+            if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+                _emit_artifact_info(args, payload)
+            else:
+                _header(f"artifact dry-run → {path}", args=args)
+                for item in planned[:50]:
+                    console.print(f"  [green]●[/green] {item['scanner']}  [dim]{item['path']}[/dim]")
+                if len(planned) > 50:
+                    console.print(f"  [dim]... and {len(planned) - 50} more[/dim]")
+                if getattr(args, "show_skipped", False) and skipped:
+                    console.print(f"\n  [dim]⊘ {len(skipped)} skipped[/dim]")
+            return 0
+
+        findings = _scan_artifact_planned(planned, skipped, args)
+        findings = _apply_severity_filter(findings, args)
+
+        if getattr(args, "format", "table") == "table":
+            _header(f"artifact scan → {path}", args=args)
+            _print_findings(findings, args=args)
+            if getattr(args, "show_skipped", False) and skipped:
+                console.print(f"\n  [dim]⊘ {len(skipped)} file(s) skipped:[/dim]")
+                for item in skipped[:20]:
+                    console.print(f"    [dim]· {item['path']} ({item['reason']})[/dim]")
+                if len(skipped) > 20:
+                    console.print(f"    [dim]  ... and {len(skipped) - 20} more[/dim]")
+
+        _export(args, findings)
+        return 1 if _fails_threshold(findings, getattr(args, "fail_on", None)) else 0
+    finally:
+        if tmpdir is not None:
+            tmpdir.cleanup()
+
+
+def _cmd_artifact_metadata(args: argparse.Namespace) -> int:
+    from sentinel.artifact import _find_scanner_spec
+
+    path = Path(args.path)
+    if not path.exists() or not path.is_file():
+        _fail(f"path not found: {args.path}")
+        return 2
+
+    stat = path.stat()
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        first_bytes = handle.read(64)
+        digest.update(first_bytes)
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+
+    spec = _find_scanner_spec(path)
+    metadata = {
+        "path": str(path),
+        "name": path.name,
+        "size": stat.st_size,
+        "sha256": digest.hexdigest(),
+        "scanner": spec.key if spec else None,
+        "scanner_class": spec.scanner_cls.__name__ if spec else None,
+        "unsafe_serialization": bool(spec and spec.unsafe_serialization),
+        "supported": spec is not None,
+    }
+    if not getattr(args, "security_only", False):
+        metadata.update(
+            {
+                "suffix": path.suffix.lower(),
+                "magic_hex": first_bytes[:16].hex(),
+                "modified_time": int(stat.st_mtime),
+            }
+        )
+
+    payload = {
+        "schema_version": "artifact.metadata.v1",
+        "summary": {"target": str(path), "supported": metadata["supported"], "scanner": metadata["scanner"]},
+        "metadata": metadata,
+        "errors": [],
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+        _emit_artifact_info(args, payload)
+        return 0
+
+    table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+    table.add_column("field", style="bold")
+    table.add_column("value")
+    for key, value in metadata.items():
+        table.add_row(key, str(value))
+    _header(f"artifact metadata → {path}", args=args)
+    console.print(table)
+    return 0
+
+
+def _artifact_scan_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sentinel artifact scan", description="scan model artifacts without deserializing them")
+    parser.add_argument("path", nargs="?", help="file, directory, or URL when --stream is set")
+    parser.add_argument("--list-scanners", action="store_true", help="list registered artifact scanners")
+    parser.add_argument("--scanners", help="comma-separated scanner allowlist (id, class, or extension)")
+    parser.add_argument("--exclude-scanner", help="comma-separated scanner denylist (id, class, or extension)")
+    parser.add_argument("--dry-run", action="store_true", help="preview files and scanners without scanning")
+    parser.add_argument("--stream", action="store_true", help="download remote URL to a temporary file before scanning")
+    parser.add_argument("--max-size", help="skip artifacts larger than this size, e.g. 10GB")
+    parser.add_argument("--sbom", help="write a CycloneDX SBOM JSON file")
+    parser.add_argument("--show-skipped", action="store_true", default=argparse.SUPPRESS)
+    parser.add_argument(
+        "--fail-on",
+        choices=["info", "low", "medium", "high", "critical", "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+    )
+    _add_artifact_output_args(parser)
+    return parser
+
+
+def _artifact_metadata_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sentinel artifact metadata", description="extract safe metadata from a model artifact")
+    parser.add_argument("path")
+    parser.add_argument("--security-only", action="store_true", help="omit non-security metadata fields")
+    _add_artifact_output_args(parser, severity=False)
+    return parser
+
+
+def _artifact_legacy_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sentinel artifact", description="scan model artifacts")
+    parser.add_argument("path")
+    parser.add_argument("--show-skipped", action="store_true", default=argparse.SUPPRESS)
+    _add_artifact_output_args(parser)
+    return parser
+
+
+def cmd_artifact_entry(args: argparse.Namespace) -> int:
+    """Artifact command router preserving `sentinel artifact PATH` legacy usage."""
+    tokens = list(getattr(args, "artifact_args", []) or [])
+    if tokens and tokens[0] == "--":
+        tokens = tokens[1:]
+    if not tokens or tokens[0] in {"-h", "--help"}:
+        _artifact_legacy_parser().print_help()
+        return 0
+
+    action = tokens[0]
+    if action == "scan":
+        parsed = _artifact_scan_parser().parse_args(tokens[1:])
+        parsed = _inherit_artifact_globals(parsed, args)
+        if getattr(parsed, "format", "table") != "table":
+            console.file = sys.stderr
+        return _cmd_artifact_scan(parsed)
+    if action == "metadata":
+        parsed = _artifact_metadata_parser().parse_args(tokens[1:])
+        parsed = _inherit_artifact_globals(parsed, args)
+        if getattr(parsed, "format", "table") != "table":
+            console.file = sys.stderr
+        return _cmd_artifact_metadata(parsed)
+
+    parsed = _artifact_legacy_parser().parse_args(tokens)
+    parsed = _inherit_artifact_globals(parsed, args)
+    if getattr(parsed, "format", "table") != "table":
+        console.file = sys.stderr
+    return cmd_artifact(parsed)
 
 
 _SCAN_MAX_FILES = 10_000

@@ -76,7 +76,7 @@ def main():
 
     # ── Scan commands ──────────────────────────────────────────────
     from sentinel.cli.cmd_scan import (
-        cmd_artifact,
+        cmd_artifact_entry,
         cmd_artifact_scan,
         cmd_firewall,
         cmd_hf_artifact,
@@ -141,16 +141,21 @@ def main():
     _add_output_args(p)
     p.set_defaults(func=cmd_firewall)
 
-    p = sub.add_parser("artifact", help="model artifact scan")
-    p.add_argument("path")
-    p.add_argument(
-        "--show-skipped",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="show files skipped due to unsupported format",
+    p = sub.add_parser(
+        "artifact",
+        help="model artifact scan",
+        description=(
+            "model artifact scan\n\n"
+            "examples:\n"
+            "  sentinel artifact ./models\n"
+            "  sentinel artifact scan ./models --dry-run -f json\n"
+            "  sentinel artifact scan --list-scanners -f json\n"
+            "  sentinel artifact metadata model.pt -f json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    _add_output_args(p)
-    p.set_defaults(func=cmd_artifact)
+    p.add_argument("artifact_args", nargs=argparse.REMAINDER)
+    p.set_defaults(func=cmd_artifact_entry)
 
     # ── Pre-commit hook: artifact-scan (accepts multiple staged files) ──
     p = sub.add_parser(
@@ -374,7 +379,9 @@ def main():
     from sentinel.cli.cmd_tools import (
         cmd_aibom,
         cmd_benchmark,
+        cmd_cache,
         cmd_config,
+        cmd_debug,
         cmd_doctor,
         cmd_evaluate,
         cmd_findings_explain,
@@ -466,7 +473,25 @@ def main():
 
     p = sub.add_parser("doctor", help="system health check")
     p.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    p.add_argument("--show-failed", action="store_true", help="show failed/degraded checks only")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("debug", help="environment and configuration diagnostics")
+    p.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    p.set_defaults(func=cmd_debug)
+
+    cache_p = sub.add_parser("cache", help="scan cache management")
+    cache_sub = cache_p.add_subparsers(dest="cache_action")
+    cache_stats = cache_sub.add_parser("stats", help="show cache statistics")
+    cache_stats.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    cache_stats.set_defaults(func=cmd_cache, cache_action="stats")
+    cache_clear = cache_sub.add_parser("clear", help="clear in-memory scan caches")
+    cache_clear.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    cache_clear.set_defaults(func=cmd_cache, cache_action="clear")
+    cache_cleanup = cache_sub.add_parser("cleanup", help="remove stale cache entries")
+    cache_cleanup.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    cache_cleanup.set_defaults(func=cmd_cache, cache_action="cleanup")
+    cache_p.set_defaults(func=cmd_cache, cache_action="stats")
 
     config_p = sub.add_parser("config", help="inspect effective Sentinel configuration")
     config_p.add_argument("--explain", action="store_true", help="explain where each config value comes from")

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+AIBOM_SCHEMA_VERSION = "aibom.result.v1"
+
 
 class AIComponentType(str, Enum):
     MODEL_LLM = "model.llm"
@@ -100,6 +102,23 @@ class AIComponent:
             "risks": self.risks,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AIComponent":
+        return cls(
+            id=str(data.get("id") or uuid.uuid4()),
+            type=AIComponentType(str(data.get("type", AIComponentType.CONFIG.value))),
+            name=str(data.get("name", "")),
+            version=str(data.get("version", "")),
+            path=str(data.get("path", "")),
+            description=str(data.get("description", "")),
+            vendor=str(data.get("vendor", "")),
+            license=str(data.get("license", "")),
+            properties=dict(data.get("properties") or {}),
+            hashes=dict(data.get("hashes") or {}),
+            evidence=list(data.get("evidence") or []),
+            risks=list(data.get("risks") or []),
+        )
+
 
 @dataclass
 class Relationship:
@@ -107,6 +126,23 @@ class Relationship:
     target_id: str
     type: RelationshipType
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "type": self.type.value if hasattr(self.type, "value") else str(self.type),
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Relationship":
+        return cls(
+            source_id=str(data.get("source_id", "")),
+            target_id=str(data.get("target_id", "")),
+            type=RelationshipType(str(data.get("type", RelationshipType.USES.value))),
+            metadata=dict(data.get("metadata") or {}),
+        )
 
 
 @dataclass
@@ -129,3 +165,42 @@ class AIBOMResult:
         for c in self.components:
             out.setdefault(c.type.value, []).append(c)
         return out
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": AIBOM_SCHEMA_VERSION,
+            "bom_format": "Eresus-AIBOM",
+            "tool": self.tool,
+            "version": self.version,
+            "generated_at": self.generated_at,
+            "summary": {
+                "component_count": len(self.components),
+                "relationship_count": len(self.relationships),
+                "component_types": {
+                    type_name: len(items)
+                    for type_name, items in sorted(self.group_by_type().items())
+                },
+            },
+            "metadata": self.metadata,
+            "components": [component.as_dict() for component in self.components],
+            "relationships": [relationship.as_dict() for relationship in self.relationships],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AIBOMResult":
+        return cls(
+            components=[
+                AIComponent.from_dict(component)
+                for component in data.get("components", [])
+                if isinstance(component, dict)
+            ],
+            relationships=[
+                Relationship.from_dict(relationship)
+                for relationship in data.get("relationships", [])
+                if isinstance(relationship, dict)
+            ],
+            metadata=dict(data.get("metadata") or {}),
+            generated_at=str(data.get("generated_at") or datetime.now(timezone.utc).isoformat()),
+            tool=str(data.get("tool") or "Eresus Sentinel AIBOM"),
+            version=str(data.get("version") or "1.0"),
+        )

@@ -93,10 +93,39 @@ _AIBOM_MAX_FILES = 5000
 def cmd_aibom(args):
     """Generate an AI bill of materials from the unified CLI."""
     from sentinel.aibom.cli import _REPORTERS
+    from sentinel.aibom.diff import diff_bom, format_diff_json, format_diff_markdown, load_bom_json
     from sentinel.aibom.scan_pipeline import ScanPipeline
+    from sentinel.aibom.scanners import scanner_registry
 
     target = Path(args.path)
     fmt = getattr(args, "aibom_format", "cyclonedx")
+
+    if getattr(args, "list_scanners", False):
+        payload = {
+            "schema_version": "aibom.scanner-registry.v1",
+            "summary": {"scanner_count": len(scanner_registry())},
+            "scanners": scanner_registry(),
+        }
+        rendered = (
+            json.dumps(payload, indent=2, default=str)
+            if fmt == "json"
+            else "\n".join(f"{s['id']}\t{s['class']}" for s in payload["scanners"])
+        )
+        _write_aibom_output(args, rendered)
+        return 0
+
+    diff_paths = getattr(args, "diff", None)
+    if diff_paths:
+        old, new = (load_bom_json(diff_paths[0]), load_bom_json(diff_paths[1]))
+        bom_diff = diff_bom(old, new)
+        rendered = (
+            json.dumps(format_diff_json(bom_diff), indent=2, default=str)
+            if fmt == "json"
+            else format_diff_markdown(bom_diff)
+        )
+        _write_aibom_output(args, rendered)
+        return 1 if bom_diff.has_changes else 0
+
     if not target.exists():
         _fail(f"target not found: {target}")
         return 2
@@ -109,10 +138,10 @@ def cmd_aibom(args):
 
     result = ScanPipeline().run(target)
     if fmt == "json":
-        data = {
-            "schema_version": "0.1",
+        data = result.as_dict()
+        data.update({
             "command": "aibom",
-            "summary": {
+            "cli_summary": {
                 "command": "aibom",
                 "target": str(target),
                 "status": "clean",
@@ -126,23 +155,17 @@ def cmd_aibom(args):
             },
             "findings": [],
             "errors": result.metadata.get("errors", []),
-            "metadata": result.metadata,
-            "components": [component.as_dict() for component in result.components],
-            "relationships": [
-                {
-                    "source_id": rel.source_id,
-                    "target_id": rel.target_id,
-                    "type": rel.type.value if hasattr(rel.type, "value") else str(rel.type),
-                    "metadata": rel.metadata,
-                }
-                for rel in result.relationships
-            ],
-        }
+        })
         rendered = json.dumps(data, indent=2, default=str)
     else:
         rendered = _REPORTERS[fmt]().render(result)
 
-    if args.output:
+    _write_aibom_output(args, rendered)
+    return 0
+
+
+def _write_aibom_output(args, rendered: str) -> None:
+    if getattr(args, "output", None):
         Path(args.output).write_text(rendered, encoding="utf-8")
         _ok(f"wrote AIBOM report → {args.output}")
     else:
@@ -151,7 +174,6 @@ def cmd_aibom(args):
         if not rendered.endswith("\n"):
             out_stream.write("\n")
         out_stream.flush()
-    return 0
 
 
 def cmd_refs(args):

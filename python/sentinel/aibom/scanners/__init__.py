@@ -61,6 +61,8 @@ __all__ = [
     "MultiLanguageScanner",
     "FileCache",
     "WorkspaceDepScanner",
+    "default_scanners",
+    "scanner_registry",
 ]
 
 
@@ -95,3 +97,16 @@ def default_scanners() -> list[BaseAIBOMScanner]:
         MultiLanguageScanner(),
         WorkspaceDepScanner(),
     ]
+
+
+def scanner_registry() -> list[dict[str, str]]:
+    """Return scanner metadata for CLI/debug output."""
+    registry = []
+    for scanner in default_scanners():
+        registry.append({
+            "id": scanner.name,
+            "class": f"{scanner.__class__.__module__}.{scanner.__class__.__name__}",
+            "description": (scanner.__doc__ or "").strip().splitlines()[0]
+            if scanner.__doc__ else "",
+        })
+    return registry

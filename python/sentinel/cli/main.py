@@ -411,6 +411,8 @@ def main():
         action="store_true",
         help="CI-compatible no-op flag for GitHub Action parity",
     )
+    p.add_argument("--list-scanners", action="store_true", help="list AIBOM scanner registry")
+    p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="compare two AIBOM JSON files")
     p.set_defaults(func=cmd_aibom)
 
     refs_p = sub.add_parser("refs", help="inspect `.refs` inventory and parity")

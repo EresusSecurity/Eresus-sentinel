@@ -8,6 +8,7 @@ CSV, JUnit, Markdown).
 from __future__ import annotations
 
 from sentinel.aibom.models import (
+    AIBOM_SCHEMA_VERSION,
     AIBOMResult,
     AIComponent,
     AIComponentType,
@@ -18,6 +19,7 @@ from sentinel.aibom.scan_pipeline import ScanPipeline
 
 __all__ = [
     "AIBOMResult",
+    "AIBOM_SCHEMA_VERSION",
     "AIComponent",
     "AIComponentType",
     "Relationship",

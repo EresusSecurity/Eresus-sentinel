@@ -612,6 +612,8 @@ def main():
     fs.add_argument("-s", "--seed", type=int, help="random seed")
     fs.add_argument("--dir", help="output directory for reports and bypasses")
     fs.add_argument("--allow-bypass", action="store_true", help="exit 0 even when bypassed payloads are found")
+    fs.add_argument("--min-tpr", type=float, default=0.95, help="minimum true-positive rate required to pass")
+    fs.add_argument("--max-fpr", type=float, default=0.03, help="maximum false-positive rate allowed to pass")
     fs.set_defaults(func=cmd_fuzz, fuzz_action="selftest")
 
     fp = fuzz_sub.add_parser("payloads", help="list adversarial payload templates")

@@ -142,6 +142,8 @@ def _cmd_fuzz_selftest(args):
     seed = getattr(args, "seed", None)
     output_dir = getattr(args, "dir", None)
     allow_bypass = getattr(args, "allow_bypass", False)
+    min_tpr = float(getattr(args, "min_tpr", 0.95))
+    max_fpr = float(getattr(args, "max_fpr", 0.03))
 
     _header(f"fuzz selftest · {samples} samples")
 
@@ -182,6 +184,8 @@ def _cmd_fuzz_selftest(args):
     table.add_row("───", "───")
     table.add_row("Wall Time", f"{wall:.1f}s")
     table.add_row("Avg Scan Time", f"{score.avg_scan_time_ms:.2f}ms")
+    table.add_row("TPR Gate", f">= {min_tpr:.1%}")
+    table.add_row("FPR Gate", f"<= {max_fpr:.1%}")
 
     console.print(table)
 
@@ -205,6 +209,12 @@ def _cmd_fuzz_selftest(args):
     if score.bypassed_payloads and not allow_bypass:
         _fail(f"selftest failed: {len(score.bypassed_payloads)} bypassed payload(s)")
         console.print("  [dim]Use --allow-bypass for exploratory runs that should exit 0.[/dim]")
+        return 1
+    if score.tpr < min_tpr:
+        _fail(f"selftest failed: TPR {score.tpr:.1%} below required {min_tpr:.1%}")
+        return 1
+    if score.fpr > max_fpr:
+        _fail(f"selftest failed: FPR {score.fpr:.1%} above allowed {max_fpr:.1%}")
         return 1
     return 0
 

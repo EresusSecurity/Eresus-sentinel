@@ -331,6 +331,26 @@ class MessageInspector:
             risk += sum(self._severity_score(f.severity) for f in param_findings)
             oversized_param = any(f.category == "oversized_param" for f in param_findings)
 
+            try:
+                from sentinel.tool_inspection import inspect_tool_arguments
+                for tool_finding in inspect_tool_arguments(tool_name, tool_args):
+                    severity = str(getattr(tool_finding.severity, "value", tool_finding.severity)).upper()
+                    proxy_finding = ProxyFinding(
+                        finding_id=f"proxy-{uuid.uuid4().hex[:8]}",
+                        category="tool_inspection",
+                        severity=severity,
+                        description=tool_finding.title,
+                        evidence=tool_finding.evidence,
+                        message_id=msg_id,
+                        session_id=session.session_id,
+                        timestamp=time.time(),
+                        cwe=(tool_finding.cwe_ids[0] if tool_finding.cwe_ids else ""),
+                    )
+                    findings.append(proxy_finding)
+                    risk += self._severity_score(proxy_finding.severity)
+            except Exception as e:
+                logger.debug("Tool argument inspection error: %s", e)
+
             # Track tool call
             session.tool_call_count += 1
             session.tools_called.append(tool_name)

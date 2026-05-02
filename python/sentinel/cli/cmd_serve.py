@@ -107,6 +107,21 @@ def cmd_proxy(args):
     """Live MCP intercepting proxy."""
     from sentinel.mcp_proxy import MCPProxy, ProxyConfig, ProxyMode
 
+    if getattr(args, "proxy_action", None) == "tool-inspect":
+        if getattr(args, "proxy_action_arg", None) != "enable":
+            _fail("usage: sentinel proxy tool-inspect enable")
+            return 2
+        config_path = Path.home() / ".sentinel" / "setup.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
+        except json.JSONDecodeError:
+            config = {}
+        config["tool_inspection"] = {"enabled": True}
+        config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+        _ok(f"enabled tool inspection at {config_path}")
+        return 0
+
     mode_map = {
         "enforce": ProxyMode.ENFORCE,
         "audit": ProxyMode.AUDIT,

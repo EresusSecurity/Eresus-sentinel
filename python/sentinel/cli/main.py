@@ -398,6 +398,7 @@ def main():
         cmd_version,
         cmd_watch,
     )
+    from sentinel.cli.cmd_codeguard import cmd_codeguard, cmd_sandbox
     from sentinel.cli.cmd_provenance import cmd_provenance
 
     p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanners or LLM targets")
@@ -546,6 +547,27 @@ def main():
     _add_output_args(p, severity=False)
     p.set_defaults(func=cmd_tui)
 
+    codeguard_p = sub.add_parser("codeguard", help="static security analysis for agent/tool code")
+    codeguard_sub = codeguard_p.add_subparsers(dest="codeguard_action")
+    codeguard_scan = codeguard_sub.add_parser("scan", help="scan code for dangerous tool/agent patterns")
+    codeguard_scan.add_argument("path")
+    _add_output_args(codeguard_scan)
+    codeguard_scan.set_defaults(func=cmd_codeguard, codeguard_action="scan")
+    codeguard_p.set_defaults(func=cmd_codeguard, codeguard_action="scan")
+
+    sandbox_p = sub.add_parser("sandbox", help="sandbox policy setup and guarded command execution")
+    sandbox_sub = sandbox_p.add_subparsers(dest="sandbox_action")
+    sandbox_setup = sandbox_sub.add_parser("setup", help="write a default sandbox policy")
+    sandbox_setup.add_argument("--output", default="sandbox.yaml")
+    sandbox_setup.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    sandbox_setup.set_defaults(func=cmd_sandbox, sandbox_action="setup")
+    sandbox_run = sandbox_sub.add_parser("run", help="run a command with sandbox policy checks")
+    sandbox_run.add_argument("--policy", default="sandbox.yaml")
+    sandbox_run.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    sandbox_run.add_argument("cmd", nargs=argparse.REMAINDER)
+    sandbox_run.set_defaults(func=cmd_sandbox, sandbox_action="run")
+    sandbox_p.set_defaults(func=cmd_sandbox, sandbox_action="setup")
+
     prov_p = sub.add_parser("provenance", help="model lineage fingerprinting")
     prov_sub = prov_p.add_subparsers(dest="provenance_action")
     prov_scan = prov_sub.add_parser("scan", help="scan a local model against the reference DB")
@@ -676,6 +698,8 @@ def main():
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8080)
     p.add_argument("--server-cmd", nargs=argparse.REMAINDER, help="MCP server command (for stdio mode)")
+    p.add_argument("proxy_action", nargs="?", help=argparse.SUPPRESS)
+    p.add_argument("proxy_action_arg", nargs="?", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_proxy)
 
     p = sub.add_parser("playbook", aliases=["pb"], help="attack playbook runner")

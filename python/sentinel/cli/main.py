@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import redirect_stdout
 
-from sentinel.cli._helpers import console, err
+from sentinel.cli._helpers import console, err, set_machine_stdout
 
 
 def main():
@@ -639,10 +640,19 @@ def main():
         _log.disable(_log.WARNING)
         warnings.filterwarnings("ignore")
 
-    # Redirect Rich console to stderr when structured output goes to stdout
+    # Structured output owns stdout. Rich output and stray print() calls go
+    # to stderr; report writers use the saved original stdout.
     _fmt = getattr(args, "format", "table")
     _out = getattr(args, "output", None)
-    if _fmt != "table" and not _out:
+    _aibom_fmt = getattr(args, "aibom_format", None)
+    machine_output = (
+        _fmt != "table"
+        or bool(getattr(args, "json_output", False))
+        or _aibom_fmt is not None
+        or getattr(args, "refs_format", None) == "json"
+    )
+    set_machine_stdout(sys.stdout)
+    if machine_output and not _out:
         console.file = sys.stderr
 
     if args.command is None:
@@ -651,7 +661,11 @@ def main():
         return
 
     try:
-        result = args.func(args)
+        if machine_output and not _out:
+            with redirect_stdout(sys.stderr):
+                result = args.func(args)
+        else:
+            result = args.func(args)
         sys.exit(result if isinstance(result, int) else 0)
     except Exception as e:
         err.print(f"  [red]error:[/red] {e}")

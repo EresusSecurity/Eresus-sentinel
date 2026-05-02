@@ -16,6 +16,7 @@ from sentinel.cli._helpers import (
     _ok,
     _print_findings,
     _severity_dashboard,
+    machine_stdout,
     console,
 )
 
@@ -184,8 +185,9 @@ def cmd_mcp(args):
             Path(args.output).write_text(payload + "\n", encoding="utf-8")
             _ok(f"wrote MCP scan report → {args.output}")
         else:
-            sys.stdout.write(payload + "\n")
-            sys.stdout.flush()
+            out_stream = machine_stdout()
+            out_stream.write(payload + "\n")
+            out_stream.flush()
         return 1 if findings else 0
 
     if args.format == "markdown":
@@ -194,10 +196,11 @@ def cmd_mcp(args):
             Path(args.output).write_text(markdown, encoding="utf-8")
             _ok(f"wrote MCP scan report → {args.output}")
         else:
-            sys.stdout.write(markdown)
+            out_stream = machine_stdout()
+            out_stream.write(markdown)
             if not markdown.endswith("\n"):
-                sys.stdout.write("\n")
-            sys.stdout.flush()
+                out_stream.write("\n")
+            out_stream.flush()
         return 1 if findings else 0
 
     _header(header_label, args=args)
@@ -558,8 +561,9 @@ def cmd_mcp_fingerprint(args):
             from sentinel.cli._helpers import _ok
             _ok(f"wrote fingerprint → {out}")
         else:
-            sys.stdout.write(payload + "\n")
-            sys.stdout.flush()
+            out_stream = machine_stdout()
+            out_stream.write(payload + "\n")
+            out_stream.flush()
         return 1 if findings else 0
     else:
         from rich import box as _box

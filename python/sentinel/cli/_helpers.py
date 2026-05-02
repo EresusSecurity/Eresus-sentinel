@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+import sys
+
 from rich.console import Console
 
 console = Console(highlight=False)
 err = Console(stderr=True, highlight=False)
+_machine_stdout = sys.stdout
+
+
+def set_machine_stdout(stream) -> None:
+    """Remember original stdout for structured payload writers."""
+    global _machine_stdout
+    _machine_stdout = stream
+
+
+def machine_stdout():
+    """Return stdout reserved for machine-readable output."""
+    return _machine_stdout
 
 # ── Severity ──────────────────────────────────────────────────────
 

@@ -23,6 +23,7 @@ from sentinel.cli._helpers import (
     _sev,
     _severity_dashboard,
     _warn,
+    machine_stdout,
     console,
 )
 
@@ -45,8 +46,9 @@ def _emit_info(args, data: dict) -> None:
         Path(out).write_text(payload, encoding="utf-8")
         _ok(f"written {out}")
     else:
-        sys.stdout.write(payload + "\n")
-        sys.stdout.flush()
+        out_stream = machine_stdout()
+        out_stream.write(payload + "\n")
+        out_stream.flush()
 
 
 def cmd_evaluate(args):
@@ -144,10 +146,11 @@ def cmd_aibom(args):
         Path(args.output).write_text(rendered, encoding="utf-8")
         _ok(f"wrote AIBOM report → {args.output}")
     else:
-        sys.stdout.write(rendered)
+        out_stream = machine_stdout()
+        out_stream.write(rendered)
         if not rendered.endswith("\n"):
-            sys.stdout.write("\n")
-        sys.stdout.flush()
+            out_stream.write("\n")
+        out_stream.flush()
     return 0
 
 
@@ -180,7 +183,9 @@ def cmd_refs(args):
         Path(args.output).write_text(content, encoding="utf-8")
         _ok(f"wrote refs {action} report → {args.output}")
     elif output_format == "json":
-        sys.stdout.write(content + "\n")
+        out_stream = machine_stdout()
+        out_stream.write(content + "\n")
+        out_stream.flush()
     else:
         console.print(content, markup=False)
     return 0

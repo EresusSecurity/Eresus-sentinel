@@ -20,6 +20,7 @@ from sentinel.cli._helpers import (
     _sev,
     _severity_dashboard,
     _warn,
+    machine_stdout,
     console,
 )
 
@@ -73,8 +74,9 @@ def _emit_scan_plan(args, plan: dict) -> None:
             Path(out).write_text(rendered + "\n", encoding="utf-8")
             _ok(f"written {out}")
         else:
-            sys.stdout.write(rendered + "\n")
-            sys.stdout.flush()
+            out_stream = machine_stdout()
+            out_stream.write(rendered + "\n")
+            out_stream.flush()
         return
 
     from rich import box as _box
@@ -150,8 +152,9 @@ def _emit_scan_result(args, findings, results: list[dict], wall_seconds: float, 
         Path(out).write_text(rendered + "\n", encoding="utf-8")
         _ok(f"written {out}")
     else:
-        sys.stdout.write(rendered + "\n")
-        sys.stdout.flush()
+        out_stream = machine_stdout()
+        out_stream.write(rendered + "\n")
+        out_stream.flush()
 
 
 def cmd_scan(args):

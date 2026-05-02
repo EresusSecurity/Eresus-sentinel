@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from sentinel.cli._helpers import _sev
+from sentinel.cli._helpers import _sev, machine_stdout
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
@@ -95,10 +95,10 @@ def _export(args, findings):
         from sentinel.cli._helpers import _ok
         _ok(f"written {out}")
     else:
-        import sys
-        sys.stdout.write(result)
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+        out_stream = machine_stdout()
+        out_stream.write(result)
+        out_stream.write("\n")
+        out_stream.flush()
 
 
 def _table_report(findings) -> str:

@@ -217,6 +217,14 @@ multi_language:
     - pattern: 'OpenAI::Client\.new'
       label: ruby-openai-client
 
+  csharp:
+    - pattern: 'using\s+(?:Azure\.AI\.OpenAI|OpenAI|Microsoft\.SemanticKernel)'
+      label: csharp-ai-sdk
+    - pattern: '(?:OpenAIClient|ChatClient|Kernel\.CreateBuilder)\s*\('
+      label: csharp-llm-client
+    - pattern: '(?:Pinecone|Qdrant|Weaviate|Milvus)Client\s*\('
+      label: csharp-vector-store
+
 env_var:
   ai_key_pattern: '(?:OPENAI|ANTHROPIC|HUGGING_?FACE|HF_|COHERE|GOOGLE_AI|REPLICATE|MISTRAL|TOGETHER|AZURE_OPENAI|BEDROCK|VERTEX|GROQ|FIREWORKS|DEEPSEEK|PERPLEXITY).*(?:KEY|TOKEN|SECRET)\b'
   model_env_names:

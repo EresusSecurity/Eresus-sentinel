@@ -92,13 +92,15 @@ _AIBOM_MAX_FILES = 5000
 
 def cmd_aibom(args):
     """Generate an AI bill of materials from the unified CLI."""
-    from sentinel.aibom.cli import _REPORTERS
     from sentinel.aibom.diff import diff_bom, format_diff_json, format_diff_markdown, load_bom_json
+    from sentinel.aibom.container_image import scan_container_image
+    from sentinel.aibom.multi_repo import MultiRepoConfig, merge_results
     from sentinel.aibom.scan_pipeline import ScanPipeline
     from sentinel.aibom.scanners import scanner_registry
 
-    target = Path(args.path)
     fmt = getattr(args, "aibom_format", "cyclonedx")
+    tokens = [getattr(args, "path", ".")]
+    tokens.extend(getattr(args, "extra_paths", []) or [])
 
     if getattr(args, "list_scanners", False):
         payload = {
@@ -114,6 +116,12 @@ def cmd_aibom(args):
         _write_aibom_output(args, rendered)
         return 0
 
+    if tokens and tokens[0] == "diff":
+        if len(tokens) < 3:
+            _fail("aibom diff requires OLD and NEW")
+            return 2
+        args.diff = [tokens[1], tokens[2]]
+
     diff_paths = getattr(args, "diff", None)
     if diff_paths:
         old, new = (load_bom_json(diff_paths[0]), load_bom_json(diff_paths[1]))
@@ -126,6 +134,54 @@ def cmd_aibom(args):
         _write_aibom_output(args, rendered)
         return 1 if bom_diff.has_changes else 0
 
+    if tokens and tokens[0] == "scan":
+        target_text = tokens[1] if len(tokens) > 1 else "."
+        target_path = Path(target_text)
+        if target_path.exists() and target_path.suffix.lower() not in {".tar", ".oci"}:
+            result = ScanPipeline().run(target_path)
+            rendered = _render_aibom_result(args, result, target_path, fmt)
+            _write_aibom_output(args, rendered)
+            return 0
+        result = scan_container_image(
+            target_text,
+            extraction_tier=getattr(args, "container_extraction_tier", "auto"),
+        )
+        rendered = _render_aibom_result(args, result, target_text, fmt)
+        _write_aibom_output(args, rendered)
+        return 0
+
+    if tokens and tokens[0] == "watch":
+        target = Path(tokens[1] if len(tokens) > 1 else ".")
+        if not target.exists():
+            _fail(f"target not found: {target}")
+            return 2
+        result = ScanPipeline().run(target)
+        result.metadata["watch_mode"] = True
+        result.metadata["watch_once"] = bool(getattr(args, "once", False))
+        rendered = _render_aibom_result(args, result, target, fmt)
+        _write_aibom_output(args, rendered)
+        return 0
+
+    if getattr(args, "discover_repos", None):
+        root = Path(args.discover_repos)
+        if not root.exists() or not root.is_dir():
+            _fail(f"discover root not found: {root}")
+            return 2
+        repos = [path for path in sorted(root.iterdir()) if path.is_dir() and not path.name.startswith(".")]
+        config = MultiRepoConfig()
+        results = {}
+        for repo in repos:
+            config.add(repo)
+            results[repo.name] = ScanPipeline().run(repo)
+        merged = merge_results(results, config)
+        merged.metadata["discover_repos_root"] = str(root)
+        merged.metadata["parallel_repos"] = getattr(args, "parallel_repos", 1)
+        merged.metadata["skip_unchanged"] = bool(getattr(args, "skip_unchanged", False))
+        rendered = _render_aibom_result(args, merged, root, fmt)
+        _write_aibom_output(args, rendered)
+        return 0
+
+    target = Path(tokens[0] if tokens else ".")
     if not target.exists():
         _fail(f"target not found: {target}")
         return 2
@@ -137,6 +193,14 @@ def cmd_aibom(args):
             return 2
 
     result = ScanPipeline().run(target)
+    rendered = _render_aibom_result(args, result, target, fmt)
+    _write_aibom_output(args, rendered)
+    return 0
+
+
+def _render_aibom_result(args, result, target, fmt: str) -> str:
+    from sentinel.aibom.cli import _REPORTERS
+
     if fmt == "json":
         data = result.as_dict()
         data.update({
@@ -156,12 +220,8 @@ def cmd_aibom(args):
             "findings": [],
             "errors": result.metadata.get("errors", []),
         })
-        rendered = json.dumps(data, indent=2, default=str)
-    else:
-        rendered = _REPORTERS[fmt]().render(result)
-
-    _write_aibom_output(args, rendered)
-    return 0
+        return json.dumps(data, indent=2, default=str)
+    return _REPORTERS[fmt]().render(result)
 
 
 def _write_aibom_output(args, rendered: str) -> None:

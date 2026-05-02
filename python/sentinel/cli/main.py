@@ -406,6 +406,7 @@ def main():
 
     p = sub.add_parser("aibom", help="generate AI bill of materials")
     p.add_argument("path", nargs="?", default=".", help="repository or directory to scan")
+    p.add_argument("extra_paths", nargs="*", help=argparse.SUPPRESS)
     p.add_argument(
         "--format",
         "-f",
@@ -421,6 +422,11 @@ def main():
     )
     p.add_argument("--list-scanners", action="store_true", help="list AIBOM scanner registry")
     p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="compare two AIBOM JSON files")
+    p.add_argument("--container-extraction-tier", default="auto", choices=["auto", "runtime", "tarball", "metadata"])
+    p.add_argument("--discover-repos", help="scan immediate child repositories under this directory")
+    p.add_argument("--skip-unchanged", action="store_true", help="skip repos whose HEAD cannot be resolved as changed")
+    p.add_argument("--parallel-repos", type=int, default=1, help="reserved compatibility knob for org scans")
+    p.add_argument("--once", action="store_true", help="run a single watch-mode scan and exit")
     p.set_defaults(func=cmd_aibom)
 
     refs_p = sub.add_parser("refs", help="inspect `.refs` inventory and parity")

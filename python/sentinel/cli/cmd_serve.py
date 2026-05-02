@@ -19,6 +19,7 @@ from sentinel.cli._helpers import (
     _severity_dashboard,
     _warn,
     console,
+    machine_stdout,
 )
 
 
@@ -151,33 +152,48 @@ def cmd_playbook(args):
     from sentinel.redteam.playbook_engine import PlaybookEngine, ReportGenerator
 
     path = args.path
-    _header(f"playbook → {path}")
+    report_fmt = getattr(args, "report_format", "text")
+    report_out = getattr(args, "report_output", None)
+    machine_report = report_fmt in {"json", "sarif"} and not report_out
+    if not machine_report:
+        _header(f"playbook → {path}")
 
     engine = PlaybookEngine()
     t0 = time.perf_counter()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold]{task.description}"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("loading playbook...", total=None)
-
+    if machine_report:
         if Path(path).is_dir():
-            progress.update(task, description="running playbook suite...")
             reports = asyncio.run(engine.run_suite(path))
         else:
-            progress.update(task, description="running playbook...")
             report = asyncio.run(engine.run_file(path))
             reports = [report]
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]{task.description}"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("loading playbook...", total=None)
+
+            if Path(path).is_dir():
+                progress.update(task, description="running playbook suite...")
+                reports = asyncio.run(engine.run_suite(path))
+            else:
+                progress.update(task, description="running playbook...")
+                report = asyncio.run(engine.run_file(path))
+                reports = [report]
 
     ms = (time.perf_counter() - t0) * 1000
 
     all_failed = []
 
     for report in reports:
+        if machine_report:
+            all_failed.extend([o for o in report.outcomes if o.result.value == "fail"])
+            continue
+
         grade_styles = {
             "A": "bold green", "B": "green", "C": "yellow",
             "D": "red", "F": "bold white on red",
@@ -197,9 +213,6 @@ def cmd_playbook(args):
             for o in failed:
                 console.print(f"    ❌ [{o.severity}] {o.probe_name} ({o.probe_type})")
 
-        report_fmt = getattr(args, "report_format", "text")
-        report_out = getattr(args, "report_output", None)
-
         if report_out:
             if report_fmt == "html":
                 content = ReportGenerator.to_html(report)
@@ -214,7 +227,43 @@ def cmd_playbook(args):
                 f.write(content)
             _ok(f"report written: {report_out} ({report_fmt})")
 
-    console.print(f"\n  [dim]{ms:.0f}ms[/dim]")
+    if machine_report:
+        out = machine_stdout()
+        if report_fmt == "sarif":
+            payload = (
+                ReportGenerator.to_sarif(reports[0])
+                if len(reports) == 1
+                else {
+                    "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+                    "version": "2.1.0",
+                    "runs": [
+                        run
+                        for report in reports
+                        for run in ReportGenerator.to_sarif(report).get("runs", [])
+                    ],
+                }
+            )
+            out.write(json.dumps(payload, indent=2))
+        else:
+            payload = (
+                json.loads(ReportGenerator.to_json(reports[0]))
+                if len(reports) == 1
+                else {
+                    "schema_version": "redteam.playbook.suite.report.v1",
+                    "summary": {
+                        "reports": len(reports),
+                        "duration_ms": round(ms, 2),
+                        "failed": sum(r.failed for r in reports),
+                        "passed": sum(r.passed for r in reports),
+                    },
+                    "reports": [json.loads(ReportGenerator.to_json(r)) for r in reports],
+                }
+            )
+            out.write(json.dumps(payload, indent=2))
+        out.write("\n")
+        out.flush()
+    else:
+        console.print(f"\n  [dim]{ms:.0f}ms[/dim]")
 
     if getattr(args, "fail_on_failed_probes", False) and all_failed:
         _fail(f"playbook failed: {len(all_failed)} failed probe(s)")

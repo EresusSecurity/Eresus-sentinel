@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+GATE_DECISION_SCHEMA_VERSION = "admission.gate.v1"
 
 
 class ComponentType(str, Enum):
@@ -50,6 +51,15 @@ class GateFinding:
     description: str
     source: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rule_id": self.rule_id,
+            "severity": self.severity,
+            "description": self.description,
+            "source": self.source,
+            "metadata": self.metadata,
+        }
 
 
 @dataclass
@@ -75,21 +85,26 @@ class GateDecision:
         return self.action == GateAction.ALLOW
 
     def to_dict(self) -> dict[str, Any]:
+        severity_counts: dict[str, int] = {}
+        for finding in self.findings:
+            severity = finding.severity.upper()
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
         return {
+            "schema_version": GATE_DECISION_SCHEMA_VERSION,
             "component_name": self.component_name,
             "component_type": self.component_type.value,
             "action": self.action.value,
             "reason": self.reason,
             "scan_duration_ms": round(self.scan_duration_ms, 2),
-            "findings": [
-                {
-                    "rule_id": f.rule_id,
-                    "severity": f.severity,
-                    "description": f.description,
-                    "source": f.source,
-                }
-                for f in self.findings
-            ],
+            "summary": {
+                "total_findings": len(self.findings),
+                "by_severity": severity_counts,
+                "blocked": self.blocked,
+                "warned": self.warned,
+                "allowed": self.allowed,
+            },
+            "findings": [f.to_dict() for f in self.findings],
+            "metadata": self.metadata,
         }
 
 
@@ -109,13 +124,14 @@ def _action_for_findings(findings: list[GateFinding]) -> tuple[GateAction, str]:
     if not findings:
         return GateAction.ALLOW, "no findings"
 
-    highest_rank = min(_severity_rank(f.severity) for f in findings)
+    ordered = sorted(findings, key=lambda f: _severity_rank(f.severity))
+    highest_rank = _severity_rank(ordered[0].severity)
     highest_sev = _SEVERITY_ORDER[highest_rank] if highest_rank < len(_SEVERITY_ORDER) else "INFO"
 
     if highest_rank <= 1:  # CRITICAL or HIGH
-        return GateAction.BLOCK, f"{highest_sev} finding: {findings[0].description[:120]}"
+        return GateAction.BLOCK, f"{highest_sev} finding: {ordered[0].description[:120]}"
     if highest_rank <= 3:  # MEDIUM or LOW
-        return GateAction.WARN, f"{highest_sev} finding: {findings[0].description[:120]}"
+        return GateAction.WARN, f"{highest_sev} finding: {ordered[0].description[:120]}"
     return GateAction.ALLOW, f"INFO-only findings ({len(findings)} total)"
 
 
@@ -231,6 +247,12 @@ class AdmissionGate:
                         severity=str(getattr(r, "severity", "MEDIUM")),
                         description=str(getattr(r, "description", "")),
                         source=str(src_path or ""),
+                        metadata={
+                            "finding_type": str(getattr(r, "finding_type", "")),
+                            "location": str(getattr(r, "location", "")),
+                            "category": str(getattr(r, "category", "")),
+                            "evidence": str(getattr(r, "evidence", ""))[:200],
+                        },
                     )
                 )
         except Exception as exc:

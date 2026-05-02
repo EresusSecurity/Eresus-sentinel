@@ -241,6 +241,20 @@ DANGEROUS_EXTENSIONS: set[str] = set(_RAW.get("dangerous_extensions", []))
 _TRIGGER_REGISTRY: dict[TriggerType, list[str]] = _build_trigger_registry(_RAW)
 _CROSS_SKILL_RISKS: list[RuleTuple] = _build_4col_patterns(_RAW, "cross_skill_risks")
 SKILL_THREAT_RULES: list[SkillThreatRule] = _build_skill_threat_rules(_THREAT_RAW)
+SENSITIVE_FRONTMATTER_PATH_RE = re.compile(
+    r"(^|[\"'\s])(?:/etc/(?:passwd|shadow|sudoers)|~?/\.ssh|~?/\.gnupg|\.env(?:\b|\.))",
+    re.IGNORECASE,
+)
+SHELL_EXFIL_RE = re.compile(
+    r"\b(?:cat|tar|zip|env|printenv)\b[^|;\n]*"
+    r"(?:/etc/(?:passwd|shadow)|\.ssh|\.env|AWS_|TOKEN|SECRET)?"
+    r"[^|;\n]*\|\s*(?:curl|wget|nc|ncat)\b|"
+    r"\bcurl\b[^;\n]*(?:-d|--data|--data-binary|-F|--form|--upload-file|-T)\s+"
+    r"@?(?:/etc/(?:passwd|shadow)|~?/\.ssh|\.env|-)\b|"
+    r"\bwget\b[^;\n]*(?:--post-file|--post-data)\s*=?\s*"
+    r"(?:/etc/(?:passwd|shadow)|~?/\.ssh|\.env|-)\b",
+    re.IGNORECASE,
+)
 
 # File magic signatures remain inline (binary data cannot be YAML-serialized cleanly)
 FILE_MAGIC_SIGNATURES: dict[bytes, tuple[str, str]] = {
@@ -277,6 +291,21 @@ class CommandSafetyAnalyzer:
     def analyze(self, command: str) -> tuple[CommandRisk, list[SkillFinding]]:
         findings: list[SkillFinding] = []
         max_risk = CommandRisk.SAFE
+
+        if SHELL_EXFIL_RE.search(command):
+            findings.append(SkillFinding(
+                skill_name="command",
+                finding_type="shell_exfiltration",
+                severity="HIGH",
+                description="Shell command appears to stream sensitive local data to a network sink.",
+                evidence=command[:200],
+                cwe="CWE-200",
+                recommendation="Remove network exfiltration from skill commands and require explicit user-selected files.",
+                rule_id="SKILL-CMD-EXFIL-001",
+                category="data_exfiltration",
+                taxonomy=["OWASP-Agentic:T2"],
+            ))
+            max_risk = CommandRisk.HIGH
 
         for risk_level in (
             CommandRisk.CRITICAL,
@@ -519,6 +548,44 @@ class SkillScanner:
         findings.extend(self._threat_scanner.scan(code, name))
         return findings
 
+    def scan_path(self, path: str | Path) -> list[SkillFinding]:
+        """Scan a skill file or bundle directory."""
+        root = Path(path)
+        if not root.exists():
+            return []
+
+        if root.is_file():
+            return self._scan_path_file(root)
+
+        findings: list[SkillFinding] = []
+        skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+        for fp in sorted(root.rglob("*")):
+            if not fp.is_file() or any(part in skip_dirs for part in fp.parts):
+                continue
+            findings.extend(self._scan_path_file(fp))
+        return findings
+
+    def _scan_path_file(self, path: Path) -> list[SkillFinding]:
+        findings: list[SkillFinding] = []
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return findings
+
+        findings.extend(self.scan_file_bytes(path.name, data[:4096]))
+
+        if path.suffix.lower() not in {".md", ".mdc", ".yaml", ".yml", ".json", ".py", ".sh", ".bash", ".zsh"}:
+            return findings
+        if len(data) > 2_000_000:
+            return findings
+
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = data.decode("utf-8", errors="ignore")
+        findings.extend(self.scan_skill(text, path.name))
+        return findings
+
     # ── Frontmatter analyzer ────────────────────────────────────────
     #
     # Parses YAML frontmatter at the top of a SKILL.md / plugin manifest
@@ -533,6 +600,16 @@ class SkillScanner:
 
         m = self._FRONTMATTER_FENCE.match(code)
         if not m:
+            if name.lower() == "skill.md":
+                return [SkillFinding(
+                    skill_name=name,
+                    finding_type="frontmatter_missing",
+                    severity="LOW",
+                    description="SKILL.md is missing YAML frontmatter.",
+                    location=f"{name}:frontmatter",
+                    rule_id="SKILL-FM-001",
+                    recommendation="Add frontmatter with at least name and description fields.",
+                )]
             return []
 
         block = m.group(1)
@@ -550,9 +627,18 @@ class SkillScanner:
             )]
 
         if not isinstance(fm, dict):
-            return []
+            return [SkillFinding(
+                skill_name=name,
+                finding_type="frontmatter_schema_error",
+                severity="LOW",
+                description="SKILL.md frontmatter must be a YAML mapping.",
+                location=f"{name}:frontmatter",
+                evidence=block[:200],
+                rule_id="SKILL-FM-002",
+            )]
 
         findings: list[SkillFinding] = []
+        findings.extend(self._validate_frontmatter_schema(fm, name))
 
         # 1. Wildcard allowed-tools
         allowed = fm.get("allowed-tools") or fm.get("allowedTools")
@@ -571,6 +657,7 @@ class SkillScanner:
                         evidence=f"allowed-tools entry: {entry!r}",
                         cwe="CWE-250",
                         recommendation="Replace `*` with an explicit tool list.",
+                        rule_id="SKILL-FM-003",
                     ))
                     break
         elif isinstance(allowed, str) and allowed.strip() in ("*", "**", "all"):
@@ -582,6 +669,8 @@ class SkillScanner:
                 location=f"{name}:frontmatter",
                 evidence=f"allowed-tools: {allowed!r}",
                 cwe="CWE-250",
+                recommendation="Replace wildcard permissions with an explicit tool list.",
+                rule_id="SKILL-FM-003",
             ))
 
         # 2. Invisible Unicode or homoglyphs anywhere in scalar values
@@ -607,6 +696,7 @@ class SkillScanner:
                     ),
                     cwe="CWE-1007",
                     recommendation="Strip invisible characters before committing.",
+                    rule_id="SKILL-FM-004",
                 ))
 
         # 3. License field with "proprietary" / "contact admin" phrasing
@@ -625,8 +715,62 @@ class SkillScanner:
                     ),
                     location=f"{name}:frontmatter",
                     evidence=f"license: {lic!r}",
+                    rule_id="SKILL-FM-005",
                 ))
 
+        return findings
+
+    @staticmethod
+    def _validate_frontmatter_schema(fm: dict[str, Any], name: str) -> list[SkillFinding]:
+        findings: list[SkillFinding] = []
+        required = ("name", "description")
+        for field_name in required:
+            val = fm.get(field_name)
+            if not isinstance(val, str) or not val.strip():
+                findings.append(SkillFinding(
+                    skill_name=name,
+                    finding_type="frontmatter_schema_error",
+                    severity="LOW",
+                    description=f"SKILL.md frontmatter is missing required `{field_name}` string.",
+                    location=f"{name}:frontmatter:{field_name}",
+                    evidence=f"{field_name}: {val!r}",
+                    rule_id="SKILL-FM-002",
+                    recommendation="Use a non-empty string for required skill metadata fields.",
+                ))
+
+        list_fields = ("allowed-tools", "allowedTools", "tools", "permissions")
+        for field_name in list_fields:
+            if field_name not in fm:
+                continue
+            val = fm[field_name]
+            if not isinstance(val, (list, str)):
+                findings.append(SkillFinding(
+                    skill_name=name,
+                    finding_type="frontmatter_schema_error",
+                    severity="LOW",
+                    description=f"SKILL.md frontmatter field `{field_name}` should be a string or list.",
+                    location=f"{name}:frontmatter:{field_name}",
+                    evidence=f"{field_name}: {type(val).__name__}",
+                    rule_id="SKILL-FM-002",
+                    recommendation="Use an explicit list of tool or permission names.",
+                ))
+
+        for key, val in fm.items():
+            values = val if isinstance(val, list) else [val]
+            for item in values:
+                if isinstance(item, str) and SENSITIVE_FRONTMATTER_PATH_RE.search(item):
+                    findings.append(SkillFinding(
+                        skill_name=name,
+                        finding_type="sensitive_frontmatter_path",
+                        severity="HIGH",
+                        description=f"Frontmatter field `{key}` references a sensitive local path.",
+                        location=f"{name}:frontmatter:{key}",
+                        evidence=item[:200],
+                        cwe="CWE-200",
+                        recommendation="Remove sensitive host paths from skill metadata and request files explicitly at runtime.",
+                        rule_id="SKILL-FM-006",
+                        category="data_exfiltration",
+                    ))
         return findings
 
     def scan_command(self, command: str) -> tuple[CommandRisk, list[SkillFinding]]:

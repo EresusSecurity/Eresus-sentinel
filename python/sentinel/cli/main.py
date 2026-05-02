@@ -327,6 +327,7 @@ def main():
     p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanners or LLM targets")
     p.add_argument("config", nargs="?", help="YAML/JSON eval config")
     p.add_argument("--fail-on-threshold", type=float, help="fail if pass rate is below threshold")
+    p.add_argument("--concurrency", "-j", type=int, default=1, help="max parallel eval workers (default: 1)")
     p.add_argument("--summary-only", action="store_true", help="hide per-case eval rows")
     p.set_defaults(func=cmd_evaluate)
 
@@ -511,6 +512,12 @@ def main():
     fs.set_defaults(func=cmd_fuzz, fuzz_action="selftest")
 
     fp = fuzz_sub.add_parser("payloads", help="list adversarial payload templates")
+
+    fmin = fuzz_sub.add_parser("minimize", help="minimize fuzz corpus (remove redundant samples)")
+    fmin.add_argument("corpus_dir", help="directory containing pickle corpus files")
+    fmin.add_argument("-o", "--output", help="output directory for minimized corpus")
+    fmin.add_argument("--dry-run", action="store_true", help="show what would be removed without deleting")
+    fmin.set_defaults(func=cmd_fuzz, fuzz_action="minimize")
     fp.set_defaults(func=cmd_fuzz, fuzz_action="payloads")
 
     # ── Parse & dispatch ───────────────────────────────────────────

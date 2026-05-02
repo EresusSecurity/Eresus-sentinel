@@ -712,6 +712,12 @@ dangerous_globals:
 
   torch.storage:
     - _load_from_bytes
+    - TypedStorage
+    - UntypedStorage
+
+  # ── fickling UnsafeImportsML — ML-specific dangerous imports ──
+  torch.distributed.elastic.rendezvous.api:
+    - basichandlers  # can execute network handlers
 
   copyreg:
     - add_extension

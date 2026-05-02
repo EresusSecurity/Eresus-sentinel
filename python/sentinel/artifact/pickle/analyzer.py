@@ -238,7 +238,17 @@ def _walk_opcodes(
                 raw_module = _value_stack.pop() if _value_stack else ""
                 name = str(raw_name) if not isinstance(raw_name, str) else raw_name
                 module = str(raw_module) if not isinstance(raw_module, str) else raw_module
-                if module and name:
+                # modelscan parity: "unknown" in module/name = critical RCE assumption
+                if "unknown" in module.lower() or "unknown" in name.lower():
+                    analysis.dangerous_imports.append(
+                        DangerousImport(
+                            module=module, name=name, opcode=op_name,
+                            position=pos, severity=Severity.CRITICAL,
+                            confidence=1.0,
+                        )
+                    )
+                    last_global = analysis.dangerous_imports[-1]
+                elif module and name:
                     _check_import(
                         module, name, op_name, pos,
                         pending_globals, analysis,

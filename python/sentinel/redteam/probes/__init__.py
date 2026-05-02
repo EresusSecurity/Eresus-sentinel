@@ -86,6 +86,8 @@ from sentinel.redteam.probes.beavertails import (
     BeaverTailsViolenceProbe,
 )
 from sentinel.redteam.probes.benchmark_probes import (
+    IndirectPromptInjectionProbe,
+    ModelIdentificationProbe,
     MultiInputFormatProbe,
     PlinyProbe,
     RAGSourceAttributionProbe,
@@ -422,6 +424,7 @@ __all__ = [
     # Additional benchmark probes
     "ToxicChatProbe", "PlinyProbe", "UnsafeBenchProbe", "VLGuardProbe",
     "RAGSourceAttributionProbe", "MultiInputFormatProbe",
+    "ModelIdentificationProbe", "IndirectPromptInjectionProbe",
     # Bias probes
     "RacialBiasProbe", "GenderBiasProbe", "AgeBiasProbe",
     "ReligionBiasProbe", "DisabilityBiasProbe",

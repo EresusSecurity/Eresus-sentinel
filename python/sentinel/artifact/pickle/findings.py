@@ -379,4 +379,63 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
             cwe_ids=["CWE-502"],
         ))
 
+    # ── Interpretation errors (fickling parity) ─────────────
+    if analysis.interpretation_errors:
+        for err in analysis.interpretation_errors[:5]:
+            findings.append(Finding.artifact(
+                rule_id="ARTIFACT-036",
+                title="Pickle interpretation error (malformed opcode sequence)",
+                description=(
+                    f"The pickle file has malformed opcode sequences: {err}. "
+                    "It is either corrupted or attempting to bypass pickle security analysis."
+                ),
+                severity=Severity.HIGH,
+                confidence=0.85,
+                target=source,
+                evidence=err,
+                cwe_ids=["CWE-502"],
+            ))
+
+    # ── Non-standard imports (fickling parity) ──────────────
+    if analysis.has_non_standard_import and analysis.non_standard_imports:
+        for imp_info in analysis.non_standard_imports[:5]:
+            findings.append(Finding.artifact(
+                rule_id="ARTIFACT-037",
+                title="Non-standard library import in pickle",
+                description=(
+                    f"`{imp_info}` imports a Python module that is not part of "
+                    "the standard library; this can execute arbitrary code and is "
+                    "inherently unsafe."
+                ),
+                severity=Severity.MEDIUM,
+                confidence=0.7,
+                target=source,
+                evidence=f"Non-standard import: {imp_info}",
+                cwe_ids=["CWE-502", "CWE-829"],
+            ))
+
+    # ── Bad calls: exec/eval/compile/open (fickling parity) ──
+    if analysis.has_reduce and any(
+        imp.name in ("exec", "eval", "compile", "open", "__import__")
+        and imp.chain_confirmed
+        for imp in analysis.dangerous_imports
+    ):
+        bad = [imp for imp in analysis.dangerous_imports
+               if imp.name in ("exec", "eval", "compile", "open", "__import__")
+               and imp.chain_confirmed]
+        for imp in bad[:5]:
+            findings.append(Finding.artifact(
+                rule_id="ARTIFACT-038",
+                title=f"Overtly bad call: {imp.module}.{imp.name}",
+                description=(
+                    f"Call to `{imp.module}.{imp.name}` is almost certainly "
+                    "evidence of a malicious pickle file."
+                ),
+                severity=Severity.CRITICAL,
+                confidence=1.0,
+                target=source,
+                evidence=f"Call to {imp.module}.{imp.name} at position {imp.position}",
+                cwe_ids=["CWE-502", "CWE-94"],
+            ))
+
     return findings

@@ -226,6 +226,42 @@ def webhook_assertion(response: dict, expected_status: int = 200, expected_body:
     return True
 
 
+def memorization_score(output: str, seed_prefix: str, reference_corpus: list[str] | None = None) -> float:
+    """Score how much of a model output looks like memorized training data.
+
+    Heuristic: measures exact n-gram overlap between output and either the
+    seed prefix (verbatim continuation) or a reference corpus. Returns 0.0
+    (no memorization evidence) to 1.0 (strong verbatim continuation).
+    """
+    if not output or not seed_prefix:
+        return 0.0
+
+    def _ngrams(text: str, n: int) -> set[str]:
+        tokens = re.findall(r"\w+", text.lower())
+        return {" ".join(tokens[i:i+n]) for i in range(len(tokens) - n + 1)}
+
+    output_4grams = _ngrams(output, 4)
+    if not output_4grams:
+        return 0.0
+
+    seed_4grams = _ngrams(seed_prefix, 4)
+    seed_overlap = len(output_4grams & seed_4grams) / len(output_4grams)
+
+    corpus_overlap = 0.0
+    if reference_corpus:
+        all_corpus_grams: set[str] = set()
+        for doc in reference_corpus:
+            all_corpus_grams |= _ngrams(doc, 4)
+        if all_corpus_grams:
+            corpus_overlap = len(output_4grams & all_corpus_grams) / len(output_4grams)
+
+    verbatim_bonus = 0.0
+    if len(seed_prefix) >= 10 and seed_prefix[:20].lower() in output.lower():
+        verbatim_bonus = 0.3
+
+    return min(1.0, seed_overlap * 0.4 + corpus_overlap * 0.3 + verbatim_bonus)
+
+
 def guardrails_assertion(output: str, rules: list[dict[str, str]]) -> dict[str, bool]:
     """Check output against a list of guardrail rules."""
     results: dict[str, bool] = {}

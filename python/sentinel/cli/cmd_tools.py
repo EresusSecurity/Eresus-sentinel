@@ -506,7 +506,7 @@ def cmd_doctor(args):
         "platform": _plat.system(), "machine": _plat.machine(),
         "status": "ok" if checks_passed >= checks_total - 2 else "degraded",
     }
-    if fmt in ("json", "sarif") or getattr(args, "output", None):
+    if fmt in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
         _emit_info(args, data)
     return 0 if checks_passed >= checks_total - 2 else 1
 
@@ -680,14 +680,204 @@ def cmd_watch(args):
 
 
 def cmd_config(args):
+    import os as _os
     from sentinel.policy import PolicyEngine
     engine = PolicyEngine.default()
     s = engine.list_scanners()
-    data = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
+    data: dict = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
+
+    if getattr(args, "explain", False):
+        # Show config provenance: which source each setting came from
+        sources = []
+        config_locations = [
+            ("env:SENTINEL_CONFIG", _os.environ.get("SENTINEL_CONFIG")),
+            ("env:SENTINEL_POLICY", _os.environ.get("SENTINEL_POLICY")),
+            ("file:config/policy.yaml", "config/policy.yaml" if Path("config/policy.yaml").exists() else None),
+            ("file:sentinel.yaml", "sentinel.yaml" if Path("sentinel.yaml").exists() else None),
+            ("file:.sentinel.yaml", ".sentinel.yaml" if Path(".sentinel.yaml").exists() else None),
+            ("default:builtin", "always"),
+        ]
+        for src, val in config_locations:
+            if val:
+                sources.append({"source": src, "value": str(val)[:80], "active": True})
+        data["config_sources"] = sources
+        console.print("\n[bold]Config sources (highest to lowest priority):[/bold]")
+        for s_entry in sources:
+            indicator = "[green]✓[/green]" if s_entry["active"] else "[dim]—[/dim]"
+            console.print(f"  {indicator} {s_entry['source']}: {s_entry['value']}")
+        console.print()
+
     _emit_info(args, data)
     fmt = getattr(args, "format", "table")
-    if fmt not in ("json", "sarif") and not getattr(args, "output", None):
+    if fmt not in ("json", "sarif") and not getattr(args, "output", None) and not getattr(args, "explain", False):
         console.print_json(json.dumps(data))
+
+
+def cmd_rules(args):
+    """List, test, or show details for scanner rules."""
+    action = getattr(args, "rules_action", "list") or "list"
+
+    if action == "list":
+        _rules_list(args)
+    elif action == "test":
+        _rules_test(args)
+    elif action == "explain":
+        _rules_explain(args)
+    else:
+        _rules_list(args)
+    return 0
+
+
+def _rules_list(args):
+    import importlib.util
+    from pathlib import Path as _P
+
+    fmt = getattr(args, "format", "table")
+    filter_domain = getattr(args, "domain", None)
+
+    # Collect rules from YAML rule files
+    rules_dirs = [
+        _P("rules"),
+        _P("python/sentinel/rules"),
+        _P("config"),
+    ]
+    rule_entries = []
+
+    for rules_dir in rules_dirs:
+        if not rules_dir.exists():
+            continue
+        for f in sorted(rules_dir.rglob("*.yaml")):
+            try:
+                import yaml
+                with open(f) as fh:
+                    data = yaml.safe_load(fh)
+                if isinstance(data, dict):
+                    for entry in data.get("rules", [data]) if "rules" in data else []:
+                        if not isinstance(entry, dict):
+                            continue
+                        rule_id = entry.get("id", entry.get("rule_id", ""))
+                        if not rule_id:
+                            continue
+                        domain = str(f.parent.name)
+                        if filter_domain and filter_domain not in domain:
+                            continue
+                        rule_entries.append({
+                            "id": rule_id,
+                            "domain": domain,
+                            "severity": entry.get("severity", "medium"),
+                            "description": entry.get("description", entry.get("name", ""))[:60],
+                            "source": str(f),
+                        })
+            except Exception:
+                pass
+
+    # Also collect Finding rule IDs from Python code (sample)
+    try:
+        from sentinel.artifact.pickle.findings import (
+            DANGEROUS_IMPORT_FINDING, DANGEROUS_GLOBAL_FINDING,
+        )
+        rule_entries.append({
+            "id": DANGEROUS_IMPORT_FINDING.rule_id,
+            "domain": "artifact.pickle",
+            "severity": "critical",
+            "description": DANGEROUS_IMPORT_FINDING.title[:60],
+            "source": "python/sentinel/artifact/pickle/findings.py",
+        })
+    except Exception:
+        pass
+
+    if fmt in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, {"rules": rule_entries, "total": len(rule_entries)})
+        return
+
+    table = Table(title=f"Rules · {len(rule_entries)} loaded", box=box.SIMPLE)
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Domain", style="dim")
+    table.add_column("Severity")
+    table.add_column("Description")
+    for r in rule_entries[:200]:
+        sev = str(r["severity"]).lower()
+        sev_color = {"critical": "red", "high": "red", "medium": "yellow", "low": "green"}.get(sev, "white")
+        table.add_row(r["id"], r["domain"], f"[{sev_color}]{sev}[/{sev_color}]", r["description"])
+    console.print(table)
+    if not rule_entries:
+        console.print("  [dim]No rule files found. Run from repo root.[/dim]")
+
+
+def _rules_test(args):
+    rule_id = getattr(args, "rule_id", "") or ""
+    if not rule_id:
+        console.print("[red]Error:[/red] provide a rule_id to test")
+        return 1
+    console.print(f"  [dim]Testing rule [cyan]{rule_id}[/cyan]...[/dim]")
+    # Import the finding and run a minimal smoke test
+    try:
+        from sentinel.artifact import scan_file_rich
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
+            tmp.write(b"\x80\x04\x95")
+            path = tmp.name
+        result = scan_file_rich(path)
+        os.unlink(path)
+        matched = [f for f in result.findings if f.rule_id == rule_id]
+        if matched:
+            console.print(f"  [green]MATCH[/green] — {len(matched)} finding(s) for {rule_id}")
+        else:
+            console.print(f"  [yellow]NO MATCH[/yellow] — rule {rule_id} not triggered by smoke fixture")
+    except Exception as exc:
+        console.print(f"  [red]ERROR[/red] — {exc}")
+
+
+def _rules_explain(args):
+    rule_id = getattr(args, "rule_id", "") or ""
+    _findings_explain_detail(rule_id)
+
+
+def cmd_findings_explain(args):
+    """Explain a finding rule: what it means, why it's flagged, how to fix it."""
+    rule_id = getattr(args, "rule_id", "") or ""
+    _findings_explain_detail(rule_id)
+    return 0
+
+
+def _findings_explain_detail(rule_id: str) -> None:
+    if not rule_id:
+        console.print("[red]Error:[/red] provide a rule_id  (e.g. sentinel findings explain ARTIFACT-031)")
+        return
+
+    # Built-in explanations registry
+    _EXPLANATIONS: dict[str, dict] = {
+        "ARTIFACT-031": {
+            "title": "Dangerous global (pickle GLOBAL opcode)",
+            "what": "A pickle file uses the GLOBAL opcode to reference a Python class/function that can execute arbitrary code.",
+            "why": "Loading this file with pickle.loads() will call the referenced callable.",
+            "remediation": "Use safetensors or ONNX instead of pickle. If pickle is required, use a RestrictedUnpickler allowlist.",
+            "cwe": "CWE-502",
+            "owasp": "LLM04",
+        },
+        "ARTIFACT-038": {
+            "title": "Overtly bad call (exec/eval/compile/open)",
+            "what": "The artifact contains pickle opcodes that call exec, eval, compile, or open.",
+            "why": "These calls allow arbitrary code execution or file system access on load.",
+            "remediation": "Reject this artifact. Do not load it in any production environment.",
+            "cwe": "CWE-94",
+            "owasp": "LLM04",
+        },
+    }
+
+    info = _EXPLANATIONS.get(rule_id)
+    if info:
+        console.print(f"\n[bold cyan]{rule_id}[/bold cyan] — {info['title']}\n")
+        console.print(f"[bold]What:[/bold] {info['what']}")
+        console.print(f"[bold]Why:[/bold]  {info['why']}")
+        console.print(f"\n[bold]Remediation:[/bold] {info['remediation']}")
+        console.print(f"\n[dim]CWE: {info['cwe']}  |  OWASP: {info['owasp']}[/dim]")
+    else:
+        # Try to find from scan
+        console.print(f"\n[bold cyan]{rule_id}[/bold cyan]\n")
+        console.print("  No built-in explanation found for this rule ID.")
+        console.print("  Try: sentinel rules list   to see available rules.")
+        console.print(f"  Or search the docs: https://github.com/EresusSecurity/Eresus-sentinel#rules")
 
 
 def cmd_version(args):

@@ -73,6 +73,7 @@ from .torchserve_scanner import ExecuTorchScanner, TensorRTScanner, Torch7Scanne
 from .trojan_detector import TrojanDetector
 from .xgboost_scanner import XGBoostScanner
 from .yaml_scanner import YamlScanner
+from .scan_result import ArtifactScanResult, ScanError
 
 
 @dataclass(frozen=True)
@@ -409,10 +410,101 @@ def scan_directory(
     return findings
 
 
+def scan_file_rich(
+    filepath: str | Path,
+    options: ArtifactScanOptions | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    exclude: str | Iterable[str] | None = None,
+    strict: bool | None = None,
+    fail_closed: bool | None = None,
+    expected_sha256: str | None = None,
+) -> "ArtifactScanResult":
+    """Scan a model artifact file and return a rich ArtifactScanResult.
+
+    Unlike scan_file(), this returns an ArtifactScanResult with structured
+    error tracking, summary metadata, and a ref-compatible exit_code() method.
+    """
+    import time
+
+    from sentinel.artifact.scan_result import ArtifactScanResult, ScanError
+
+    start = time.monotonic()
+    errors: list[ScanError] = []
+    path = Path(filepath)
+
+    if not path.exists() or not path.is_file():
+        return ArtifactScanResult(
+            errors=[ScanError(file=str(filepath), error="File not found", is_fatal=True)],
+        )
+
+    try:
+        findings = scan_file(
+            filepath,
+            options,
+            include=include,
+            exclude=exclude,
+            strict=strict,
+            fail_closed=fail_closed,
+            expected_sha256=expected_sha256,
+        )
+    except Exception as exc:
+        findings = []
+        errors.append(ScanError(file=str(filepath), error=str(exc), is_fatal=True))
+
+    elapsed_ms = (time.monotonic() - start) * 1000
+    return ArtifactScanResult(
+        findings=findings,
+        errors=errors,
+        files_scanned=1,
+        scan_duration_ms=elapsed_ms,
+    )
+
+
+def scan_directory_rich(
+    directory: str | Path,
+    options: ArtifactScanOptions | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    exclude: str | Iterable[str] | None = None,
+    strict: bool | None = None,
+    fail_closed: bool | None = None,
+) -> "ArtifactScanResult":
+    """Scan a directory of model artifacts and return a rich ArtifactScanResult."""
+    import time
+
+    from sentinel.artifact.scan_result import ArtifactScanResult, ScanError
+
+    start = time.monotonic()
+    errors: list[ScanError] = []
+    scanned = 0
+
+    try:
+        findings = scan_directory(directory, options, include=include, exclude=exclude,
+                                   strict=strict, fail_closed=fail_closed)
+        root = Path(directory)
+        scanned = sum(1 for _ in root.rglob("*") if _.is_file()) if root.is_dir() else 0
+    except Exception as exc:
+        findings = []
+        errors.append(ScanError(file=str(directory), error=str(exc), is_fatal=True))
+
+    elapsed_ms = (time.monotonic() - start) * 1000
+    return ArtifactScanResult(
+        findings=findings,
+        errors=errors,
+        files_scanned=scanned,
+        scan_duration_ms=elapsed_ms,
+    )
+
+
 __all__ = [
     "scan_file",
+    "scan_file_rich",
     "scan_directory",
+    "scan_directory_rich",
     "ArtifactScanOptions",
+    "ArtifactScanResult",
+    "ScanError",
     "ArtifactScannerSpec",
     "PickleAnalysis",
     "DangerousImport",

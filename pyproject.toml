@@ -142,6 +142,7 @@ Security = "https://github.com/eresus-security/sentinel/blob/main/SECURITY.md"
 [project.scripts]
 sentinel = "sentinel.cli:main"
 eresus-sentinel = "sentinel.cli:main"
+sentinel-pre-commit = "sentinel.cli.pre_commit_hook:main"
 
 [tool.setuptools.packages.find]
 where = ["python"]

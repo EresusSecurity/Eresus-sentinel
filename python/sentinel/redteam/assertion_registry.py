@@ -128,6 +128,10 @@ class AssertionRegistry:
             ("guardrails", "guardrails_assertion", "guardrails-assertion"),
             self._assert_guardrails,
         )
+        self._register_aliases(
+            ("memorization", "memorization_score", "memorizationScore", "memorisation"),
+            self._assert_memorization,
+        )
 
     def _register_aliases(self, aliases: tuple[str, ...], evaluator: Callable) -> None:
         for alias in aliases:
@@ -439,6 +443,19 @@ class AssertionRegistry:
             str(cfg.get("body", cfg.get("expected_body", ""))),
         )
         return ok, f"Webhook assertion {'passed' if ok else 'failed'}"
+
+    @staticmethod
+    def _assert_memorization(output: str, expected: Any, meta: dict) -> tuple[bool, str]:
+        from sentinel.evaluator_assertions import memorization_score
+
+        cfg = _merge_expected_meta(expected, meta)
+        seed = str(cfg.get("seed") or cfg.get("prefix") or (expected if isinstance(expected, str) else ""))
+        corpus = cfg.get("corpus") or cfg.get("reference_corpus")
+        score = memorization_score(output, seed, corpus if isinstance(corpus, list) else None)
+        # For memorization we invert: pass = low score (no leak), fail = high score (leak detected)
+        max_score = float(cfg.get("max_score", cfg.get("threshold", 0.5)))
+        ok = score <= max_score
+        return ok, f"Memorization score {score:.2f} {'<=' if ok else '>'} {max_score:.2f}"
 
     @staticmethod
     def _assert_guardrails(output: str, expected: Any, meta: dict) -> tuple[bool, str]:

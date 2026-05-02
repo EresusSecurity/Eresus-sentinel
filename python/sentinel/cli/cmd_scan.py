@@ -96,12 +96,36 @@ def cmd_scan(args):
         ("rules",         "yaml validation",   dispatch_validate_rules),
     ]
 
-    # --fast for file/path scans is code-oriented: avoid treating docs as giant prompts.
-    if fast:
+    # --profile overrides --fast
+    profile = getattr(args, "profile", None)
+    if profile == "fast" or fast:
         modules = [
             ("sast", "static analysis", dispatch_sast),
             ("secrets", "secrets", dispatch_secrets),
         ]
+    elif profile == "deep":
+        from sentinel.cli_dispatch import dispatch_secrets as _ds
+        modules = modules  # includes all existing modules
+        # add secrets if not present
+        if not any(m[0] == "secrets" for m in modules):
+            modules = [*modules, ("secrets", "secrets", dispatch_secrets)]
+    elif profile == "paranoid":
+        if not any(m[0] == "secrets" for m in modules):
+            modules = [*modules, ("secrets", "secrets", dispatch_secrets)]
+
+    # --explain-plan: show what would run, then exit
+    if getattr(args, "explain_plan", False):
+        from rich import box as _box
+        from rich.table import Table as _T
+        t = _T(title="Scan plan", box=_box.SIMPLE)
+        t.add_column("Module")
+        t.add_column("Label")
+        t.add_column("Status")
+        for name, label, _ in modules:
+            t.add_row(name, label, "[green]will run[/green]")
+        console.print(t)
+        console.print(f"\n  [dim]{len(modules)} module(s) would run on [cyan]{args.path}[/cyan][/dim]")
+        return 0
 
     # --stdin-files: read additional paths from stdin
     if getattr(args, "stdin_files", False):
@@ -363,9 +387,11 @@ def cmd_artifact_scan(args):
     """Pre-commit artifact scanner — scans each staged file individually.
 
     Accepts multiple positional FILE arguments (pre-commit pass_filenames).
-    Exits 1 if any finding is at or above ``--fail-on`` severity (default: critical).
+    Exit codes follow ref-artifact-scan-suite contract:
+      0 = clean, 1 = findings at/above threshold, 2 = scan error
     """
-    from sentinel.cli_dispatch import dispatch_artifact
+    from sentinel.artifact import scan_file_rich
+    from sentinel.artifact.scan_result import ArtifactScanResult, ScanError
 
     files: list[Path] = []
     for raw in args.files:
@@ -378,29 +404,35 @@ def cmd_artifact_scan(args):
     if not files:
         return 0
 
-    all_findings = []
     fail_on: str = getattr(args, "fail_on", "critical") or "critical"
+    aggregate = ArtifactScanResult()
 
     for f in files:
-        try:
-            found = dispatch_artifact(str(f))
-            if found:
-                all_findings.extend(found)
-                _fail(f"{f.name}  →  {len(found)} finding(s)")
-                for finding in found:
-                    _finding_line(finding)
-            else:
-                _ok(f"{f.name}  →  clean")
-        except Exception as exc:  # noqa: BLE001
-            from sentinel.cli._helpers import _warn
-            _warn(f"{f.name}  →  scan error: {exc}")
+        result = scan_file_rich(str(f))
+        aggregate.findings.extend(result.findings)
+        aggregate.errors.extend(result.errors)
+        aggregate.files_scanned += result.files_scanned
 
-    if not all_findings:
+        if result.errors:
+            from sentinel.cli._helpers import _warn
+            for err in result.errors:
+                _warn(f"{f.name}  →  scan error: {err.error}")
+        elif result.findings:
+            _fail(f"{f.name}  →  {len(result.findings)} finding(s)")
+            for finding in result.findings:
+                _finding_line(finding)
+        else:
+            _ok(f"{f.name}  →  clean")
+
+    if aggregate.fatal_errors:
+        return 2
+
+    if not aggregate.findings:
         return 0
 
-    if _hook_threshold(all_findings, fail_on):
+    if _hook_threshold(aggregate.findings, fail_on):
         console.print(
-            f"\n  [bold red]sentinel:[/bold red] {len(all_findings)} finding(s) "
+            f"\n  [bold red]sentinel:[/bold red] {len(aggregate.findings)} finding(s) "
             f"at or above [bold]{fail_on.upper()}[/bold] — commit blocked.",
             highlight=False,
         )

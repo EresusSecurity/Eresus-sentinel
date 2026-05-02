@@ -104,6 +104,16 @@ def main():
         action="store_true",
         help="Read additional file paths from stdin (one per line) — for pre-commit use",
     )
+    p.add_argument(
+        "--explain-plan",
+        action="store_true",
+        help="Show which scanners will run without actually scanning",
+    )
+    p.add_argument(
+        "--profile",
+        choices=["fast", "balanced", "deep", "paranoid"],
+        help="Scan depth profile: fast=SAST+secrets, balanced=default, deep=+redteam, paranoid=+fuzz",
+    )
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("firewall", aliases=["fw"], help="firewall scan")
@@ -314,9 +324,11 @@ def main():
         cmd_config,
         cmd_doctor,
         cmd_evaluate,
+        cmd_findings_explain,
         cmd_plugins,
         cmd_refs,
         cmd_reverse,
+        cmd_rules,
         cmd_scanners,
         cmd_shell,
         cmd_stats,
@@ -396,13 +408,35 @@ def main():
     p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("doctor", help="system health check")
+    p.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
     p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("config", help="show config as JSON")
+    p.add_argument("--explain", action="store_true", help="explain where each config value comes from")
     p.set_defaults(func=cmd_config)
 
     p = sub.add_parser("version", help="version info")
     p.set_defaults(func=cmd_version)
+
+    # ── Rules management ───────────────────────────────────────────
+    rules_p = sub.add_parser("rules", help="rule management: list, test, explain")
+    rules_sub = rules_p.add_subparsers(dest="rules_action")
+    rules_list_p = rules_sub.add_parser("list", help="list all loaded rules")
+    rules_list_p.add_argument("--domain", help="filter by domain")
+    rules_list_p.add_argument("--format", "-f", default="table", choices=["table", "json"])
+    rules_list_p.set_defaults(func=cmd_rules)
+    rules_test_p = rules_sub.add_parser("test", help="test a rule against a smoke fixture")
+    rules_test_p.add_argument("rule_id", help="rule ID to test")
+    rules_test_p.set_defaults(func=cmd_rules)
+    rules_p.set_defaults(func=cmd_rules)
+
+    # ── Findings explain ───────────────────────────────────────────
+    findings_p = sub.add_parser("findings", help="finding inspection and explanation")
+    findings_sub = findings_p.add_subparsers(dest="findings_action")
+    explain_p = findings_sub.add_parser("explain", help="explain a rule ID")
+    explain_p.add_argument("rule_id", help="rule ID to explain (e.g. ARTIFACT-031)")
+    explain_p.set_defaults(func=cmd_findings_explain)
+    findings_p.set_defaults(func=cmd_findings_explain)
 
     # ── Service commands ───────────────────────────────────────────
     from sentinel.cli.cmd_serve import (

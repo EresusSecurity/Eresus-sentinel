@@ -126,7 +126,7 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("coreml", (".mlmodel", ".mlpackage"), CoreMLScanner),
         ArtifactScannerSpec("flax", (".msgpack", ".orbax", ".flax"), FlaxScanner),
         ArtifactScannerSpec("lightgbm", (".lgb", ".lightgbm"), LightGBMScanner),
-        ArtifactScannerSpec("mxnet", (".params",), MXNetScanner),
+        ArtifactScannerSpec("mxnet", ("-symbol.json", ".params"), MXNetScanner),
         ArtifactScannerSpec("nemo", (".nemo",), NeMoScanner, True),
         ArtifactScannerSpec("openvino", (".xml",), OpenVINOScanner),
         ArtifactScannerSpec("paddle", (".pdmodel", ".pdiparams", ".pdparams"), PaddleScanner),

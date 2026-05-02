@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from pathlib import Path
 
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from sentinel.cli._export import _export
+from sentinel.cli._export import _export, _sanitize_for_json
 from sentinel.cli._helpers import (
     _apply_severity_filter,
     _fail,
@@ -36,6 +37,122 @@ def _fails_threshold(findings, fail_on: str | None) -> bool:
 _SCAN_MAX_FILES = 10_000
 _DANGEROUS_ROOTS = frozenset({"/", "/usr", "/System", "/Applications", "/Library", "/var", "/etc", "/opt", "C:\\", "C:\\Windows"})
 
+_PROFILE_DESCRIPTIONS = {
+    "fast": "SAST + secrets only; optimized for pre-commit and quick local checks",
+    "balanced": "Default multi-domain scan across artifacts, firewalls, SAST, agents, supply chain, diff, notebooks, and rules",
+    "deep": "Balanced scan plus explicit secrets pass for higher assurance",
+    "paranoid": "Deep scan profile reserved for strict CI; currently runs deep deterministic modules",
+}
+
+
+def _emit_scan_plan(args, plan: dict) -> None:
+    fmt = getattr(args, "format", "table")
+    out = getattr(args, "output", None)
+    if fmt == "json" or out:
+        payload = {
+            "schema_version": "0.1",
+            "command": "scan",
+            "summary": {
+                "command": "scan",
+                "mode": "plan",
+                "target": plan["target"],
+                "profile": plan["profile"],
+                "module_count": len(plan["modules"]),
+            },
+            "totals": {"modules": len(plan["modules"])},
+            "findings": [],
+            "errors": [],
+            "metadata": {
+                "profile_description": plan["profile_description"],
+                "strict_exit_contract": "0=clean/plan, 1=findings-or-blocked, 2=usage/internal error",
+            },
+            "plan": plan,
+        }
+        rendered = json.dumps(payload, indent=2, default=str, ensure_ascii=True)
+        if out:
+            Path(out).write_text(rendered + "\n", encoding="utf-8")
+            _ok(f"written {out}")
+        else:
+            sys.stdout.write(rendered + "\n")
+            sys.stdout.flush()
+        return
+
+    from rich import box as _box
+    from rich.table import Table as _T
+
+    t = _T(title="Scan plan", box=_box.SIMPLE)
+    t.add_column("Module")
+    t.add_column("Label")
+    t.add_column("Status")
+    for module in plan["modules"]:
+        t.add_row(module["name"], module["label"], "[green]will run[/green]")
+    console.print(t)
+    console.print(
+        f"\n  [dim]{len(plan['modules'])} module(s) would run on "
+        f"[cyan]{plan['target']}[/cyan] · profile=[cyan]{plan['profile']}[/cyan][/dim]"
+    )
+
+
+def _emit_scan_result(args, findings, results: list[dict], wall_seconds: float, exit_code: int, profile: str) -> None:
+    from datetime import datetime, timezone
+
+    from sentinel import __version__ as ver
+
+    severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+    serialized_findings = []
+    for finding in findings:
+        severity, _, _ = _sev(finding)
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        if hasattr(finding, "to_dict"):
+            serialized_findings.append(finding.to_dict())
+        else:
+            serialized_findings.append({"rule_id": getattr(finding, "rule_id", ""), "severity": severity})
+
+    errors = [
+        {
+            "module": result["name"],
+            "label": result["label"],
+            "findings": result["findings"],
+        }
+        for result in results
+        if not result["ok"]
+    ]
+    status = "error" if errors else "findings" if findings else "clean"
+    payload = {
+        "schema_version": "0.1",
+        "command": "scan",
+        "summary": {
+            "command": "scan",
+            "target": getattr(args, "path", ""),
+            "profile": profile,
+            "status": status,
+            "exit_code": exit_code,
+            "duration_ms": round(wall_seconds * 1000, 2),
+        },
+        "totals": {
+            "modules": len(results),
+            "modules_passed": sum(1 for result in results if result["ok"]),
+            "findings": len(findings),
+            "severity": severity_counts,
+        },
+        "findings": serialized_findings,
+        "errors": errors,
+        "metadata": {
+            "tool": "eresus-sentinel",
+            "version": ver,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "module_results": results,
+        },
+    }
+    rendered = json.dumps(_sanitize_for_json(payload), indent=2, default=str, ensure_ascii=True)
+    out = getattr(args, "output", None)
+    if out:
+        Path(out).write_text(rendered + "\n", encoding="utf-8")
+        _ok(f"written {out}")
+    else:
+        sys.stdout.write(rendered + "\n")
+        sys.stdout.flush()
+
 
 def cmd_scan(args):
     """Full scan."""
@@ -53,12 +170,6 @@ def cmd_scan(args):
     if resolved in _DANGEROUS_ROOTS:
         _fail(f"refusing to scan system root '{resolved}' — specify a project directory")
         return 2
-
-    if os.path.isdir(resolved):
-        file_count = sum(1 for _ in Path(resolved).rglob("*") if _.is_file())
-        if file_count > _SCAN_MAX_FILES:
-            _warn(f"directory has {file_count:,} files (limit {_SCAN_MAX_FILES:,}). Narrow scope or increase limit.")
-            return 2
 
     from sentinel.cli_dispatch import (
         dispatch_agent,
@@ -82,9 +193,10 @@ def cmd_scan(args):
         return findings
 
     fast = getattr(args, "fast", False)
-    _header(f"{'fast' if fast else 'full'} scan → {args.path}", args=args)
+    profile = getattr(args, "profile", None) or ("fast" if fast else "balanced")
+    fmt = getattr(args, "format", "table")
 
-    modules = [
+    base_modules = [
         ("artifact",      "artifact scan",     dispatch_artifact),
         ("firewall.in",   "input firewall",    dispatch_firewall_input),
         ("firewall.out",  "output firewall",   dispatch_firewall_output),
@@ -96,36 +208,47 @@ def cmd_scan(args):
         ("rules",         "yaml validation",   dispatch_validate_rules),
     ]
 
-    # --profile overrides --fast
-    profile = getattr(args, "profile", None)
-    if profile == "fast" or fast:
+    if profile == "fast":
         modules = [
             ("sast", "static analysis", dispatch_sast),
             ("secrets", "secrets", dispatch_secrets),
         ]
     elif profile == "deep":
-        from sentinel.cli_dispatch import dispatch_secrets as _ds
-        modules = modules  # includes all existing modules
-        # add secrets if not present
-        if not any(m[0] == "secrets" for m in modules):
-            modules = [*modules, ("secrets", "secrets", dispatch_secrets)]
+        modules = [*base_modules, ("secrets", "secrets", dispatch_secrets)]
     elif profile == "paranoid":
-        if not any(m[0] == "secrets" for m in modules):
-            modules = [*modules, ("secrets", "secrets", dispatch_secrets)]
+        modules = [*base_modules, ("secrets", "secrets", dispatch_secrets)]
+    else:
+        modules = base_modules
+
+    scan_plan = {
+        "target": args.path,
+        "profile": profile,
+        "profile_description": _PROFILE_DESCRIPTIONS[profile],
+        "modules": [
+            {"name": name, "label": label, "status": "will_run"}
+            for name, label, _ in modules
+        ],
+        "options": {
+            "min_severity": getattr(args, "min_severity", None),
+            "fail_on": getattr(args, "fail_on", None),
+            "ci": bool(getattr(args, "ci", False)),
+            "stdin_files": bool(getattr(args, "stdin_files", False)),
+        },
+    }
 
     # --explain-plan: show what would run, then exit
     if getattr(args, "explain_plan", False):
-        from rich import box as _box
-        from rich.table import Table as _T
-        t = _T(title="Scan plan", box=_box.SIMPLE)
-        t.add_column("Module")
-        t.add_column("Label")
-        t.add_column("Status")
-        for name, label, _ in modules:
-            t.add_row(name, label, "[green]will run[/green]")
-        console.print(t)
-        console.print(f"\n  [dim]{len(modules)} module(s) would run on [cyan]{args.path}[/cyan][/dim]")
+        _emit_scan_plan(args, scan_plan)
         return 0
+
+    if os.path.isdir(resolved):
+        file_count = sum(1 for _ in Path(resolved).rglob("*") if _.is_file())
+        if file_count > _SCAN_MAX_FILES:
+            _warn(f"directory has {file_count:,} files (limit {_SCAN_MAX_FILES:,}). Narrow scope or increase limit.")
+            return 2
+
+    if fmt == "table":
+        _header(f"{profile} scan → {args.path}", args=args)
 
     # --stdin-files: read additional paths from stdin
     if getattr(args, "stdin_files", False):
@@ -147,6 +270,7 @@ def cmd_scan(args):
         TimeElapsedColumn(),
         console=console,
         transient=True,
+        disable=fmt != "table",
     ) as progress:
         task = progress.add_task("scanning...", total=len(modules))
 
@@ -176,9 +300,10 @@ def cmd_scan(args):
             fc = len(findings)
             all_findings.extend(findings)
 
-            mark = "[green]✓[/green]" if ok and fc == 0 else "[yellow]![/yellow]" if ok else "[red]✗[/red]"
-            count_str = f"[red]{fc}[/red]" if fc > 0 else "[green]0[/green]"
-            console.print(f"  {mark} {label:<20} {count_str:>12} findings  [dim]{ms:>6.0f}ms[/dim]")
+            if fmt == "table":
+                mark = "[green]✓[/green]" if ok and fc == 0 else "[yellow]![/yellow]" if ok else "[red]✗[/red]"
+                count_str = f"[red]{fc}[/red]" if fc > 0 else "[green]0[/green]"
+                console.print(f"  {mark} {label:<20} {count_str:>12} findings  [dim]{ms:>6.0f}ms[/dim]")
 
             results.append({"name": name, "label": label, "ms": ms, "ok": ok, "findings": fc})
             progress.advance(task)
@@ -189,20 +314,25 @@ def cmd_scan(args):
     total_f = len(all_findings)
     passed = sum(1 for r in results if r["ok"])
 
-    console.print(f"\n  [bold]{passed}/{len(results)}[/bold] passed · "
-                  f"[bold]{total_f}[/bold] finding(s) · "
-                  f"[dim]{wall:.1f}s[/dim]")
+    if fmt == "table":
+        console.print(f"\n  [bold]{passed}/{len(results)}[/bold] passed · "
+                      f"[bold]{total_f}[/bold] finding(s) · "
+                      f"[dim]{wall:.1f}s[/dim]")
 
-    if total_f > 0:
-        _severity_dashboard(all_findings)
+        if total_f > 0:
+            _severity_dashboard(all_findings)
+            console.print()
+            for f in all_findings:
+                _finding_line(f, compact=True)
+
         console.print()
-        for f in all_findings:
-            _finding_line(f, compact=True)
-
-    console.print()
-    _export(args, all_findings)
     has_scan_error = any(not r["ok"] for r in results)
-    return 1 if has_scan_error or _fails_threshold(all_findings, getattr(args, "fail_on", None)) else 0
+    exit_code = 1 if has_scan_error or _fails_threshold(all_findings, getattr(args, "fail_on", None)) else 0
+    if fmt == "json":
+        _emit_scan_result(args, all_findings, results, wall, exit_code, profile)
+    else:
+        _export(args, all_findings)
+    return exit_code
 
 
 MAX_FIREWALL_INPUT = 100_000
@@ -263,9 +393,23 @@ def cmd_artifact(args):
             '.pkl', '.pickle', '.p', '.pt', '.pth', '.bin', '.ckpt',
             '.safetensors', '.gguf', '.pb', '.torchscript', '.ptc',
             '.tflite', '.ptl', '.llamafile', '.onnx', '.keras', '.h5', '.hdf5',
-            '.xgb', '.ubj', '.model', '.lgb', '.joblib',
+            '.xgb', '.ubj', '.model', '.lgb', '.lightgbm', '.joblib',
             '.npy', '.npz',
-            '.nemo', '.mar', '.tar', '.tgz', '.zip',
+            '.nemo', '.mar', '.tar', '.tgz', '.zip', '.7z',
+            '.rds', '.rda', '.rdata',
+            '.skops',
+            '.t7', '.th',
+            '.pte',
+            '.engine', '.plan', '.trt',
+            '.cbm',
+            '.mlmodel', '.mlpackage',
+            '.msgpack', '.orbax', '.flax',
+            '.pmml',
+            '.pdmodel', '.pdiparams', '.pdparams',
+            '.xml',
+            '.params',
+            '.yaml', '.yml',
+            '.oci',
         }
         if p.is_dir():
             skipped = [
@@ -337,6 +481,7 @@ def cmd_hf_guard(args):
     """Pre-download security assessment for HuggingFace repos."""
     from sentinel.hf_guard import HFGuard
 
+    fmt = getattr(args, "format", "table")
     _header(f"hf-guard → {args.repo}", args=args)
     guard = HFGuard(
         block_pickle=getattr(args, "block_pickle", False),
@@ -344,27 +489,45 @@ def cmd_hf_guard(args):
     )
     assessment = guard.assess(args.repo)
 
-    risk_colors = {"INFO": "dim", "LOW": "blue", "MEDIUM": "yellow", "HIGH": "red", "CRITICAL": "bold red"}
-    color = risk_colors.get(assessment.risk_level, "white")
-    console.print(f"  Risk Level: [{color}]{assessment.risk_level}[/{color}] (score: {assessment.risk_score:.2f})")
-    console.print(f"  Total files: {assessment.total_files}")
-    console.print(f"  Safetensors: {'✅' if assessment.has_safetensors else '❌'}")
-    console.print(f"  Pickle files: {'⚠️' if assessment.has_pickle else '✅ none'}")
+    if fmt == "table":
+        risk_colors = {"INFO": "dim", "LOW": "blue", "MEDIUM": "yellow", "HIGH": "red", "CRITICAL": "bold red"}
+        color = risk_colors.get(assessment.risk_level, "white")
+        console.print(f"  Risk Level: [{color}]{assessment.risk_level}[/{color}] (score: {assessment.risk_score:.2f})")
+        console.print(f"  Total files: {assessment.total_files}")
+        console.print(f"  Safetensors: {'✅' if assessment.has_safetensors else '❌'}")
+        console.print(f"  Pickle files: {'⚠️' if assessment.has_pickle else '✅ none'}")
 
-    if assessment.dangerous_files:
-        console.print(f"\n  [yellow]⚠ {len(assessment.dangerous_files)} dangerous file(s):[/yellow]")
-        for f in assessment.dangerous_files[:10]:
-            console.print(f"    • {f['file']} [{f['risk']}] — {f['reason']}")
+        if assessment.dangerous_files:
+            console.print(f"\n  [yellow]⚠ {len(assessment.dangerous_files)} dangerous file(s):[/yellow]")
+            for f in assessment.dangerous_files[:10]:
+                console.print(f"    • {f['file']} [{f['risk']}] — {f['reason']}")
 
-    for rec in assessment.recommendations:
-        console.print(f"  → {rec}")
+        for rec in assessment.recommendations:
+            console.print(f"  → {rec}")
 
     if getattr(args, "deep", False):
-        console.print("\n  Running deep scan...")
+        if fmt == "table":
+            console.print("\n  Running deep scan...")
         findings = guard.scan(args.repo)
         _print_findings(findings, args=args)
         _export(args, findings)
         return 1 if findings else 0
+
+    if fmt != "table":
+        from sentinel.cli.cmd_tools import _emit_info
+        payload = {
+            "schema_version": "0.1",
+            "command": "hf-guard",
+            "repo": args.repo,
+            "risk_level": assessment.risk_level,
+            "risk_score": assessment.risk_score,
+            "total_files": assessment.total_files,
+            "has_safetensors": assessment.has_safetensors,
+            "has_pickle": assessment.has_pickle,
+            "dangerous_files": assessment.dangerous_files,
+            "recommendations": assessment.recommendations,
+        }
+        _emit_info(args, payload)
 
     return 1 if assessment.risk_level in ("HIGH", "CRITICAL") else 0
 

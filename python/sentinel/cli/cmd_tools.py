@@ -94,6 +94,7 @@ def cmd_aibom(args):
     from sentinel.aibom.scan_pipeline import ScanPipeline
 
     target = Path(args.path)
+    fmt = getattr(args, "aibom_format", "cyclonedx")
     if not target.exists():
         _fail(f"target not found: {target}")
         return 2
@@ -104,15 +105,49 @@ def cmd_aibom(args):
             _warn(f"directory has {file_count:,} files (limit {_AIBOM_MAX_FILES:,}). Use a subdirectory or --path.")
             return 2
 
-    _header(f"aibom → {target}", args=args)
     result = ScanPipeline().run(target)
-    rendered = _REPORTERS[args.aibom_format]().render(result)
+    if fmt == "json":
+        data = {
+            "schema_version": "0.1",
+            "command": "aibom",
+            "summary": {
+                "command": "aibom",
+                "target": str(target),
+                "status": "clean",
+                "component_count": len(result.components),
+                "relationship_count": len(result.relationships),
+            },
+            "totals": {
+                "components": len(result.components),
+                "relationships": len(result.relationships),
+                "errors": len(result.metadata.get("errors", [])),
+            },
+            "findings": [],
+            "errors": result.metadata.get("errors", []),
+            "metadata": result.metadata,
+            "components": [component.as_dict() for component in result.components],
+            "relationships": [
+                {
+                    "source_id": rel.source_id,
+                    "target_id": rel.target_id,
+                    "type": rel.type.value if hasattr(rel.type, "value") else str(rel.type),
+                    "metadata": rel.metadata,
+                }
+                for rel in result.relationships
+            ],
+        }
+        rendered = json.dumps(data, indent=2, default=str)
+    else:
+        rendered = _REPORTERS[fmt]().render(result)
 
     if args.output:
         Path(args.output).write_text(rendered, encoding="utf-8")
         _ok(f"wrote AIBOM report → {args.output}")
     else:
-        console.print(rendered)
+        sys.stdout.write(rendered)
+        if not rendered.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
     return 0
 
 
@@ -368,6 +403,9 @@ def cmd_stats(args):
 
 def cmd_doctor(args):
     """Health check — validate environment, dependencies, and scanners."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
     fmt = getattr(args, "format", "table")
     _doctor_checks = []
 
@@ -680,37 +718,88 @@ def cmd_watch(args):
 
 
 def cmd_config(args):
-    import os as _os
+    """Show or explain effective configuration inputs."""
     from sentinel.policy import PolicyEngine
+
     engine = PolicyEngine.default()
     s = engine.list_scanners()
+    action = getattr(args, "config_action", "show") or "show"
+
+    if action == "explain" or getattr(args, "explain", False):
+        data = _config_explain_payload(s)
+        fmt = getattr(args, "format", "table")
+        if fmt in ("json", "sarif") or getattr(args, "output", None):
+            _emit_info(args, data)
+            return 0
+
+        _header("config explain", args=args)
+        table = Table(box=box.SIMPLE, border_style="dim", show_header=True, pad_edge=False)
+        table.add_column("Layer", style="cyan", no_wrap=True)
+        table.add_column("Status")
+        table.add_column("Details")
+        for row in data["precedence"]:
+            table.add_row(row["layer"], row["status"], row["details"])
+        console.print(table)
+        console.print(
+            f"\n  [dim]{data['scanner_registry']['input']} input + "
+            f"{data['scanner_registry']['output']} output scanners[/dim]"
+        )
+        return 0
+
     data: dict = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
-
-    if getattr(args, "explain", False):
-        # Show config provenance: which source each setting came from
-        sources = []
-        config_locations = [
-            ("env:SENTINEL_CONFIG", _os.environ.get("SENTINEL_CONFIG")),
-            ("env:SENTINEL_POLICY", _os.environ.get("SENTINEL_POLICY")),
-            ("file:config/policy.yaml", "config/policy.yaml" if Path("config/policy.yaml").exists() else None),
-            ("file:sentinel.yaml", "sentinel.yaml" if Path("sentinel.yaml").exists() else None),
-            ("file:.sentinel.yaml", ".sentinel.yaml" if Path(".sentinel.yaml").exists() else None),
-            ("default:builtin", "always"),
-        ]
-        for src, val in config_locations:
-            if val:
-                sources.append({"source": src, "value": str(val)[:80], "active": True})
-        data["config_sources"] = sources
-        console.print("\n[bold]Config sources (highest to lowest priority):[/bold]")
-        for s_entry in sources:
-            indicator = "[green]✓[/green]" if s_entry["active"] else "[dim]—[/dim]"
-            console.print(f"  {indicator} {s_entry['source']}: {s_entry['value']}")
-        console.print()
-
     _emit_info(args, data)
     fmt = getattr(args, "format", "table")
-    if fmt not in ("json", "sarif") and not getattr(args, "output", None) and not getattr(args, "explain", False):
+    if fmt not in ("json", "sarif") and not getattr(args, "output", None):
         console.print_json(json.dumps(data))
+    return 0
+
+
+def _config_explain_payload(scanner_registry: dict) -> dict:
+    cwd = Path.cwd()
+    candidate_files = [
+        cwd / "sentinel.yaml",
+        cwd / "sentinel.yml",
+        cwd / ".sentinel.yaml",
+        cwd / "pyproject.toml",
+        cwd / "config" / "policy.yaml",
+        cwd / "config" / "scanners.yml",
+        cwd / "config" / "proxy_rules.yaml",
+    ]
+    config_files = [{"path": str(path), "exists": path.exists()} for path in candidate_files]
+    env_names = sorted(name for name in os.environ if name.startswith("SENTINEL_"))
+    rule_roots = [{"path": str(path), "exists": path.exists()} for path in _rule_roots()]
+    precedence = [
+        {"layer": "cli", "status": "highest", "details": "Command-line flags override config files."},
+        {
+            "layer": "env",
+            "status": "active" if env_names else "not-set",
+            "details": ", ".join(env_names) if env_names else "No SENTINEL_* environment overrides detected.",
+        },
+        {
+            "layer": "project",
+            "status": "active" if any(item["exists"] for item in config_files) else "not-found",
+            "details": ", ".join(item["path"] for item in config_files if item["exists"]) or "No project config files found.",
+        },
+        {
+            "layer": "rules",
+            "status": "active" if any(item["exists"] for item in rule_roots) else "not-found",
+            "details": ", ".join(item["path"] for item in rule_roots if item["exists"]) or "No rule roots found.",
+        },
+        {"layer": "package", "status": "default", "details": "Built-in scanner/rule defaults are used last."},
+    ]
+    return {
+        "schema_version": "0.1",
+        "cwd": str(cwd),
+        "precedence": precedence,
+        "config_files": config_files,
+        "rule_roots": rule_roots,
+        "env": {"sentinel_keys": env_names, "values_redacted": True},
+        "scanner_registry": {
+            "input": len(scanner_registry.get("input", [])),
+            "output": len(scanner_registry.get("output", [])),
+            "total": len(scanner_registry.get("input", [])) + len(scanner_registry.get("output", [])),
+        },
+    }
 
 
 def cmd_rules(args):
@@ -718,77 +807,26 @@ def cmd_rules(args):
     action = getattr(args, "rules_action", "list") or "list"
 
     if action == "list":
-        _rules_list(args)
-    elif action == "test":
-        _rules_test(args)
-    elif action == "explain":
-        _rules_explain(args)
-    else:
-        _rules_list(args)
-    return 0
+        return _rules_list(args)
+    if action == "test":
+        return _rules_test(args)
+    if action == "explain":
+        return _rules_explain(args)
+    return _rules_list(args)
 
 
 def _rules_list(args):
-    import importlib.util
-    from pathlib import Path as _P
-
     fmt = getattr(args, "format", "table")
     filter_domain = getattr(args, "domain", None)
-
-    # Collect rules from YAML rule files
-    rules_dirs = [
-        _P("rules"),
-        _P("python/sentinel/rules"),
-        _P("config"),
-    ]
-    rule_entries = []
-
-    for rules_dir in rules_dirs:
-        if not rules_dir.exists():
-            continue
-        for f in sorted(rules_dir.rglob("*.yaml")):
-            try:
-                import yaml
-                with open(f) as fh:
-                    data = yaml.safe_load(fh)
-                if isinstance(data, dict):
-                    for entry in data.get("rules", [data]) if "rules" in data else []:
-                        if not isinstance(entry, dict):
-                            continue
-                        rule_id = entry.get("id", entry.get("rule_id", ""))
-                        if not rule_id:
-                            continue
-                        domain = str(f.parent.name)
-                        if filter_domain and filter_domain not in domain:
-                            continue
-                        rule_entries.append({
-                            "id": rule_id,
-                            "domain": domain,
-                            "severity": entry.get("severity", "medium"),
-                            "description": entry.get("description", entry.get("name", ""))[:60],
-                            "source": str(f),
-                        })
-            except Exception:
-                pass
-
-    # Also collect Finding rule IDs from Python code (sample)
-    try:
-        from sentinel.artifact.pickle.findings import (
-            DANGEROUS_IMPORT_FINDING, DANGEROUS_GLOBAL_FINDING,
-        )
-        rule_entries.append({
-            "id": DANGEROUS_IMPORT_FINDING.rule_id,
-            "domain": "artifact.pickle",
-            "severity": "critical",
-            "description": DANGEROUS_IMPORT_FINDING.title[:60],
-            "source": "python/sentinel/artifact/pickle/findings.py",
-        })
-    except Exception:
-        pass
+    rule_entries = _rule_inventory()
+    if filter_domain:
+        needle = filter_domain.lower()
+        rule_entries = [r for r in rule_entries if needle in r["domain"].lower()]
 
     if fmt in ("json", "sarif") or getattr(args, "output", None):
-        _emit_info(args, {"rules": rule_entries, "total": len(rule_entries)})
-        return
+        public_entries = [{k: v for k, v in r.items() if k != "raw"} for r in rule_entries]
+        _emit_info(args, {"schema_version": "0.1", "rules": public_entries, "total": len(public_entries)})
+        return 0
 
     table = Table(title=f"Rules · {len(rule_entries)} loaded", box=box.SIMPLE)
     table.add_column("ID", style="cyan", no_wrap=True)
@@ -802,50 +840,72 @@ def _rules_list(args):
     console.print(table)
     if not rule_entries:
         console.print("  [dim]No rule files found. Run from repo root.[/dim]")
+    return 0
 
 
 def _rules_test(args):
     rule_id = getattr(args, "rule_id", "") or ""
     if not rule_id:
         console.print("[red]Error:[/red] provide a rule_id to test")
-        return 1
-    console.print(f"  [dim]Testing rule [cyan]{rule_id}[/cyan]...[/dim]")
-    # Import the finding and run a minimal smoke test
-    try:
-        from sentinel.artifact import scan_file_rich
-        import tempfile, os
-        with tempfile.NamedTemporaryFile(suffix=".pkl", delete=False) as tmp:
-            tmp.write(b"\x80\x04\x95")
-            path = tmp.name
-        result = scan_file_rich(path)
-        os.unlink(path)
-        matched = [f for f in result.findings if f.rule_id == rule_id]
-        if matched:
-            console.print(f"  [green]MATCH[/green] — {len(matched)} finding(s) for {rule_id}")
+        return 2
+
+    matches = [r for r in _rule_inventory() if r["id"].lower() == rule_id.lower()]
+    if not matches:
+        data = {"rule_id": rule_id, "status": "missing", "errors": [f"rule not found: {rule_id}"]}
+        if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+            _emit_info(args, data)
         else:
-            console.print(f"  [yellow]NO MATCH[/yellow] — rule {rule_id} not triggered by smoke fixture")
-    except Exception as exc:
-        console.print(f"  [red]ERROR[/red] — {exc}")
+            console.print(f"  [red]MISSING[/red] — rule not found: {rule_id}")
+        return 1
+
+    failures = []
+    checked = 0
+    for record in matches:
+        for pattern in _regex_candidates(record.get("raw", {})):
+            checked += 1
+            try:
+                import re
+                re.compile(pattern)
+            except re.error as exc:
+                failures.append({"source": record["source"], "pattern": pattern, "error": str(exc)})
+
+    data = {
+        "rule_id": rule_id,
+        "status": "failed" if failures else "passed",
+        "matches": len(matches),
+        "regex_checked": checked,
+        "errors": failures,
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, data)
+        return 1 if failures else 0
+
+    console.print(f"  [dim]Testing rule [cyan]{rule_id}[/cyan]...[/dim]")
+    if failures:
+        console.print(f"  [red]FAIL[/red] — {len(failures)} regex compile error(s)")
+        for failure in failures[:10]:
+            console.print(f"    [red]·[/red] {failure['source']}: {failure['error']}")
+        return 1
+    console.print(f"  [green]PASS[/green] — {len(matches)} rule record(s), {checked} regex pattern(s) checked")
+    return 0
 
 
 def _rules_explain(args):
     rule_id = getattr(args, "rule_id", "") or ""
-    _findings_explain_detail(rule_id)
+    return _findings_explain_detail(rule_id, args=args)
 
 
 def cmd_findings_explain(args):
     """Explain a finding rule: what it means, why it's flagged, how to fix it."""
     rule_id = getattr(args, "rule_id", "") or ""
-    _findings_explain_detail(rule_id)
-    return 0
+    return _findings_explain_detail(rule_id, args=args)
 
 
-def _findings_explain_detail(rule_id: str) -> None:
+def _findings_explain_detail(rule_id: str, args=None) -> int:
     if not rule_id:
-        console.print("[red]Error:[/red] provide a rule_id  (e.g. sentinel findings explain ARTIFACT-031)")
-        return
+        console.print("[red]Error:[/red] provide a rule_id  (e.g. sentinel finding explain ARTIFACT-031)")
+        return 2
 
-    # Built-in explanations registry
     _EXPLANATIONS: dict[str, dict] = {
         "ARTIFACT-031": {
             "title": "Dangerous global (pickle GLOBAL opcode)",
@@ -867,17 +927,134 @@ def _findings_explain_detail(rule_id: str) -> None:
 
     info = _EXPLANATIONS.get(rule_id)
     if info:
+        payload = {"rule_id": rule_id, **info}
+        if args and (getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None)):
+            _emit_info(args, payload)
+            return 0
         console.print(f"\n[bold cyan]{rule_id}[/bold cyan] — {info['title']}\n")
         console.print(f"[bold]What:[/bold] {info['what']}")
         console.print(f"[bold]Why:[/bold]  {info['why']}")
         console.print(f"\n[bold]Remediation:[/bold] {info['remediation']}")
         console.print(f"\n[dim]CWE: {info['cwe']}  |  OWASP: {info['owasp']}[/dim]")
-    else:
-        # Try to find from scan
-        console.print(f"\n[bold cyan]{rule_id}[/bold cyan]\n")
-        console.print("  No built-in explanation found for this rule ID.")
-        console.print("  Try: sentinel rules list   to see available rules.")
-        console.print(f"  Or search the docs: https://github.com/EresusSecurity/Eresus-sentinel#rules")
+        return 0
+
+    matches = [r for r in _rule_inventory() if r["id"].lower() == rule_id.lower()]
+    if matches:
+        record = matches[0]
+        payload = {k: v for k, v in record.items() if k != "raw"}
+        if args and (getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None)):
+            _emit_info(args, payload)
+            return 0
+        console.print(f"\n[bold cyan]{record['id']}[/bold cyan] — {record.get('title') or record.get('description')}\n")
+        console.print(f"[bold]Severity:[/bold] {record['severity']}")
+        console.print(f"[bold]Domain:[/bold]   {record['domain']}")
+        if record.get("description"):
+            console.print(f"[bold]What:[/bold]     {record['description']}")
+        if record.get("remediation"):
+            console.print(f"\n[bold]Remediation:[/bold] {record['remediation']}")
+        console.print(f"\n[dim]Source: {record['source']}[/dim]")
+        return 0
+
+    console.print(f"\n[bold cyan]{rule_id}[/bold cyan]\n")
+    console.print("  No built-in explanation found for this rule ID.")
+    console.print("  Try: sentinel rules list   to see available rules.")
+    console.print("  Or search the docs: https://github.com/EresusSecurity/Eresus-sentinel#rules")
+    return 1
+
+
+def _rule_roots() -> list[Path]:
+    package_root = Path(__file__).resolve().parents[1]
+    return [
+        Path.cwd() / "rules",
+        Path.cwd() / "config",
+        package_root / "config",
+        package_root / "rules",
+    ]
+
+
+def _rule_inventory() -> list[dict]:
+    entries: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for root in _rule_roots():
+        if not root.exists():
+            continue
+        for path in sorted([*root.rglob("*.yaml"), *root.rglob("*.yml")]):
+            try:
+                import yaml
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except Exception:
+                continue
+            for record in _extract_rule_records(data, path):
+                key = (record["id"], record["source"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                entries.append(record)
+
+    try:
+        from sentinel.artifact.pickle.findings import DANGEROUS_GLOBAL_FINDING, DANGEROUS_IMPORT_FINDING
+        for finding in (DANGEROUS_IMPORT_FINDING, DANGEROUS_GLOBAL_FINDING):
+            entries.append({
+                "id": finding.rule_id,
+                "domain": "artifact.pickle",
+                "severity": "critical",
+                "title": finding.title,
+                "description": finding.description,
+                "remediation": getattr(finding, "remediation", ""),
+                "source": "python/sentinel/artifact/pickle/findings.py",
+                "raw": {},
+            })
+    except Exception:
+        pass
+    return sorted(entries, key=lambda item: (item["domain"], item["id"]))
+
+
+def _extract_rule_records(data, source: Path, group: str | None = None) -> list[dict]:
+    records: list[dict] = []
+    if isinstance(data, list):
+        for item in data:
+            records.extend(_extract_rule_records(item, source, group=group))
+        return records
+
+    if not isinstance(data, dict):
+        return records
+
+    rule_id = data.get("id") or data.get("rule_id")
+    if rule_id:
+        description = str(data.get("description") or data.get("name") or data.get("title") or "")
+        title = str(data.get("title") or data.get("name") or description[:80])
+        records.append({
+            "id": str(rule_id),
+            "domain": str(data.get("domain") or data.get("category") or group or source.stem),
+            "severity": str(data.get("severity") or "unknown"),
+            "title": title[:120],
+            "description": description[:400],
+            "remediation": str(data.get("remediation") or data.get("fix") or data.get("fix_hint") or ""),
+            "source": _display_path(source),
+            "raw": data,
+        })
+
+    for key, value in data.items():
+        if isinstance(value, (dict, list)):
+            records.extend(_extract_rule_records(value, source, group=str(key)))
+    return records
+
+
+def _regex_candidates(rule: dict) -> list[str]:
+    patterns: list[str] = []
+    for key, value in rule.items():
+        if key in {"pattern", "regex"} and isinstance(value, str):
+            patterns.append(value)
+        elif key in {"patterns", "regexes"} and isinstance(value, list):
+            patterns.extend(item for item in value if isinstance(item, str))
+    return patterns
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
 
 
 def cmd_version(args):

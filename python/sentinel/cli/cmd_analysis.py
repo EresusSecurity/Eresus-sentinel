@@ -142,6 +142,7 @@ def cmd_redteam(args):
 def cmd_mcp(args):
     """Live MCP manifest/HTTP/stdio scanner."""
     import json
+    import sys
 
     from rich import box
     from rich.table import Table
@@ -183,7 +184,8 @@ def cmd_mcp(args):
             Path(args.output).write_text(payload + "\n", encoding="utf-8")
             _ok(f"wrote MCP scan report → {args.output}")
         else:
-            console.print(payload)
+            sys.stdout.write(payload + "\n")
+            sys.stdout.flush()
         return 1 if findings else 0
 
     if args.format == "markdown":
@@ -192,7 +194,10 @@ def cmd_mcp(args):
             Path(args.output).write_text(markdown, encoding="utf-8")
             _ok(f"wrote MCP scan report → {args.output}")
         else:
-            console.print(markdown)
+            sys.stdout.write(markdown)
+            if not markdown.endswith("\n"):
+                sys.stdout.write("\n")
+            sys.stdout.flush()
         return 1 if findings else 0
 
     _header(header_label, args=args)
@@ -336,6 +341,21 @@ def _hook_threshold(findings, fail_on: str) -> bool:
     return any(_FAIL_ORDER.get(_sev(f)[0], 0) >= level for f in findings)
 
 
+def _fail_empty_hook(args, command: str, file_kind: str) -> int:
+    """Fail closed for direct hook invocation without matched files."""
+    if getattr(args, "allow_empty", False):
+        _export(args, [])
+        return 0
+
+    from sentinel.cli._helpers import err
+
+    err.print(
+        f"  [red]error:[/red] {command} requires at least one matching {file_kind}; "
+        "use --allow-empty for pre-commit no-match runs"
+    )
+    return 2
+
+
 def cmd_skill_scan(args):
     """Pre-commit hook — audit SKILL.md and plugin manifests.
 
@@ -347,24 +367,33 @@ def cmd_skill_scan(args):
 
     files = [Path(f) for f in args.files if Path(f).suffix.lower() in _SKILL_EXTS]
     if not files:
-        return 0
+        return _fail_empty_hook(args, "skill-scan", "skill/plugin file")
 
     fail_on: str = getattr(args, "fail_on", "critical") or "critical"
     all_findings = []
+    fmt = getattr(args, "format", "table")
 
     for f in files:
         try:
             found = dispatch_agent(str(f))
             all_findings.extend(found)
-            if found:
-                _fail(f"{f.name}  →  {len(found)} finding(s)")
-                for finding in found:
-                    _finding_line(finding)
-            else:
-                _ok(f"{f.name}  →  clean")
+            if fmt == "table":
+                if found:
+                    _fail(f"{f.name}  →  {len(found)} finding(s)")
+                    for finding in found:
+                        _finding_line(finding)
+                else:
+                    _ok(f"{f.name}  →  clean")
         except Exception as exc:  # noqa: BLE001
             from sentinel.cli._helpers import _warn
-            _warn(f"{f.name}  →  scan error: {exc}")
+            if fmt == "table":
+                _warn(f"{f.name}  →  scan error: {exc}")
+
+    all_findings = _apply_severity_filter(all_findings, args)
+    _export(args, all_findings)
+
+    if fmt != "table":
+        return 1 if all_findings else 0
 
     if not all_findings:
         return 0
@@ -393,8 +422,7 @@ def cmd_mcp_validate(args):
         if Path(f).is_file() and any(pat in Path(f).name.lower() for pat in _MCP_NAMES)
     ]
     if not files:
-        _export(args, [])
-        return 0
+        return _fail_empty_hook(args, "mcp-validate", "MCP manifest")
 
     fail_on: str = getattr(args, "fail_on", "high") or "high"
     all_findings = []
@@ -484,6 +512,7 @@ def cmd_multi_agent_scan(args):
 def cmd_mcp_fingerprint(args):
     """Enumerate and fingerprint MCP server capabilities."""
     import json
+    import sys
 
     from sentinel.agent.mcp.live_scanner import MCPLiveScanner
 
@@ -504,6 +533,7 @@ def cmd_mcp_fingerprint(args):
         _fail(f"fingerprint failed: {exc}")
         return 2
 
+    findings = _apply_severity_filter(result.findings, args)
     fp = {
         "source": result.source,
         "transport": result.transport,
@@ -515,7 +545,7 @@ def cmd_mcp_fingerprint(args):
         ],
         "prompts": [getattr(p, "name", str(p)) for p in result.prompts],
         "resources": [getattr(r, "uri", str(r)) for r in result.resources],
-        "finding_count": len(result.findings),
+        "finding_count": len(findings),
     }
 
     fmt = getattr(args, "format", "table")
@@ -528,7 +558,9 @@ def cmd_mcp_fingerprint(args):
             from sentinel.cli._helpers import _ok
             _ok(f"wrote fingerprint → {out}")
         else:
-            console.print(payload)
+            sys.stdout.write(payload + "\n")
+            sys.stdout.flush()
+        return 1 if findings else 0
     else:
         from rich import box as _box
         from rich.table import Table
@@ -548,7 +580,6 @@ def cmd_mcp_fingerprint(args):
             for tool in fp["tools"][:20]:
                 console.print(f"    • [cyan]{tool['name']}[/cyan]  {tool['description'][:80]}")
 
-    findings = _apply_severity_filter(result.findings, args)
     if findings:
         _severity_dashboard(findings)
         _print_findings(findings, args=args)

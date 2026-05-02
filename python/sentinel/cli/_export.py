@@ -11,6 +11,53 @@ from sentinel.cli._helpers import _sev
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 
+def _json_envelope(findings, *, command: str | None = None) -> dict:
+    """Build a standard JSON envelope from a list of findings."""
+    from datetime import datetime, timezone
+
+    from sentinel import __version__ as ver
+
+    severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+    serialized = []
+    for f in findings:
+        v, _, _ = _sev(f)
+        severity_counts[v] = severity_counts.get(v, 0) + 1
+        if hasattr(f, "to_dict"):
+            serialized.append(f.to_dict())
+        else:
+            serialized.append({
+                "rule_id": getattr(f, "rule_id", ""),
+                "severity": v,
+                "title": getattr(f, "title", ""),
+                "description": getattr(f, "description", ""),
+                "target": str(getattr(f, "target", "")),
+                "evidence": str(getattr(f, "evidence", "")),
+                "remediation": getattr(f, "remediation", getattr(f, "fix_hint", "")),
+            })
+
+    status = "findings" if findings else "clean"
+    return _sanitize_for_json({
+        "schema_version": "0.1",
+        "command": command,
+        "summary": {
+            "command": command,
+            "status": status,
+            "total_findings": len(findings),
+        },
+        "totals": {
+            "findings": len(findings),
+            "severity": severity_counts,
+        },
+        "findings": serialized,
+        "errors": [],
+        "metadata": {
+            "tool": "eresus-sentinel",
+            "version": ver,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    })
+
+
 def _export(args, findings):
     fmt = getattr(args, "format", "table")
     out = getattr(args, "output", None)
@@ -20,13 +67,12 @@ def _export(args, findings):
         result = _table_report(findings)
 
     elif fmt == "json":
-        data = [
-            f.to_dict() if hasattr(f, "to_dict")
-            else {"rule_id": getattr(f, "rule_id", "")}
-            for f in findings
-        ]
-        data = _sanitize_for_json(data)
-        result = json.dumps(data, indent=2, default=str, ensure_ascii=True)
+        result = json.dumps(
+            _json_envelope(findings, command=getattr(args, "command", None)),
+            indent=2,
+            default=str,
+            ensure_ascii=True,
+        )
     elif fmt == "sarif":
         result = json.dumps(_sarif(findings), indent=2, default=str)
     elif fmt == "csv":

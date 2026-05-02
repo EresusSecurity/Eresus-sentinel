@@ -61,6 +61,18 @@ def main():
 
     sub = parser.add_subparsers(dest="command")
 
+    def _add_output_args(p, *, formats=None, severity=True):
+        """Register -f/--format, -o/--output, --min-severity on a subparser."""
+        fmts = formats or output_formats
+        p.add_argument("-f", "--format", choices=fmts, default=argparse.SUPPRESS)
+        p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+        if severity:
+            p.add_argument(
+                "--min-severity",
+                choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                default=argparse.SUPPRESS,
+            )
+
     # ── Scan commands ──────────────────────────────────────────────
     from sentinel.cli.cmd_scan import (
         cmd_artifact,
@@ -105,6 +117,12 @@ def main():
         help="Read additional file paths from stdin (one per line) — for pre-commit use",
     )
     p.add_argument(
+        "--plan",
+        dest="explain_plan",
+        action="store_true",
+        help="Alias for --explain-plan; show scanner plan without running",
+    )
+    p.add_argument(
         "--explain-plan",
         action="store_true",
         help="Show which scanners will run without actually scanning",
@@ -119,6 +137,7 @@ def main():
     p = sub.add_parser("firewall", aliases=["fw"], help="firewall scan")
     p.add_argument("input", help="text or - for stdin")
     p.add_argument("-d", "--direction", choices=["input", "output"], default="input")
+    _add_output_args(p)
     p.set_defaults(func=cmd_firewall)
 
     p = sub.add_parser("artifact", help="model artifact scan")
@@ -129,6 +148,7 @@ def main():
         default=argparse.SUPPRESS,
         help="show files skipped due to unsupported format",
     )
+    _add_output_args(p)
     p.set_defaults(func=cmd_artifact)
 
     # ── Pre-commit hook: artifact-scan (accepts multiple staged files) ──
@@ -147,10 +167,12 @@ def main():
 
     p = sub.add_parser("hf-artifact", help="scan model artifacts from HuggingFace repo")
     p.add_argument("hf_repo", help="HuggingFace repo (e.g. org/model-name)")
+    _add_output_args(p)
     p.set_defaults(func=cmd_hf_artifact)
 
     p = sub.add_parser("hf-scan", help="scan HuggingFace model repo")
     p.add_argument("repo", help="HuggingFace repo (e.g. org/model)")
+    _add_output_args(p)
     p.set_defaults(func=cmd_hf_scan)
 
     p = sub.add_parser("hf-guard", help="pre-download HF repo assessment")
@@ -158,6 +180,7 @@ def main():
     p.add_argument("--deep", action="store_true", help="download and deep-scan files")
     p.add_argument("--block-pickle", action="store_true", help="block repos with pickle files")
     p.add_argument("--require-safetensors", action="store_true", help="require safetensors format")
+    _add_output_args(p)
     p.set_defaults(func=cmd_hf_guard)
 
     p = sub.add_parser("hf-bulk-scan", help="bulk scan HuggingFace Hub repositories")
@@ -192,10 +215,14 @@ def main():
     )
 
     p = sub.add_parser("sast", help="static analysis")
-    p.add_argument("path"); p.set_defaults(func=cmd_sast)
+    p.add_argument("path")
+    _add_output_args(p)
+    p.set_defaults(func=cmd_sast)
 
     p = sub.add_parser("agent", help="agent/mcp validation")
-    p.add_argument("path"); p.set_defaults(func=cmd_agent)
+    p.add_argument("path")
+    _add_output_args(p)
+    p.set_defaults(func=cmd_agent)
 
     # ── Pre-commit hook: skill-scan ────────────────────────────────────
     p = sub.add_parser(
@@ -208,6 +235,12 @@ def main():
         default="critical",
         choices=["info", "low", "medium", "high", "critical"],
     )
+    p.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="return clean when pre-commit passes no matching files",
+    )
+    _add_output_args(p)
     p.set_defaults(func=cmd_skill_scan)
 
     # ── Pre-commit hook: mcp-validate ──────────────────────────────────
@@ -221,6 +254,12 @@ def main():
         default="high",
         choices=["info", "low", "medium", "high", "critical"],
     )
+    p.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="return clean when pre-commit passes no matching files",
+    )
+    _add_output_args(p)
     p.set_defaults(func=cmd_mcp_validate)
 
     mcp_p = sub.add_parser("mcp", help="MCP live and manifest scanning")
@@ -259,7 +298,9 @@ def main():
     a2a_scan.set_defaults(func=cmd_a2a, a2a_action="scan")
 
     p = sub.add_parser("supply-chain", help="supply chain audit")
-    p.add_argument("path"); p.set_defaults(func=cmd_supply_chain)
+    p.add_argument("path")
+    _add_output_args(p)
+    p.set_defaults(func=cmd_supply_chain)
 
     p = sub.add_parser("multi-agent-scan", aliases=["multi-agent"], help="multi-agent cross-contamination and hallucination scan")
     p.add_argument(
@@ -284,14 +325,18 @@ def main():
     p.add_argument("--staged", action="store_true", help="scan staged git changes")
     p.add_argument("--unstaged", action="store_true", help="scan unstaged git changes")
     p.add_argument("--all", action="store_true", help="scan all git changes")
+    _add_output_args(p)
     p.set_defaults(func=cmd_diff)
 
     p = sub.add_parser("notebook", aliases=["nb"], help="notebook scan")
-    p.add_argument("path"); p.set_defaults(func=cmd_notebook)
+    p.add_argument("path")
+    _add_output_args(p)
+    p.set_defaults(func=cmd_notebook)
 
     p = sub.add_parser("red-team", aliases=["redteam"], help="red team probes")
     p.add_argument("target", nargs="?")
     p.add_argument("--target", dest="target_flag")
+    _add_output_args(p)
     p.add_argument(
         "--vertical",
         choices=[
@@ -315,6 +360,7 @@ def main():
     p.add_argument("--git-history", action="store_true", help="scan git history for leaked secrets")
     p.add_argument("--no-entropy", action="store_true", help="disable entropy detection")
     p.add_argument("--max-git-commits", type=int, default=500, help="max git commits to scan")
+    _add_output_args(p)
     p.set_defaults(func=cmd_secrets_scan)
 
     # ── Tool commands ──────────────────────────────────────────────
@@ -350,7 +396,7 @@ def main():
         "-f",
         dest="aibom_format",
         default="cyclonedx",
-        choices=["cyclonedx", "spdx", "sarif", "html", "csv", "junit", "markdown"],
+        choices=["cyclonedx", "json", "spdx", "sarif", "html", "csv", "junit", "markdown"],
     )
     p.add_argument("--output", "-o", default=argparse.SUPPRESS, help="output file")
     p.add_argument(
@@ -382,6 +428,7 @@ def main():
     refs_parity.set_defaults(func=cmd_refs, refs_action="parity")
 
     p = sub.add_parser("plugins", help="list discovered scanner plugins")
+    _add_output_args(p, severity=False)
     p.set_defaults(func=cmd_plugins)
 
     p = sub.add_parser("shell", aliases=["repl"], help="interactive REPL")
@@ -397,6 +444,7 @@ def main():
     p.set_defaults(func=cmd_benchmark)
 
     p = sub.add_parser("scanners", aliases=["ls"], help="list scanners")
+    _add_output_args(p, severity=False)
     p.set_defaults(func=cmd_scanners)
 
     p = sub.add_parser("reverse", aliases=["rev"], help="deep format reverse engineering")
@@ -411,9 +459,14 @@ def main():
     p.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
     p.set_defaults(func=cmd_doctor)
 
-    p = sub.add_parser("config", help="show config as JSON")
-    p.add_argument("--explain", action="store_true", help="explain where each config value comes from")
-    p.set_defaults(func=cmd_config)
+    config_p = sub.add_parser("config", help="inspect effective Sentinel configuration")
+    config_p.add_argument("--explain", action="store_true", help="explain where each config value comes from")
+    config_p.set_defaults(func=cmd_config, config_action="show")
+    config_sub = config_p.add_subparsers(dest="config_action")
+    config_explain = config_sub.add_parser("explain", help="explain config precedence and discovered sources")
+    config_explain.add_argument("-f", "--format", choices=["table", "json"], default=argparse.SUPPRESS)
+    config_explain.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    config_explain.set_defaults(func=cmd_config, config_action="explain", explain=True)
 
     p = sub.add_parser("version", help="version info")
     p.set_defaults(func=cmd_version)
@@ -424,17 +477,27 @@ def main():
     rules_list_p = rules_sub.add_parser("list", help="list all loaded rules")
     rules_list_p.add_argument("--domain", help="filter by domain")
     rules_list_p.add_argument("--format", "-f", default="table", choices=["table", "json"])
+    rules_list_p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     rules_list_p.set_defaults(func=cmd_rules)
     rules_test_p = rules_sub.add_parser("test", help="test a rule against a smoke fixture")
     rules_test_p.add_argument("rule_id", help="rule ID to test")
+    rules_test_p.add_argument("-f", "--format", choices=["table", "json"], default=argparse.SUPPRESS)
+    rules_test_p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     rules_test_p.set_defaults(func=cmd_rules)
+    rules_explain_p = rules_sub.add_parser("explain", help="explain a loaded rule ID")
+    rules_explain_p.add_argument("rule_id", help="rule ID to explain")
+    rules_explain_p.add_argument("-f", "--format", choices=["table", "json"], default=argparse.SUPPRESS)
+    rules_explain_p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    rules_explain_p.set_defaults(func=cmd_rules)
     rules_p.set_defaults(func=cmd_rules)
 
     # ── Findings explain ───────────────────────────────────────────
-    findings_p = sub.add_parser("findings", help="finding inspection and explanation")
+    findings_p = sub.add_parser("finding", aliases=["findings"], help="finding inspection and explanation")
     findings_sub = findings_p.add_subparsers(dest="findings_action")
     explain_p = findings_sub.add_parser("explain", help="explain a rule ID")
     explain_p.add_argument("rule_id", help="rule ID to explain (e.g. ARTIFACT-031)")
+    explain_p.add_argument("-f", "--format", choices=["table", "json"], default=argparse.SUPPRESS)
+    explain_p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     explain_p.set_defaults(func=cmd_findings_explain)
     findings_p.set_defaults(func=cmd_findings_explain)
 
@@ -508,6 +571,7 @@ def main():
     p.add_argument("--no-osv", action="store_true", help="disable OSV.dev queries")
     p.add_argument("--no-pip-audit", action="store_true", help="disable pip-audit")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default="pypi")
+    _add_output_args(p)
     p.set_defaults(func=cmd_dep_scan)
 
     # ── Fuzz commands ──────────────────────────────────────────────

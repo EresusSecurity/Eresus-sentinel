@@ -1,8 +1,8 @@
 # Eresus Sentinel
 
-**Production-grade security platform for AI/LLM ecosystems.**
+**Alpha-stage, deterministic-first AI security toolkit for local audits, MCP/agent checks, model artifact scanning, and prompt firewall testing.**
 
-Sentinel provides deterministic, YAML-driven security scanning across the entire AI stack — from model artifacts and prompt firewalls to supply chain auditing and red team automation.
+Sentinel provides deterministic, YAML-driven security scanning across the AI stack — from model artifacts and prompt firewalls to supply chain auditing and red team automation. AI/judge integrations are optional enrichment, not required for findings.
 
 ## Security Domains
 
@@ -24,7 +24,14 @@ Sentinel provides deterministic, YAML-driven security scanning across the entire
 ```bash
 pip install -e ".[dev]"
 sentinel doctor
+sentinel scan ./my-project --plan --profile fast
 sentinel scan ./my-project/
 ```
 
 See the [Quick Start guide](QUICKSTART.md) for more details.
+
+## Project Docs
+
+- [CLI Contract](CLI_CONTRACT.md)
+- [Roadmap](ROADMAP.md)
+- [Turkish Quick Start](TR_QUICKSTART.md)

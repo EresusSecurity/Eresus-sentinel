@@ -113,29 +113,19 @@ sentinel shell
 
 ## CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `sentinel scan <path>` | Full security scan across all domains |
-| `sentinel scan <path> --plan --profile fast\|balanced\|deep\|paranoid` | Show the scanner plan without running it |
-| `sentinel firewall <text>` | Input/output firewall scan |
-| `sentinel artifact <path>` | Model artifact scanning |
-| `sentinel sast <path>` | Static analysis (secrets, code patterns) |
-| `sentinel agent <path>` | Agent/MCP security validation |
-| `sentinel mcp scan <target>` | MCP manifest, HTTP JSON-RPC, or stdio live scan |
-| `sentinel supply-chain <path>` | Dependency + provenance audit |
-| `sentinel redteam --target <model>` | Automated red team assessment |
-| `sentinel hf-guard <repo>` | Pre-download HuggingFace security check |
-| `sentinel evaluate` | Scanner effectiveness benchmarks |
-| `sentinel evaluate <config.yaml>` | Config-driven provider evals with assertions |
-| `sentinel benchmark` | Latency benchmarks (p50/p95/p99) |
-| `sentinel doctor --json` | System health check with machine-readable output |
-| `sentinel config explain` | Explain config precedence and discovered sources |
-| `sentinel rules list` | List loaded YAML/Python rule records |
-| `sentinel rules test <rule_id>` | Smoke-test a rule record and regex compilation |
-| `sentinel finding explain <rule_id>` | Explain a finding/rule ID |
-| `sentinel scanners` | List all registered scanners |
-| `sentinel shell` | Interactive REPL |
-| `sentinel fuzz <action>` | Pickle fuzzer (generate/mutate/validate) |
+The most common commands are:
+
+```bash
+sentinel scan ./project --profile fast -f json
+sentinel artifact ./models -f sarif
+sentinel firewall "user input text" -f json
+sentinel mcp scan ./mcp-manifest.json
+git diff main...HEAD | sentinel diff - -f sarif
+```
+
+See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for the full command table
+and [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) for exit codes and output
+shape.
 
 ## Python SDK
 
@@ -300,17 +290,16 @@ docker compose up
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Quick Start](docs/QUICKSTART.md) | Getting started guide |
-| [CLI Contract](docs/CLI_CONTRACT.md) | Exit codes, JSON shape, and CLI output rules |
-| [Roadmap](docs/ROADMAP.md) | Public production-hardening roadmap |
-| [Turkish Quick Start](docs/TR_QUICKSTART.md) | Kısa Türkçe kurulum ve kullanım akışı |
-| [Architecture](docs/ARCHITECTURE.md) | System design and data flow |
-| [Rules Reference](docs/RULES.md) | YAML rule format specification |
-| [Contributing](CONTRIBUTING.md) | Development setup and PR process |
-| [Security Policy](SECURITY.md) | Vulnerability reporting |
-| [Changelog](CHANGELOG.md) | Release history |
+- [Quick Start](docs/QUICKSTART.md)
+- [Turkish Quick Start](docs/TR_QUICKSTART.md)
+- [CLI Reference](docs/CLI_REFERENCE.md)
+- [Rule Authoring](docs/RULE_AUTHORING.md)
+- [Scanner Authoring](docs/SCANNER_AUTHORING.md)
+- [MCP Proxy Deployment](docs/MCP_PROXY_DEPLOYMENT.md)
+- [CI and Pre-Commit](docs/CI_PRECOMMIT.md)
+- [False Positive Handling](docs/FALSE_POSITIVES.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [FAQ](docs/FAQ.md)
 
 ## Authentication & Security
 

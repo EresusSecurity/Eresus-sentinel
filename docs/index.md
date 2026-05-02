@@ -33,5 +33,13 @@ See the [Quick Start guide](QUICKSTART.md) for more details.
 ## Project Docs
 
 - [CLI Contract](CLI_CONTRACT.md)
+- [CLI Reference](CLI_REFERENCE.md)
 - [Roadmap](ROADMAP.md)
+- [Rule Authoring Guide](RULE_AUTHORING.md)
+- [Scanner Authoring Guide](SCANNER_AUTHORING.md)
+- [MCP Proxy Deployment](MCP_PROXY_DEPLOYMENT.md)
+- [CI and Pre-Commit](CI_PRECOMMIT.md)
+- [False Positive Handling](FALSE_POSITIVES.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [FAQ](FAQ.md)
 - [Turkish Quick Start](TR_QUICKSTART.md)

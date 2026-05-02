@@ -129,15 +129,37 @@ def apply_atbash(text: str) -> str:
     return text.translate(ATBASH_TABLE)
 
 
+_COMMON_WORDS = frozenset({
+    "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
+    "her", "was", "one", "our", "out", "has", "his", "how", "its", "may",
+    "new", "now", "old", "see", "way", "who", "did", "get", "let", "say",
+    "she", "too", "use", "from", "have", "this", "that", "with", "will",
+    "your", "they", "been", "some", "what", "when", "make", "like", "just",
+    "over", "such", "take", "into", "most", "than", "them", "very", "after",
+    "also", "know", "back", "only", "come", "made", "find", "here", "thing",
+    "many", "well", "about", "would", "there", "their", "which", "could",
+    "other", "should", "ignore", "system", "prompt", "instruction", "previous",
+    "forget", "override", "disregard", "bypass", "pretend", "jailbreak",
+})
+
+
+def _has_english_words(text: str, min_words: int = 2) -> bool:
+    """Return True if text contains at least *min_words* common English words."""
+    words = re.findall(r"[a-zA-Z]{3,}", text.lower())
+    return sum(1 for w in words if w in _COMMON_WORDS) >= min_words
+
+
 def caesar_brute(text: str) -> list[tuple[str, str]]:
     """Try all 25 Caesar shifts and return those producing meaningful text.
 
     Returns ``[(label, decoded), ...]`` e.g. ``[("caesar_rot7", "ignore all")]``.
+    Only returns results where the decoded text contains recognisable English
+    words — pure gibberish with high alphabetic ratio is filtered out.
     """
     results: list[tuple[str, str]] = []
     for n, table in enumerate(CAESAR_TABLES, start=1):
         decoded = text.translate(table)
-        if decoded != text and is_meaningful(decoded):
+        if decoded != text and is_meaningful(decoded) and _has_english_words(decoded):
             results.append((f"caesar_rot{n}", decoded))
     return results
 

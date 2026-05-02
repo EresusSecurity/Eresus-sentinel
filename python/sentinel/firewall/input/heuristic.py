@@ -31,6 +31,9 @@ _VERBS = [
     "Ignore", "Disregard", "Skip", "Forget", "Neglect",
     "Overlook", "Omit", "Bypass", "Pay no attention to",
     "Do not follow", "Do not obey",
+    # Role-play / persona jailbreak verbs
+    "Pretend", "Act as", "You are now", "Become",
+    "Simulate", "Impersonate", "Transform into",
     # Turkish
     "Yok say", "Görmezden gel", "Bırak", "Unut", "Vazgeç",
     "Aldırma", "Atla", "İhmal et", "Önemseme",
@@ -79,6 +82,10 @@ _OBJECTS = [
     "指令", "命令", "规则", "消息",
     "Anweisungen", "Befehle", "Regeln", "Nachrichten",
     "commandes", "règles",
+    # Safety / restriction objects (role-play jailbreak targets)
+    "safety", "guidelines", "restrictions", "limitations",
+    "safeguards", "filters", "guardrails", "protections",
+    "policies", "boundaries", "ethical", "alignment",
 ]
 
 
@@ -139,8 +146,33 @@ _BENIGN_CONTEXTS = re.compile(
     r"|(?:switch\s+to|start\s+over|previous\s+(?:approach|version|method|step|page|chapter|section))"
     r"|(?:ignore|skip|omit).*(?:data|field|column|row|record|entry)\s+(?:that|which|where|if|when)"
     r"|(?:context\s+switch(?:ing|es)?|kernel|thread|process|scheduler|CPU|mutex|semaphore)"
+    r"|(?:what\s+(?:would|should|could|will|do)\s+you\s+(?:say|do|think|respond))"
+    r"|(?:if\s+someone\s+(?:asked?|told?|says?)\s+(?:you|me)\s+to)"
+    r"|(?:how\s+(?:would|should|do)\s+(?:you|I|we)\s+(?:handle|deal|respond|react))"
     r")"
 )
+
+_CHATML_OVERRIDE = re.compile(
+    r"(?is)(?:<\|im_start\|>\s*system|im_start\s*system|system\s*:).*?"
+    r"(?:no\s+restrictions|no\s+content\s+filtering|full\s+admin\s+mode|"
+    r"reveal(?:ing)?\s+(?:your\s+)?(?:current\s+)?system\s+prompt|"
+    r"previous\s+safety\s+policy\s+has\s+been\s+deprecated)"
+)
+
+_ROLEPLAY_OVERRIDE = re.compile(
+    r"(?is)\b(?:pretend|act\s+as|roleplay|you\s+are\s+now|become|simulate|"
+    r"impersonate|transform\s+into)\b.{0,120}?"
+    r"\b(?:different\s+ai|unrestricted|unfiltered|uncensored|no\s+rules|"
+    r"no\s+limits|no\s+restrictions|no\s+content\s+filtering|"
+    r"ignore\s+(?:all\s+)?(?:previous|prior|above))\b"
+)
+
+# Stopwords — English words that appear in multi-word verb phrases from
+# other languages but are NOT injection verbs by themselves.
+_VERB_STOPWORDS: frozenset[str] = frozenset({
+    "say", "no", "do", "not", "to", "de", "por", "et", "gel", "par",
+    "you", "are", "now", "as", "into", "a",
+})
 
 
 def _generate_legacy_combos() -> list[str]:
@@ -171,6 +203,34 @@ _LEGACY_COMBOS = _generate_legacy_combos()
 _LEGACY_WORD_SET: frozenset[str] = frozenset(
     w.lower() for w in _LEGACY_KEYWORDS
 )
+
+
+def _blocking_result(
+    prompt: str,
+    *,
+    title: str,
+    pattern: str,
+    confidence: float = 0.92,
+) -> ScanResult:
+    finding = Finding.firewall_input(
+        rule_id="FIREWALL-INPUT-003",
+        title=title,
+        description=(
+            f"Input matches a high-signal prompt injection pattern: {pattern}."
+        ),
+        severity=Severity.HIGH,
+        confidence=confidence,
+        target="<prompt>",
+        evidence=f"Pattern: {pattern}, Excerpt: {prompt[:160]!r}",
+        cwe_ids=["CWE-77"],
+        remediation="Block or require manual review before forwarding this prompt.",
+    )
+    return ScanResult(
+        sanitized=prompt,
+        action=ScanAction.BLOCK,
+        risk_score=confidence,
+        findings=[finding],
+    )
 
 
 
@@ -226,6 +286,23 @@ class HeuristicInjectionScanner(InputScanner):
             expanded = prompt
 
         normalized = _normalize(expanded)
+
+        if _CHATML_OVERRIDE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="ChatML system prompt override detected",
+                pattern="chatml-system-override",
+                confidence=0.94,
+            )
+
+        if _ROLEPLAY_OVERRIDE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Roleplay jailbreak override detected",
+                pattern="roleplay-restriction-override",
+                confidence=0.91,
+            )
+
         max_score = 0.0
         best_match = ""
         best_combo = ""
@@ -240,7 +317,7 @@ class HeuristicInjectionScanner(InputScanner):
         obj_hits: list[str] = []
         prep_hits: list[str] = []
         for w in norm_words:
-            if w in _VERB_WORDS:
+            if w in _VERB_WORDS and w not in _VERB_STOPWORDS:
                 verb_hits.append(w)
             if w in _ADJ_WORDS:
                 adj_hits.append(w)
@@ -359,4 +436,3 @@ class HeuristicInjectionScanner(InputScanner):
             substrings.extend(part.strip() for part in parts if len(part.strip()) > 5)
 
         return substrings
-

@@ -181,6 +181,7 @@ def main():
     p.add_argument("--deep", action="store_true", help="download and deep-scan files")
     p.add_argument("--block-pickle", action="store_true", help="block repos with pickle files")
     p.add_argument("--require-safetensors", action="store_true", help="require safetensors format")
+    p.add_argument("--offline", action="store_true", help="skip HuggingFace Hub network calls")
     _add_output_args(p)
     p.set_defaults(func=cmd_hf_guard)
 
@@ -580,6 +581,7 @@ def main():
     p.add_argument("path", help="project directory to scan")
     p.add_argument("--no-osv", action="store_true", help="disable OSV.dev queries")
     p.add_argument("--no-pip-audit", action="store_true", help="disable pip-audit")
+    p.add_argument("--offline", action="store_true", help="disable live vulnerability lookups")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default="pypi")
     _add_output_args(p)
     p.set_defaults(func=cmd_dep_scan)

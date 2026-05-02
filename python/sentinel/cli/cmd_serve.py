@@ -295,34 +295,44 @@ def cmd_dep_scan(args):
 
     path = args.path
     ecosystem = getattr(args, "ecosystem", "pypi")
-    enable_osv = not getattr(args, "no_osv", False)
-    enable_pip = not getattr(args, "no_pip_audit", False)
+    fmt = getattr(args, "format", "table")
+    offline = bool(getattr(args, "offline", False))
+    enable_osv = not getattr(args, "no_osv", False) and not offline
+    enable_pip = not getattr(args, "no_pip_audit", False) and not offline
 
-    _header(f"dep-scan → {path} · ecosystem={ecosystem}")
+    _header(f"dep-scan → {path} · ecosystem={ecosystem}", args=args)
 
     scanner = LiveDependencyScanner(
         ecosystem=ecosystem,
         enable_osv=enable_osv,
         enable_pip_audit=enable_pip,
+        offline=offline or None,
     )
 
     t0 = time.perf_counter()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold]{task.description}"),
-        BarColumn(bar_width=20),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("scanning dependencies...", total=None)
+    if fmt == "table":
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]{task.description}"),
+            BarColumn(bar_width=20),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("scanning dependencies...", total=None)
 
-        if enable_osv:
-            progress.update(task, description="querying OSV.dev...")
+            if enable_osv:
+                progress.update(task, description="querying OSV.dev...")
+            findings = scanner.full_audit(path)
+    else:
         findings = scanner.full_audit(path)
 
     ms = (time.perf_counter() - t0) * 1000
+
+    if fmt != "table":
+        _export(args, findings)
+        return 1 if findings else 0
 
     if not findings:
         _ok(f"clean — no vulnerabilities  [dim]{ms:.0f}ms[/dim]")

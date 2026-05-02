@@ -474,6 +474,7 @@ def cmd_hf_guard(args):
     guard = HFGuard(
         block_pickle=getattr(args, "block_pickle", False),
         require_safetensors=getattr(args, "require_safetensors", False),
+        offline=getattr(args, "offline", None) or None,
     )
     assessment = guard.assess(args.repo)
 
@@ -504,7 +505,7 @@ def cmd_hf_guard(args):
     if fmt != "table":
         from sentinel.cli.cmd_tools import _emit_info
         payload = {
-            "schema_version": "0.1",
+            "schema_version": "hf-guard.assessment.v1",
             "command": "hf-guard",
             "repo": args.repo,
             "risk_level": assessment.risk_level,
@@ -514,6 +515,7 @@ def cmd_hf_guard(args):
             "has_pickle": assessment.has_pickle,
             "dangerous_files": assessment.dangerous_files,
             "recommendations": assessment.recommendations,
+            "metadata": assessment.metadata,
         }
         _emit_info(args, payload)
 

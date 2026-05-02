@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from sentinel.finding import Finding, Severity
+from sentinel.offline import offline_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +153,12 @@ class HFGuard:
         token: str | None = None,
         block_pickle: bool = False,
         require_safetensors: bool = False,
+        offline: bool | None = None,
     ):
         self._token = token or os.environ.get("HF_TOKEN", "")
         self._block_pickle = block_pickle
         self._require_safetensors = require_safetensors
+        self._offline = offline_enabled(offline)
 
     def assess(self, repo_id: str, revision: str = "main") -> HFAssessment:
         """
@@ -169,6 +172,14 @@ class HFGuard:
             HFAssessment with risk analysis.
         """
         assessment = HFAssessment(repo_id=repo_id)
+        assessment.metadata["offline"] = self._offline
+        assessment.metadata["revision"] = revision
+
+        if self._offline:
+            assessment.recommendations.append(
+                "Offline mode: skipped HuggingFace Hub API calls"
+            )
+            return assessment
 
         try:
             from huggingface_hub import HfApi

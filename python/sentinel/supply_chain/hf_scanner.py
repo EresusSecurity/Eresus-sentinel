@@ -14,11 +14,13 @@ Works without downloading the full model — API-only inspection.
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ..finding import Finding, Severity
+from ..offline import offline_enabled
 from ..rules import load_supply_chain_rules
 
 # HuggingFace Hub API base
@@ -28,11 +30,23 @@ HF_API_BASE = "https://huggingface.co/api"
 class HFRemoteScanner:
     """Scan HuggingFace Hub repos via API without downloading models."""
 
-    def __init__(self, token: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        *,
+        offline: bool | None = None,
+        timeout: int = 30,
+        max_retries: int = 2,
+        retry_backoff: float = 0.25,
+    ) -> None:
         self.token = token
         self.findings: list[Finding] = []
         self._sc_rules = load_supply_chain_rules()
         self._dangerous_exts = set(self._sc_rules.get("dangerous_extensions", {}).keys())
+        self._offline = offline_enabled(offline)
+        self._timeout = timeout
+        self._max_retries = max(0, max_retries)
+        self._retry_backoff = max(0.0, retry_backoff)
 
     def scan_repo(self, repo_id: str) -> List[Finding]:
         """Scan a HuggingFace model repository by ID (e.g. 'meta-llama/Llama-3-8B').
@@ -71,35 +85,56 @@ class HFRemoteScanner:
 
     def _api_get(self, url: str) -> Optional[Dict[str, Any]]:
         """Make an authenticated GET request to HF Hub API."""
+        if self._offline:
+            self.findings.append(Finding.supply_chain(
+                rule_id="HF-004", title="HuggingFace scan skipped in offline mode",
+                description="SENTINEL_OFFLINE/HF_HUB_OFFLINE is enabled; remote Hub API calls were not made.",
+                severity=Severity.INFO, target=url, evidence="offline=true",
+            ))
+            return None
+
         headers = {"Accept": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        try:
-            req = Request(url, headers=headers)
-            with urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except HTTPError as e:
-            if e.code == 401:
-                self.findings.append(Finding.supply_chain(
-                    rule_id="HF-001", title="HuggingFace authentication required",
-                    description="Repository requires authentication. Set HF_TOKEN env var.",
-                    severity=Severity.MEDIUM, target=url,
-                ))
-            elif e.code == 404:
-                self.findings.append(Finding.supply_chain(
-                    rule_id="HF-002", title="HuggingFace repository not found",
-                    description=f"Repository not found at {url}.",
-                    severity=Severity.HIGH, target=url,
-                ))
-            return None
-        except (URLError, TimeoutError, Exception) as e:
-            self.findings.append(Finding.supply_chain(
-                rule_id="HF-003", title="HuggingFace API error",
-                description=f"Failed to connect to HuggingFace API: {e}",
-                severity=Severity.MEDIUM, target=url, evidence=str(e),
-            ))
-            return None
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                req = Request(url, headers=headers)
+                with urlopen(req, timeout=self._timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except HTTPError as e:
+                if e.code == 401:
+                    self.findings.append(Finding.supply_chain(
+                        rule_id="HF-001", title="HuggingFace authentication required",
+                        description="Repository requires authentication. Set HF_TOKEN env var.",
+                        severity=Severity.MEDIUM, target=url,
+                    ))
+                    return None
+                if e.code == 404:
+                    self.findings.append(Finding.supply_chain(
+                        rule_id="HF-002", title="HuggingFace repository not found",
+                        description=f"Repository not found at {url}.",
+                        severity=Severity.HIGH, target=url,
+                    ))
+                    return None
+                last_error = e
+                if e.code not in {429, 500, 502, 503, 504}:
+                    break
+            except (URLError, TimeoutError, Exception) as e:
+                last_error = e
+
+            if attempt >= self._max_retries:
+                break
+            if self._retry_backoff:
+                time.sleep(self._retry_backoff * (2 ** attempt))
+
+        self.findings.append(Finding.supply_chain(
+            rule_id="HF-003", title="HuggingFace API error",
+            description=f"Failed to connect to HuggingFace API: {last_error}",
+            severity=Severity.MEDIUM, target=url, evidence=str(last_error),
+        ))
+        return None
 
     def _fetch_model_info(self, repo_id: str) -> Optional[Dict[str, Any]]:
         """Fetch model info from HF Hub API."""

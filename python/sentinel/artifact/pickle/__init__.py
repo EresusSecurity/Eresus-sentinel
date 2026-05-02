@@ -8,6 +8,7 @@ Subpackage layout:
   findings  — Finding builders for each detection class
 """
 
+from .parity import PickleParityResult, compare_pickle_backends
 from .scanner import PickleScanner
 
-__all__ = ["PickleScanner"]
+__all__ = ["PickleParityResult", "PickleScanner", "compare_pickle_backends"]

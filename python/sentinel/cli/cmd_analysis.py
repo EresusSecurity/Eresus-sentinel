@@ -150,6 +150,44 @@ def cmd_mcp(args):
 
     from sentinel.agent.mcp.live_scanner import MCPLiveScanner
 
+    if getattr(args, "mcp_action", None) == "transports":
+        from sentinel.agent.mcp.transport_matrix import mcp_transport_summary
+
+        summary = mcp_transport_summary()
+        payload = {"schema_version": "mcp-transport-matrix.v1", **summary}
+        fmt = getattr(args, "format", "table")
+        out = getattr(args, "output", None)
+        if fmt == "json":
+            rendered = json.dumps(payload, indent=2)
+            if out:
+                Path(out).write_text(rendered + "\n", encoding="utf-8")
+                _ok(f"wrote MCP transport matrix → {out}")
+            else:
+                out_stream = machine_stdout()
+                out_stream.write(rendered + "\n")
+                out_stream.flush()
+            return 0
+
+        table = Table(title="MCP Transport Matrix", box=box.SIMPLE)
+        table.add_column("Transport")
+        table.add_column("Status")
+        table.add_column("Surface")
+        table.add_column("Coverage")
+        for transport in summary["transports"]:
+            coverage = ",".join(
+                key.removeprefix("scans_")
+                for key in ("scans_tools", "scans_prompts", "scans_resources", "scans_instructions")
+                if transport[key]
+            ) or "-"
+            table.add_row(
+                transport["name"],
+                transport["status"],
+                transport["scanner_surface"],
+                coverage,
+            )
+        console.print(table)
+        return 0
+
     if getattr(args, "mcp_action", None) != "scan":
         _fail("mcp action required — use `sentinel mcp scan ...`")
         return 2

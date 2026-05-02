@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import queue
 import subprocess
 import threading
@@ -40,10 +41,12 @@ class MCPLiveScanResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": "mcp-scan.v1",
             "source": self.source,
             "transport": self.transport,
             "server_info": self.server_info,
             "capabilities": self.capabilities,
+            "auth": _auth_summary(self.server_info, self.capabilities),
             "counts": {
                 "tools": len(self.tools),
                 "prompts": len(self.prompts),
@@ -242,6 +245,7 @@ class MCPLiveScanner:
             )
         )
         result.findings.extend(self._scan_prompt_like_items(result))
+        result.findings.extend(self._scan_resource_uris(result))
         self._score_readiness(result)
         self._check_auth_surface(result)
 
@@ -295,6 +299,46 @@ class MCPLiveScanner:
                         severity=Severity.HIGH if issue.severity == "HIGH" else Severity.MEDIUM,
                         target=result.source,
                         evidence=issue.snippet,
+                    )
+                )
+        return findings
+
+    def _scan_resource_uris(self, result: MCPLiveScanResult) -> list[Finding]:
+        findings: list[Finding] = []
+        for item in result.resources:
+            uri = str(item.get("uri") or item.get("name") or "")
+            if not uri:
+                continue
+            parsed = urlparse(uri)
+            lowered = uri.lower()
+            if _resource_path_traversal(lowered):
+                findings.append(
+                    Finding.agent_mcp(
+                        rule_id="MCP-LIVE-RESOURCE-002",
+                        title="MCP resource URI path traversal",
+                        description=(
+                            "MCP resource URI references parent traversal or a sensitive "
+                            "local file path."
+                        ),
+                        severity=Severity.HIGH,
+                        target=result.source,
+                        evidence=uri[:300],
+                        confidence=0.9,
+                    )
+                )
+            if parsed.scheme in {"http", "https"} and _is_private_host(parsed.hostname or ""):
+                findings.append(
+                    Finding.agent_mcp(
+                        rule_id="MCP-LIVE-RESOURCE-003",
+                        title="MCP resource URI targets internal network",
+                        description=(
+                            "MCP resource URI points at localhost, private IP space, "
+                            "or a metadata endpoint and may enable SSRF."
+                        ),
+                        severity=Severity.HIGH,
+                        target=result.source,
+                        evidence=uri[:300],
+                        confidence=0.9,
                     )
                 )
         return findings
@@ -429,6 +473,58 @@ def _connection_finding(source: str, evidence: str) -> Finding:
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _auth_summary(server_info: dict[str, Any], capabilities: dict[str, Any]) -> dict[str, Any]:
+    auth = (
+        capabilities.get("auth")
+        or capabilities.get("authorization")
+        or server_info.get("auth")
+        or server_info.get("authorization")
+        or {}
+    )
+    auth_dict = auth if isinstance(auth, dict) else {"type": str(auth)}
+    auth_type = str(auth_dict.get("type") or auth_dict.get("scheme") or "").lower()
+    return {
+        "declared": bool(auth),
+        "type": auth_type or "",
+        "supports_oauth": "oauth" in auth_type,
+        "supports_bearer": "bearer" in auth_type,
+        "supports_api_key": auth_type in {"api_key", "apikey", "x-api-key"},
+        "supports_mtls": auth_type in {"mtls", "m_tls", "mutual_tls", "mutual-tls"},
+    }
+
+
+def _resource_path_traversal(uri: str) -> bool:
+    return (
+        "../" in uri
+        or "..\\" in uri
+        or uri.startswith("file:///etc/")
+        or uri.startswith("file://etc/")
+        or "/etc/passwd" in uri
+        or "\\windows\\system32" in uri
+    )
+
+
+def _is_private_host(hostname: str) -> bool:
+    host = hostname.strip().lower().strip("[]")
+    if not host:
+        return False
+    if host in {"localhost", "metadata.google.internal"}:
+        return True
+    if host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or str(ip) == "169.254.169.254"
+    )
 
 
 def scan_mcp_manifest(path: str | Path) -> MCPLiveScanResult:

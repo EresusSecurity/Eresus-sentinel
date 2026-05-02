@@ -276,6 +276,11 @@ def main():
     ms.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     ms.set_defaults(func=cmd_mcp, mcp_action="scan")
 
+    mt = mcp_sub.add_parser("transports", help="show MCP transport coverage matrix")
+    mt.add_argument("-f", "--format", choices=["table", "json"], default="table")
+    mt.add_argument("-o", "--output", help="output file")
+    mt.set_defaults(func=cmd_mcp, mcp_action="transports")
+
     mf = mcp_sub.add_parser("fingerprint", help="enumerate and fingerprint MCP server capabilities")
     mf.add_argument("target", nargs="?", help="manifest path or HTTP endpoint")
     mf.add_argument("--url", help="MCP HTTP JSON-RPC endpoint")

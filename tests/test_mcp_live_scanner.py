@@ -40,7 +40,10 @@ def test_mcp_live_scanner_scans_manifest_tools_prompts_and_resources(tmp_path):
 
     result = MCPLiveScanner().scan_manifest(manifest_path)
     rule_ids = {finding.rule_id for finding in result.findings}
+    payload = result.to_dict()
 
+    assert payload["schema_version"] == "mcp-scan.v1"
+    assert payload["auth"]["supports_oauth"] is True
     assert len(result.tools) == 1
     assert len(result.prompts) == 1
     assert result.readiness_grade in {"A", "B", "C", "D", "F"}
@@ -121,3 +124,29 @@ def test_mcp_live_scanner_discovers_http_jsonrpc_server():
     assert result.server_info["name"] == "http-mcp"
     assert len(result.tools) == 1
     assert not result.errors
+
+
+def test_mcp_live_scanner_flags_resource_uri_ssrf_and_traversal(tmp_path):
+    manifest_path = tmp_path / "mcp-resources.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "serverInfo": {"name": "resource-mcp", "version": "1.0.0"},
+                "capabilities": {"auth": {"type": "mtls"}},
+                "tools": [],
+                "resources": [
+                    {"uri": "http://169.254.169.254/latest/meta-data/iam/security-credentials/"},
+                    {"uri": "file:///etc/passwd"},
+                    {"uri": "file:///tmp/../../secret"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = MCPLiveScanner().scan_manifest(manifest_path)
+    rule_ids = {finding.rule_id for finding in result.findings}
+
+    assert "MCP-LIVE-RESOURCE-002" in rule_ids
+    assert "MCP-LIVE-RESOURCE-003" in rule_ids
+    assert result.to_dict()["auth"]["supports_mtls"] is True

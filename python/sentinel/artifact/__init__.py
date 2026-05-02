@@ -35,8 +35,10 @@ from ._pickle_ops import DangerousImport, PickleAnalysis
 from .archive_slip import ArchiveSlipDetector
 from .binary_tail_scanner import BinaryTailScanner
 from .catboost_scanner import CatBoostScanner
+from .compressed_scanner import CompressedWrapperScanner
 from .coreml_scanner import CoreMLScanner
 from .cve_detector import CVEDetector
+from .extra_format_scanners import CNTKScanner, RKNNScanner
 from .flax_scanner import FlaxScanner
 from .gguf_analyzer import GGUFAnalyzer
 from .huggingface_scanner import HuggingFaceScanner
@@ -112,10 +114,10 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("torchscript", (".torchscript", ".ptc"), TorchScriptScanner, True),
         ArtifactScannerSpec("tflite", (".tflite",), TFLiteScanner),
         ArtifactScannerSpec("torchmobile", (".ptl",), TorchMobileScanner, True),
-        ArtifactScannerSpec("llamafile", (".llamafile",), LlamaFileScanner),
+        ArtifactScannerSpec("llamafile", (".llamafile", ".exe"), LlamaFileScanner),
         ArtifactScannerSpec("onnx", (".onnx",), ONNXScanner),
         ArtifactScannerSpec("keras", (".keras", ".h5", ".hdf5"), KerasScanner, True),
-        ArtifactScannerSpec("xgboost", (".xgb", ".ubj", ".model"), XGBoostScanner),
+        ArtifactScannerSpec("xgboost", (".xgb", ".bst", ".ubj", ".model"), XGBoostScanner),
         ArtifactScannerSpec("numpy", (".npy", ".npz"), NumpyScanner, True),
         ArtifactScannerSpec("archive", (".zip", ".tar", ".tar.gz", ".tgz"), ArchiveSlipDetector),
         ArtifactScannerSpec("7z", (".7z",), SevenZipScanner),
@@ -129,11 +131,14 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("openvino", (".xml",), OpenVINOScanner),
         ArtifactScannerSpec("paddle", (".pdmodel", ".pdiparams", ".pdparams"), PaddleScanner),
         ArtifactScannerSpec("pmml", (".pmml",), PMMLScanner),
+        ArtifactScannerSpec("rknn", (".rknn",), RKNNScanner),
+        ArtifactScannerSpec("cntk", (".dnn", ".cmf"), CNTKScanner),
         ArtifactScannerSpec("r-serialized", (".rds", ".rda", ".rdata"), RSerializedScanner, True),
         ArtifactScannerSpec("skops", (".skops",), SkopsScanner),
         ArtifactScannerSpec("torchserve", (".mar",), TorchServeScanner, True),
         ArtifactScannerSpec("torch7", (".t7", ".th", ".net"), Torch7Scanner, True),
         ArtifactScannerSpec("rar", (".rar",), RARScanner, True),
+        ArtifactScannerSpec("compressed", (".gz", ".bz2", ".xz", ".lz4", ".zlib"), CompressedWrapperScanner, True),
         ArtifactScannerSpec("executorch", (".pte",), ExecuTorchScanner),
         ArtifactScannerSpec("tensorrt", (".engine", ".plan", ".trt"), TensorRTScanner),
         ArtifactScannerSpec("oci", (".oci",), OCIScanner),
@@ -535,7 +540,9 @@ __all__ = [
     "BinaryTailScanner",
     "CVEDetector",
     "CatBoostScanner",
+    "CompressedWrapperScanner",
     "CoreMLScanner",
+    "CNTKScanner",
     "FlaxScanner",
     "LightGBMScanner",
     "MXNetScanner",
@@ -545,6 +552,7 @@ __all__ = [
     "PMMLScanner",
     "RSerializedScanner",
     "RARScanner",
+    "RKNNScanner",
     "SkopsScanner",
     "TorchServeScanner",
     "Torch7Scanner",

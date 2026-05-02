@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
 from ...finding import Finding, Severity
 from ...scan_safety import FileTooLargeError, safe_read_bytes
-from .._pickle_rules import load_default_rules
+from .._pickle_rules import _check_list, load_default_rules
 from .analyzer import deep_analyze
 from .findings import build_findings
 from .protocol_detector import PickleProtocolDetector
@@ -84,12 +85,16 @@ class PickleScanner:
         # skip to avoid false positives from misinterpreting container bytes.
         if data[:4] == b"PK\x03\x04":
             return []
+        rust_findings: list[Finding] = []
         if self._rust_scanner:
             try:
                 rust_findings = self._scan_with_rust(data, source)
-                if rust_findings:
+                if rust_findings and self._requested_backend == "rust":
                     return rust_findings
-                logger.debug("Rust engine returned no findings; running Python analyzer")
+                if rust_findings:
+                    logger.debug("Rust engine returned findings; running Python parity analyzer")
+                else:
+                    logger.debug("Rust engine returned no findings; running Python analyzer")
             except Exception as e:
                 logger.debug("Rust engine failed, falling back to Python: %s", e)
         analysis = self._deep_analyze(data, source)
@@ -104,7 +109,7 @@ class PickleScanner:
             if (pf.rule_id, pf.target) not in seen:
                 findings.append(pf)
                 seen.add((pf.rule_id, pf.target))
-        return findings
+        return self._merge_rust_findings(rust_findings, findings)
 
     def scan_file(self, file_path: str | Path) -> list[Finding]:
         """Scan a pickle file from disk."""
@@ -222,6 +227,37 @@ class PickleScanner:
                 severity=sev,
                 target=source,
                 evidence=getattr(rf, "evidence", ""),
-                cwe_ids=getattr(rf, "cwe_ids", []),
+                cwe_ids=getattr(rf, "cwe_ids", []) or ["CWE-502"],
             ))
         return findings
+
+    def _merge_rust_findings(self, rust_findings: list[Finding], python_findings: list[Finding]) -> list[Finding]:
+        if not rust_findings:
+            return python_findings
+
+        merged = list(python_findings)
+        seen = {(finding.rule_id, finding.target, finding.evidence) for finding in merged}
+        for finding in rust_findings:
+            if finding.rule_id == "PICKLE-UNK":
+                if python_findings or self._is_allowlisted_unknown(finding):
+                    continue
+            key = (finding.rule_id, finding.target, finding.evidence)
+            if key not in seen:
+                merged.append(finding)
+                seen.add(key)
+        return merged
+
+    def _is_allowlisted_unknown(self, finding: Finding) -> bool:
+        subject_text = f"{finding.title} {finding.evidence}"
+        match = re.search(r"import:\s*([A-Za-z0-9_][A-Za-z0-9_\.]*)", subject_text)
+        subject = match.group(1) if match else subject_text.rsplit(" ", 1)[-1].strip()
+        module, sep, name = subject.partition(".")
+        if not sep:
+            return False
+        parts = subject.split(".")
+        for index in range(1, len(parts)):
+            candidate_module = ".".join(parts[:index])
+            candidate_name = ".".join(parts[index:])
+            if _check_list(candidate_module, candidate_name, self._allowlist):
+                return True
+        return _check_list(module, name, self._allowlist)

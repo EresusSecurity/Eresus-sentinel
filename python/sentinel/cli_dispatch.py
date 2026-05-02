@@ -39,6 +39,7 @@ import sys
 from pathlib import Path
 
 from sentinel.finding import Finding, Location, Severity
+from sentinel.interfaces import normalize_severity
 
 logger = logging.getLogger(__name__)
 
@@ -413,10 +414,7 @@ def dispatch_agent(target: str) -> list[Finding]:
             return []
         converted: list[Finding] = []
         for item in skill_scanner.scan_skill(text, file_path.name):
-            try:
-                severity = Severity[str(item.severity).upper()]
-            except KeyError:
-                severity = Severity.MEDIUM
+            severity = normalize_severity(str(item.severity))
             line_start = None
             if item.location and ":" in item.location:
                 maybe_line = item.location.rsplit(":", 1)[-1]

@@ -12,8 +12,9 @@ Falls back to Rust engine (sentinel_pickle) when available for faster scanning.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, Literal
 
 from ...finding import Finding, Severity
 from ...scan_safety import FileTooLargeError, safe_read_bytes
@@ -29,12 +30,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PickleBackend = Literal["auto", "rust", "python"]
+
 try:
+    import sentinel_pickle as _sentinel_pickle
     from sentinel_pickle import PickleScanner as RustPickleScanner
+    HAS_RUST_REPORT_API = (
+        hasattr(_sentinel_pickle, "scan_bytes_report")
+        and hasattr(RustPickleScanner, "scan_bytes_report")
+    )
     HAS_RUST_ENGINE = True
-    logger.debug("Rust pickle engine available")
+    logger.debug("Rust pickle engine available (report_api=%s)", HAS_RUST_REPORT_API)
 except ImportError:
     HAS_RUST_ENGINE = False
+    HAS_RUST_REPORT_API = False
 
 
 class PickleScanner:
@@ -45,13 +54,21 @@ class PickleScanner:
         blocklist: dict[str, list[str]] | None = None,
         allowlist: dict[str, list[str]] | None = None,
         prefer_rust: bool = True,
+        backend: PickleBackend | str | None = None,
     ):
         if blocklist:
             self._blocklist = blocklist
             self._allowlist = allowlist or {}
         else:
             self._blocklist, self._allowlist = load_default_rules()
-        self._prefer_rust = prefer_rust and HAS_RUST_ENGINE
+        self._requested_backend = self._resolve_backend(backend, prefer_rust=prefer_rust)
+        if self._requested_backend == "rust" and not HAS_RUST_ENGINE:
+            raise RuntimeError(
+                "SENTINEL_PICKLE_BACKEND=rust was requested, but the sentinel_pickle "
+                "Rust extension is not importable. Build/install rust/sentinel-pickle "
+                "with maturin or use backend='auto'/'python'."
+            )
+        self._prefer_rust = self._requested_backend in {"auto", "rust"} and HAS_RUST_ENGINE
         self._rust_scanner = RustPickleScanner() if self._prefer_rust else None
         self._protocol_detector = PickleProtocolDetector()
 
@@ -132,15 +149,70 @@ class PickleScanner:
     def engine(self) -> str:
         return "rust" if self._rust_scanner else "python"
 
+    @property
+    def rust_available(self) -> bool:
+        return HAS_RUST_ENGINE
+
+    @property
+    def requested_backend(self) -> PickleBackend:
+        return self._requested_backend
+
     # ─── Internal ─────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_backend(backend: PickleBackend | str | None, *, prefer_rust: bool) -> PickleBackend:
+        raw = backend or os.environ.get("SENTINEL_PICKLE_BACKEND") or os.environ.get(
+            "SENTINEL_PICKLE_ENGINE"
+        )
+        value = (raw or ("auto" if prefer_rust else "python")).strip().lower()
+        aliases = {
+            "native": "rust",
+            "rs": "rust",
+            "py": "python",
+            "pure-python": "python",
+        }
+        resolved = aliases.get(value, value)
+        if resolved not in {"auto", "rust", "python"}:
+            raise ValueError(
+                "pickle backend must be one of 'auto', 'rust', or 'python' "
+                f"(got {raw!r})"
+            )
+        return resolved  # type: ignore[return-value]
 
     def _deep_analyze(self, data: bytes, source: str) -> PickleAnalysis:
         return deep_analyze(data, source, self._blocklist, self._allowlist)
 
     def _scan_with_rust(self, data: bytes, source: str) -> list[Finding]:
-        rust_findings = self._rust_scanner.scan_data(data)
         findings: list[Finding] = []
-        for rf in rust_findings:
+
+        if HAS_RUST_REPORT_API:
+            report = self._rust_scanner.scan_bytes_report(data)
+            verdict = getattr(report, "verdict", None)
+            verdict_str = str(verdict) if verdict is not None else "unknown"
+
+            # Fail-closed: if the scan was incomplete, surface a finding
+            # so the caller knows the result cannot be trusted as "clean".
+            if verdict_str == "unknown" or getattr(report, "aborted", False):
+                findings.append(Finding.artifact(
+                    rule_id="PICKLE-INCONCLUSIVE",
+                    title="Pickle scan inconclusive",
+                    description=(
+                        "The Rust pickle engine could not complete a trusted scan "
+                        "because it exhausted a budget or encountered malformed structure. "
+                        "The file cannot be declared clean; "
+                        "treat as potentially malicious."
+                    ),
+                    severity=Severity.HIGH,
+                    target=source,
+                    evidence=f"opcode_count={getattr(report, 'opcode_count', '?')}",
+                    cwe_ids=["CWE-400"],
+                ))
+
+            raw_findings = getattr(report, "findings", [])
+        else:
+            raw_findings = self._rust_scanner.scan_bytes_py(data)
+
+        for rf in raw_findings:
             severity_str = getattr(rf, "severity", "HIGH").upper()
             sev = getattr(Severity, severity_str, Severity.HIGH)
             findings.append(Finding.artifact(

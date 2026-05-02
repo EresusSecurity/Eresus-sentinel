@@ -46,6 +46,14 @@ async def _strip_server_header(_: Any, response: Any) -> None:
     response.headers.pop("Server", None)
 
 
+def _jsonrpc_error(message_id: Any, code: int, message: str) -> bytes:
+    return json.dumps({
+        "jsonrpc": "2.0",
+        "id": message_id,
+        "error": {"code": code, "message": message},
+    }).encode()
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # DATA TYPES
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -134,6 +142,28 @@ class ProxyConfig:
         "password", "secret", "token", "api_key", "apikey",
         "access_token", "private_key", "credentials",
     ])
+
+    @classmethod
+    def from_file(cls, path: str | os.PathLike[str]) -> "ProxyConfig":
+        """Load proxy policy from a JSON/YAML config file."""
+        from dataclasses import fields
+        from pathlib import Path
+
+        config_path = Path(path)
+        text = config_path.read_text(encoding="utf-8")
+        if config_path.suffix.lower() in {".yaml", ".yml"}:
+            import yaml
+            raw = yaml.safe_load(text) or {}
+        else:
+            raw = json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError("proxy config must be a mapping")
+
+        allowed = {field.name for field in fields(cls)}
+        data = {key: value for key, value in raw.items() if key in allowed}
+        if "mode" in data and not isinstance(data["mode"], ProxyMode):
+            data["mode"] = ProxyMode(str(data["mode"]).lower())
+        return cls(**data)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -843,14 +873,11 @@ class MCPProxy:
     ) -> tuple[bytes | None, bytes | None]:
         """Split a stdio inspection result into upstream and client payloads."""
         if result.action == ProxyAction.BLOCK:
-            return None, forwarded
+            if forwarded is not None:
+                return None, forwarded
+            return None, _jsonrpc_error(None, -32600, result.blocked_reason or "Blocked by Sentinel")
         if result.action == ProxyAction.RATE_LIMIT:
-            payload = json.dumps({
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {"code": -32600, "message": "Rate limited"},
-            }).encode()
-            return None, payload
+            return None, _jsonrpc_error(None, -32600, "Rate limited")
         return forwarded, None
 
     async def handle_client_message(self, raw: bytes, session_id: str | None = None) -> tuple[bytes | None, InspectionResult]:
@@ -897,7 +924,7 @@ class MCPProxy:
                     session_id=session.session_id, timestamp=time.time(),
                 )],
             )
-            return None, result
+            return _jsonrpc_error(None, -32700, "Malformed JSON-RPC message"), result
 
         # Pre-hooks
         for hook in self._hooks_pre:
@@ -917,15 +944,11 @@ class MCPProxy:
             session.blocked_count += 1
 
             # Return JSON-RPC error
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": msg.get("id"),
-                "error": {
-                    "code": -32600,
-                    "message": f"Blocked by Sentinel: {result.blocked_reason}",
-                },
-            }
-            return json.dumps(error_response).encode(), result
+            return _jsonrpc_error(
+                msg.get("id"),
+                -32600,
+                f"Blocked by Sentinel: {result.blocked_reason}",
+            ), result
 
         # Post-hooks
         for hook in self._hooks_post:

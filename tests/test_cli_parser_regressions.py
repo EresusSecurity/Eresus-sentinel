@@ -131,13 +131,29 @@ def test_rules_and_finding_explain_are_available():
 
     assert rules_result.returncode == 0
     payload = json.loads(rules_result.stdout)
-    assert payload["total"] > 0
+    assert payload["schema_version"] == "rules.inventory.v1"
+    assert payload["rule_schema_version"] == "rules.record.v1"
+    assert payload["total"] >= 1900
+    assert payload["summary"]["total"] == payload["total"]
+    assert payload["summary"]["invalid_regex_count"] == 0
 
     finding_result = _run_cli("finding", "explain", "ARTIFACT-031", "-f", "json")
 
     assert finding_result.returncode == 0
     finding_payload = json.loads(finding_result.stdout)
     assert finding_payload["rule_id"] == "ARTIFACT-031"
+
+
+def test_rules_audit_reports_inventory_health():
+    result = _run_cli("rules", "audit", "-f", "json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "rules.inventory.v1"
+    assert payload["total"] >= 1900
+    assert payload["invalid_regex_count"] == 0
+    assert "duplicate_rule_id_count" in payload
+    assert payload["roots"]
 
 
 def test_mcp_scan_json_writes_single_stdout_document(tmp_path):

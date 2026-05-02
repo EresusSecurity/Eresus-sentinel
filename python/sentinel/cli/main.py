@@ -490,6 +490,10 @@ def main():
     rules_explain_p.add_argument("-f", "--format", choices=["table", "json"], default=argparse.SUPPRESS)
     rules_explain_p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     rules_explain_p.set_defaults(func=cmd_rules)
+    rules_audit_p = rules_sub.add_parser("audit", help="audit loaded rule IDs and regexes")
+    rules_audit_p.add_argument("-f", "--format", choices=["table", "json"], default=argparse.SUPPRESS)
+    rules_audit_p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    rules_audit_p.set_defaults(func=cmd_rules)
     rules_p.set_defaults(func=cmd_rules)
 
     # ── Findings explain ───────────────────────────────────────────

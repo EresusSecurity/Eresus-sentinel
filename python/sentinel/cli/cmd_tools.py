@@ -817,6 +817,8 @@ def cmd_rules(args):
         return _rules_test(args)
     if action == "explain":
         return _rules_explain(args)
+    if action == "audit":
+        return _rules_audit(args)
     return _rules_list(args)
 
 
@@ -829,8 +831,29 @@ def _rules_list(args):
         rule_entries = [r for r in rule_entries if needle in r["domain"].lower()]
 
     if fmt in ("json", "sarif") or getattr(args, "output", None):
-        public_entries = [{k: v for k, v in r.items() if k != "raw"} for r in rule_entries]
-        _emit_info(args, {"schema_version": "0.1", "rules": public_entries, "total": len(public_entries)})
+        from sentinel.rule_inventory import (
+            RULE_INVENTORY_SCHEMA_VERSION,
+            RULE_RECORD_SCHEMA_VERSION,
+            audit_rule_inventory,
+            public_rule_record,
+        )
+
+        audit = audit_rule_inventory(rule_entries)
+        public_entries = [public_rule_record(r) for r in rule_entries]
+        _emit_info(args, {
+            "schema_version": RULE_INVENTORY_SCHEMA_VERSION,
+            "rule_schema_version": RULE_RECORD_SCHEMA_VERSION,
+            "rules": public_entries,
+            "total": len(public_entries),
+            "summary": {
+                "total": len(public_entries),
+                "unique_rule_ids": audit["unique_rule_ids"],
+                "duplicate_rule_id_count": audit["duplicate_rule_id_count"],
+                "invalid_regex_count": audit["invalid_regex_count"],
+                "schema_warning_count": audit["schema_warning_count"],
+                "status": audit["status"],
+            },
+        })
         return 0
 
     table = Table(title=f"Rules · {len(rule_entries)} loaded", box=box.SIMPLE)
@@ -893,6 +916,34 @@ def _rules_test(args):
         return 1
     console.print(f"  [green]PASS[/green] — {len(matches)} rule record(s), {checked} regex pattern(s) checked")
     return 0
+
+
+def _rules_audit(args):
+    from sentinel.rule_inventory import RULE_INVENTORY_SCHEMA_VERSION, audit_rule_inventory
+
+    rule_entries = _rule_inventory()
+    audit = audit_rule_inventory(rule_entries)
+    payload = {
+        "schema_version": RULE_INVENTORY_SCHEMA_VERSION,
+        "command": "rules audit",
+        **audit,
+    }
+
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, payload)
+        return 1 if audit["invalid_regex_count"] else 0
+
+    table = Table(title="Rules Audit", box=box.SIMPLE)
+    table.add_column("Check", style="cyan")
+    table.add_column("Value")
+    table.add_row("Total records", str(audit["total"]))
+    table.add_row("Unique rule IDs", str(audit["unique_rule_ids"]))
+    table.add_row("Duplicate rule IDs", str(audit["duplicate_rule_id_count"]))
+    table.add_row("Invalid regexes", str(audit["invalid_regex_count"]))
+    table.add_row("Schema warnings", str(audit["schema_warning_count"]))
+    table.add_row("Status", audit["status"])
+    console.print(table)
+    return 1 if audit["invalid_regex_count"] else 0
 
 
 def _rules_explain(args):
@@ -968,50 +1019,13 @@ def _findings_explain_detail(rule_id: str, args=None) -> int:
 
 
 def _rule_roots() -> list[Path]:
-    package_root = Path(__file__).resolve().parents[1]
-    return [
-        Path.cwd() / "rules",
-        Path.cwd() / "config",
-        package_root / "config",
-        package_root / "rules",
-    ]
+    from sentinel.rule_inventory import rule_roots
+    return [root.path for root in rule_roots()]
 
 
 def _rule_inventory() -> list[dict]:
-    entries: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-    for root in _rule_roots():
-        if not root.exists():
-            continue
-        for path in sorted([*root.rglob("*.yaml"), *root.rglob("*.yml")]):
-            try:
-                import yaml
-                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-            except Exception:
-                continue
-            for record in _extract_rule_records(data, path):
-                key = (record["id"], record["source"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                entries.append(record)
-
-    try:
-        from sentinel.artifact.pickle.findings import DANGEROUS_GLOBAL_FINDING, DANGEROUS_IMPORT_FINDING
-        for finding in (DANGEROUS_IMPORT_FINDING, DANGEROUS_GLOBAL_FINDING):
-            entries.append({
-                "id": finding.rule_id,
-                "domain": "artifact.pickle",
-                "severity": "critical",
-                "title": finding.title,
-                "description": finding.description,
-                "remediation": getattr(finding, "remediation", ""),
-                "source": "python/sentinel/artifact/pickle/findings.py",
-                "raw": {},
-            })
-    except Exception:
-        pass
-    return sorted(entries, key=lambda item: (item["domain"], item["id"]))
+    from sentinel.rule_inventory import rule_inventory
+    return rule_inventory()
 
 
 def _extract_rule_records(data, source: Path, group: str | None = None) -> list[dict]:
@@ -1046,13 +1060,8 @@ def _extract_rule_records(data, source: Path, group: str | None = None) -> list[
 
 
 def _regex_candidates(rule: dict) -> list[str]:
-    patterns: list[str] = []
-    for key, value in rule.items():
-        if key in {"pattern", "regex"} and isinstance(value, str):
-            patterns.append(value)
-        elif key in {"patterns", "regexes"} and isinstance(value, list):
-            patterns.extend(item for item in value if isinstance(item, str))
-    return patterns
+    from sentinel.rule_inventory import regex_candidates
+    return regex_candidates(rule)
 
 
 def _display_path(path: Path) -> str:

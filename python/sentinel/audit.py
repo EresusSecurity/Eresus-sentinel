@@ -33,10 +33,15 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+AUDIT_RECORD_SCHEMA_VERSION = "audit.record.v1"
+_SENSITIVE_KEYWORDS = ("authorization", "api_key", "apikey", "password", "secret", "token")
+
 
 @dataclass
 class AuditRecord:
     """Single audit log entry."""
+    schema_version: str = AUDIT_RECORD_SCHEMA_VERSION
+
     # Identity
     record_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -76,12 +81,23 @@ class AuditRecord:
 
     def to_dict(self) -> dict:
         """Convert to dictionary, stripping empty fields."""
-        d = asdict(self)
+        d = _redact_sensitive(asdict(self))
         return {k: v for k, v in d.items() if v or v == 0}
 
     def to_json(self) -> str:
         """Serialize to single-line JSON."""
         return json.dumps(self.to_dict(), default=str, ensure_ascii=False)
+
+
+def _redact_sensitive(value: Any, key: str = "") -> Any:
+    lowered = key.lower()
+    if any(token in lowered for token in _SENSITIVE_KEYWORDS):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {k: _redact_sensitive(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_sensitive(item, key) for item in value]
+    return value
 
 
 class AuditLogger:
@@ -480,4 +496,3 @@ class AuditLogger:
                 logger.info("Removed old audit log: %s", f)
 
         return removed
-

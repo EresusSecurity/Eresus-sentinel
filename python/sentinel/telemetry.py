@@ -17,6 +17,16 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+TELEMETRY_SCHEMA_VERSION = "telemetry.alert.v1"
+_DISABLED_VALUES = {"0", "false", "off", "no", "disabled"}
+
+
+def telemetry_enabled(explicit: bool | None = None) -> bool:
+    if explicit is not None:
+        return bool(explicit)
+    import os
+    return os.environ.get("SENTINEL_TELEMETRY", "on").strip().lower() not in _DISABLED_VALUES
+
 
 class AlertChannel(Enum):
     WEBHOOK = auto()
@@ -62,6 +72,7 @@ class Alert:
 
     def to_dict(self) -> dict:
         return {
+            "schema_version": TELEMETRY_SCHEMA_VERSION,
             "rule": self.rule_name,
             "severity": self.severity.name,
             "message": self.message,
@@ -111,8 +122,9 @@ class TelemetryPipeline:
     - Alert history and audit trail
     """
 
-    def __init__(self):
+    def __init__(self, enabled: bool | None = None):
         self._lock = threading.Lock()
+        self.enabled = telemetry_enabled(enabled)
         self._alert_rules: list[AlertRule] = []
         self._alert_history: list[Alert] = []
         self._webhook_configs: dict[str, WebhookConfig] = {}
@@ -184,6 +196,8 @@ class TelemetryPipeline:
 
     def evaluate_rules(self, metrics_snapshot: dict) -> list[Alert]:
         """Evaluate all alert rules against a metrics snapshot."""
+        if not self.enabled:
+            return []
         fired: list[Alert] = []
         now = time.time()
 
@@ -244,6 +258,8 @@ class TelemetryPipeline:
     # ── Alert dispatch ───────────────────────────────────────────────
 
     def _dispatch_alert(self, alert: Alert, channels: list[AlertChannel]) -> None:
+        if not self.enabled:
+            return
         for channel in channels:
             try:
                 if channel == AlertChannel.LOG:
@@ -353,6 +369,9 @@ class TelemetryPipeline:
         otlp_endpoint: str = "http://localhost:4317",
     ) -> bool:
         """Initialize OpenTelemetry with OTLP exporter."""
+        if not self.enabled:
+            logger.info("OpenTelemetry disabled by SENTINEL_TELEMETRY")
+            return False
         try:
             from opentelemetry import metrics as otel_metrics
             from opentelemetry import trace as otel_trace
@@ -398,6 +417,8 @@ class TelemetryPipeline:
         prometheus_text: str = "",
     ) -> bool:
         """Push metrics to Prometheus Pushgateway."""
+        if not self.enabled:
+            return False
         url = f"{gateway_url.rstrip('/')}/metrics/job/{job_name}"
         try:
             req = urllib.request.Request(
@@ -418,6 +439,7 @@ class TelemetryPipeline:
     def create_dashboard_snapshot(self, metrics_data: dict) -> dict:
         """Create a dashboard-ready JSON snapshot with derived metrics."""
         return {
+            "schema_version": "telemetry.dashboard.v1",
             "timestamp": time.time(),
             "service": "eresus-sentinel",
             "raw_metrics": metrics_data,
@@ -438,6 +460,7 @@ class TelemetryPipeline:
                 ],
             },
             "otel_enabled": self._otel_initialized,
+            "telemetry_enabled": self.enabled,
         }
 
     # ── History ──────────────────────────────────────────────────────
@@ -460,6 +483,7 @@ class TelemetryPipeline:
 
     def get_summary(self) -> dict:
         return {
+            "enabled": self.enabled,
             "total_rules": len(self._alert_rules),
             "total_alerts_fired": len(self._alert_history),
             "unacknowledged": len([a for a in self._alert_history if not a.acknowledged]),
@@ -468,3 +492,42 @@ class TelemetryPipeline:
             "pagerduty_configured": self._pagerduty_config is not None,
             "otel_initialized": self._otel_initialized,
         }
+
+    def emit_findings(
+        self,
+        *,
+        source: str,
+        findings: list[dict[str, Any]],
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit findings into the alert pipeline without raw prompt/output data."""
+        if not self.enabled or not findings:
+            return
+        severity_order = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+        max_severity = "INFO"
+        for finding in findings:
+            raw_sev = finding.get("severity", "INFO")
+            sev = (raw_sev.value if hasattr(raw_sev, "value") else str(raw_sev)).upper()
+            if severity_order.get(sev, 0) > severity_order.get(max_severity, 0):
+                max_severity = sev
+        alert_severity = {
+            "CRITICAL": AlertSeverity.CRITICAL,
+            "HIGH": AlertSeverity.ERROR,
+            "MEDIUM": AlertSeverity.WARNING,
+            "LOW": AlertSeverity.INFO,
+            "INFO": AlertSeverity.INFO,
+        }.get(max_severity, AlertSeverity.WARNING)
+        alert = Alert(
+            rule_name=f"{source}.findings",
+            severity=alert_severity,
+            message=f"{len(findings)} finding(s) from {source}",
+            details={
+                "source": source,
+                "finding_count": len(findings),
+                "max_severity": max_severity,
+                "metadata": metadata or {},
+            },
+        )
+        with self._lock:
+            self._alert_history.append(alert)
+        self._dispatch_alert(alert, [AlertChannel.LOG])

@@ -50,8 +50,11 @@ def _emit_scan_plan(args, plan: dict) -> None:
     fmt = getattr(args, "format", "table")
     out = getattr(args, "output", None)
     if fmt == "json" or out:
+        from sentinel.scan_report import SCAN_REPORT_SCHEMA_VERSION
+
         payload = {
             "schema_version": "0.1",
+            "result_schema_version": SCAN_REPORT_SCHEMA_VERSION,
             "command": "scan",
             "summary": {
                 "command": "scan",
@@ -96,19 +99,7 @@ def _emit_scan_plan(args, plan: dict) -> None:
 
 
 def _emit_scan_result(args, findings, results: list[dict], wall_seconds: float, exit_code: int, profile: str) -> None:
-    from datetime import datetime, timezone
-
-    from sentinel import __version__ as ver
-
-    severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
-    serialized_findings = []
-    for finding in findings:
-        severity, _, _ = _sev(finding)
-        severity_counts[severity] = severity_counts.get(severity, 0) + 1
-        if hasattr(finding, "to_dict"):
-            serialized_findings.append(finding.to_dict())
-        else:
-            serialized_findings.append({"rule_id": getattr(finding, "rule_id", ""), "severity": severity})
+    from sentinel.scan_report import build_scan_envelope
 
     errors = [
         {
@@ -120,10 +111,10 @@ def _emit_scan_result(args, findings, results: list[dict], wall_seconds: float, 
         if not result["ok"]
     ]
     status = "error" if errors else "findings" if findings else "clean"
-    payload = {
-        "schema_version": "0.1",
-        "command": "scan",
-        "summary": {
+    payload = build_scan_envelope(
+        findings,
+        command="scan",
+        summary={
             "command": "scan",
             "target": getattr(args, "path", ""),
             "profile": profile,
@@ -131,21 +122,15 @@ def _emit_scan_result(args, findings, results: list[dict], wall_seconds: float, 
             "exit_code": exit_code,
             "duration_ms": round(wall_seconds * 1000, 2),
         },
-        "totals": {
+        totals={
             "modules": len(results),
             "modules_passed": sum(1 for result in results if result["ok"]),
-            "findings": len(findings),
-            "severity": severity_counts,
         },
-        "findings": serialized_findings,
-        "errors": errors,
-        "metadata": {
-            "tool": "eresus-sentinel",
-            "version": ver,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+        errors=errors,
+        metadata={
             "module_results": results,
         },
-    }
+    )
     rendered = json.dumps(_sanitize_for_json(payload), indent=2, default=str, ensure_ascii=True)
     out = getattr(args, "output", None)
     if out:

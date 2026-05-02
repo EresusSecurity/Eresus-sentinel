@@ -13,49 +13,9 @@ _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 def _json_envelope(findings, *, command: str | None = None) -> dict:
     """Build a standard JSON envelope from a list of findings."""
-    from datetime import datetime, timezone
+    from sentinel.scan_report import build_scan_envelope
 
-    from sentinel import __version__ as ver
-
-    severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
-    serialized = []
-    for f in findings:
-        v, _, _ = _sev(f)
-        severity_counts[v] = severity_counts.get(v, 0) + 1
-        if hasattr(f, "to_dict"):
-            serialized.append(f.to_dict())
-        else:
-            serialized.append({
-                "rule_id": getattr(f, "rule_id", ""),
-                "severity": v,
-                "title": getattr(f, "title", ""),
-                "description": getattr(f, "description", ""),
-                "target": str(getattr(f, "target", "")),
-                "evidence": str(getattr(f, "evidence", "")),
-                "remediation": getattr(f, "remediation", getattr(f, "fix_hint", "")),
-            })
-
-    status = "findings" if findings else "clean"
-    return _sanitize_for_json({
-        "schema_version": "0.1",
-        "command": command,
-        "summary": {
-            "command": command,
-            "status": status,
-            "total_findings": len(findings),
-        },
-        "totals": {
-            "findings": len(findings),
-            "severity": severity_counts,
-        },
-        "findings": serialized,
-        "errors": [],
-        "metadata": {
-            "tool": "eresus-sentinel",
-            "version": ver,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        },
-    })
+    return build_scan_envelope(findings, command=command)
 
 
 def _export(args, findings):

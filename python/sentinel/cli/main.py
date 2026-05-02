@@ -395,6 +395,7 @@ def main():
         cmd_version,
         cmd_watch,
     )
+    from sentinel.cli.cmd_provenance import cmd_provenance
 
     p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanners or LLM targets")
     p.add_argument("config", nargs="?", help="YAML/JSON eval config")
@@ -492,6 +493,37 @@ def main():
     cache_cleanup.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
     cache_cleanup.set_defaults(func=cmd_cache, cache_action="cleanup")
     cache_p.set_defaults(func=cmd_cache, cache_action="stats")
+
+    prov_p = sub.add_parser("provenance", help="model lineage fingerprinting")
+    prov_sub = prov_p.add_subparsers(dest="provenance_action")
+    prov_scan = prov_sub.add_parser("scan", help="scan a local model against the reference DB")
+    prov_scan.add_argument("model")
+    prov_scan.add_argument("--top-k", type=int, default=5)
+    prov_scan.add_argument("--threshold", type=float, default=0.5)
+    prov_scan.add_argument("--db", help="reference fingerprint DB JSON")
+    prov_scan.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    _add_output_args(prov_scan, severity=False)
+    prov_scan.set_defaults(func=cmd_provenance, provenance_action="scan")
+
+    prov_compare = prov_sub.add_parser("compare", help="compare two local models head-to-head")
+    prov_compare.add_argument("model_a")
+    prov_compare.add_argument("model_b")
+    prov_compare.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    _add_output_args(prov_compare, severity=False)
+    prov_compare.set_defaults(func=cmd_provenance, provenance_action="compare")
+
+    prov_info = prov_sub.add_parser("db-info", help="show installed reference DB status")
+    prov_info.add_argument("--db", help="reference fingerprint DB JSON")
+    prov_info.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    _add_output_args(prov_info, severity=False)
+    prov_info.set_defaults(func=cmd_provenance, provenance_action="db-info")
+
+    prov_download = prov_sub.add_parser("download-fingerprints", help="install the bundled seed fingerprint DB")
+    prov_download.add_argument("--output-path", help="where to write the fingerprint DB JSON")
+    prov_download.add_argument("--json", dest="json_output", action="store_true", help="output as JSON")
+    _add_output_args(prov_download, severity=False)
+    prov_download.set_defaults(func=cmd_provenance, provenance_action="download-fingerprints")
+    prov_p.set_defaults(func=cmd_provenance, provenance_action="db-info")
 
     config_p = sub.add_parser("config", help="inspect effective Sentinel configuration")
     config_p.add_argument("--explain", action="store_true", help="explain where each config value comes from")

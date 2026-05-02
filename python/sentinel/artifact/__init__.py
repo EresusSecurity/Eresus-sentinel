@@ -61,6 +61,7 @@ from .paddle_scanner import PaddleScanner
 from .pickle_scanner import PickleScanner
 from .pmml_scanner import PMMLScanner
 from .r_serialized_scanner import RSerializedScanner
+from .rar_scanner import RARScanner
 from .safetensors_validator import SafetensorsValidator
 from .sevenz_scanner import SevenZipScanner
 from .skops_scanner import SkopsScanner
@@ -131,7 +132,8 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("r-serialized", (".rds", ".rda", ".rdata"), RSerializedScanner, True),
         ArtifactScannerSpec("skops", (".skops",), SkopsScanner),
         ArtifactScannerSpec("torchserve", (".mar",), TorchServeScanner, True),
-        ArtifactScannerSpec("torch7", (".t7", ".th"), Torch7Scanner, True),
+        ArtifactScannerSpec("torch7", (".t7", ".th", ".net"), Torch7Scanner, True),
+        ArtifactScannerSpec("rar", (".rar",), RARScanner, True),
         ArtifactScannerSpec("executorch", (".pte",), ExecuTorchScanner),
         ArtifactScannerSpec("tensorrt", (".engine", ".plan", ".trt"), TensorRTScanner),
         ArtifactScannerSpec("oci", (".oci",), OCIScanner),
@@ -542,6 +544,7 @@ __all__ = [
     "PaddleScanner",
     "PMMLScanner",
     "RSerializedScanner",
+    "RARScanner",
     "SkopsScanner",
     "TorchServeScanner",
     "Torch7Scanner",

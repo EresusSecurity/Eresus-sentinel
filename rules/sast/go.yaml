@@ -1,0 +1,76 @@
+# Sentinel Multi-Language SAST — Go rules
+version: "1"
+file_context_pattern: '(?:openai|anthropic|go-openai|anthropic-sdk-go|langchaingo|google/generative-ai-go|ollama|llm\.|ChatCompletion|EmbeddingRequest|CompletionRequest|GenerateContent)'
+
+rules:
+  - id: MLSAST-003
+    title: "Unvalidated HTTP request data passed to LLM prompt (Go)"
+    description: "HTTP request parameter/body used directly in LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.67
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Validate and sanitize r.FormValue/r.URL.Query values before LLM calls. Use validation library."
+    # Single-line: r.FormValue or decoded body field used in ChatMessage/Content struct
+    pattern: '(?:r\.FormValue|r\.URL\.Query\(\)\.Get|json\.Unmarshal[^\n]{0,80}r\.Body)[^\n]{0,200}(?:Content:|Role:|Messages:|Prompt:|\.Generate\(|\.CreateChatCompletion\()'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-023
+    title: "LLM output passed to exec.Command (Go)"
+    description: "LLM response used as exec.Command argument — command injection risk."
+    severity: CRITICAL
+    confidence: 0.75
+    owasp_llm: LLM02
+    tags: [code-injection, command-injection, llm-output]
+    remediation: "Never pass LLM output to exec.Command. Validate against a strict allowlist."
+    pattern: 'exec\.Command\s*\([^\n]{0,200}(?:response|output|llm\w*|ai\w*|completion|generated|chatResp)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-082
+    title: "LLM output passed to os.WriteFile / ioutil.WriteFile (Go)"
+    description: "LLM response written to filesystem without path validation — path traversal risk."
+    severity: HIGH
+    confidence: 0.65
+    owasp_llm: LLM02
+    tags: [file-write, llm-output]
+    remediation: "Validate file path (filepath.Clean + prefix check) and content before writing LLM output."
+    pattern: '(?:os\.WriteFile|ioutil\.WriteFile|os\.Create)\s*\([^\n]{0,200}(?:response|llm\w*|ai\w*|completion|generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-083
+    title: "LangChainGo chain called with unvalidated user input (Go)"
+    description: "langchaingo chain invoked with raw HTTP request data — prompt injection risk."
+    severity: HIGH
+    confidence: 0.63
+    owasp_llm: LLM01
+    tags: [prompt-injection, langchain]
+    remediation: "Sanitize and validate user input before passing to LangChain chains."
+    pattern: '(?:chains\.Call|llm\.Call|llm\.Generate|\.Run\s*\(ctx)[^\n]{0,200}(?:r\.FormValue|query\.Get|body\.|request\.\w+)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-084
+    title: "Sensitive Go env var included in LLM prompt"
+    description: "os.Getenv() value with API/KEY/SECRET in name used in LLM prompt content."
+    severity: HIGH
+    confidence: 0.72
+    owasp_llm: LLM06
+    tags: [data-exfil, secret-leak]
+    remediation: "Never include API keys or secrets in LLM prompts. Provider servers log prompt content."
+    # Only fire when env var name contains sensitive keywords — not generic os.Getenv
+    pattern: 'os\.Getenv\s*\(\s*"(?:[A-Z_]*(?:KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|API)[A-Z_]*)"\s*\)[^\n]{0,150}(?:Content:|Messages:|Prompt:|\.Generate\()'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

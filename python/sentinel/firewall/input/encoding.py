@@ -34,6 +34,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from sentinel.finding import Finding, Severity
@@ -191,6 +192,35 @@ class EncodingAttackScanner(InputScanner):
 
         # 1. Unicode normalization
         normalized = normalize_unicode(prompt)
+
+        # 1a. Check plain (un-encoded) text directly for reverse/web shell patterns
+        _plain_rs = detect_reverse_shell(normalized)
+        if _plain_rs:
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-030",
+                title="Reverse shell payload in prompt",
+                description=f"Plain-text reverse shell command detected: '{_plain_rs}'.",
+                severity=Severity.CRITICAL,
+                target="<prompt>",
+                evidence=f"pattern='{_plain_rs}', text='{prompt[:200]}'",
+                tags=["owasp:llm01", "owasp:llm02"],
+                cwe_ids=["CWE-78"],
+                remediation="Block all inputs containing shell command execution patterns.",
+            ))
+        _plain_ws = detect_web_shell(normalized)
+        if _plain_ws:
+            findings.append(Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-031",
+                title="Web shell pattern in prompt",
+                description=f"Plain-text web shell command detected: '{_plain_ws}'.",
+                severity=Severity.CRITICAL,
+                target="<prompt>",
+                evidence=f"pattern='{_plain_ws}', text='{prompt[:200]}'",
+                tags=["owasp:llm01", "owasp:llm02"],
+                cwe_ids=["CWE-94"],
+                remediation="Block all inputs containing web shell patterns.",
+            ))
+
         if normalized != prompt:
             kw = check_injection(normalized)
             if kw:
@@ -339,6 +369,21 @@ class EncodingAttackScanner(InputScanner):
         if self._check_caesar_brute:
             decoded_texts.extend(caesar_brute(prompt))
 
+        # Pre-compute injection keywords already visible in the original prompt
+        # (plain English words like "system" in "operating system" must not fire as
+        # encoded injection when the leet-normaliser changes unrelated digits/symbols).
+        _orig_norm = normalize_unicode(prompt)
+        _original_visible_kws: set[str] = set()
+        for _kw in INJECTION_INDICATORS:
+            _kl = _kw.lower()
+            _ol = _orig_norm.lower()
+            if len(_kl) <= 5:
+                if re.search(r'\b' + re.escape(_kl) + r'\b', _ol):
+                    _original_visible_kws.add(_kl)
+            else:
+                if _kl in _ol:
+                    _original_visible_kws.add(_kl)
+
         # 3. Check every decoded variant
         seen: set[str] = set()
         for enc_name, decoded in decoded_texts:
@@ -348,7 +393,7 @@ class EncodingAttackScanner(InputScanner):
             norm = normalize_unicode(decoded)
 
             kw = check_injection(norm)
-            if kw:
+            if kw and kw.lower() not in _original_visible_kws:
                 findings.append(Finding.firewall_input(
                     rule_id="FIREWALL-INPUT-005",
                     title=f"Encoded prompt injection ({enc_name})",

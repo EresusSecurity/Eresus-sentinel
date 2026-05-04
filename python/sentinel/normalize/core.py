@@ -54,10 +54,16 @@ def expand_for_matching(text: str, decode_budget: int = 4) -> str:
     # Recursive decode: unwraps double-encoded / homoglyph-obfuscated payloads
     fully_decoded = recursive_decode(normalized, budget=decode_budget)
 
+    _MAX_EXPAND_CHARS = 300_000
+
     parts: list[str] = [text, normalized]
     if fully_decoded not in (text, normalized):
         parts.append(fully_decoded)
     # Additional single-pass decode candidates (base64, hex, rot13)
     parts.extend(decode_common(fully_decoded))
-    return "\n".join(parts)
+
+    joined = "\n".join(parts)
+    if len(joined) > _MAX_EXPAND_CHARS:
+        joined = joined[:_MAX_EXPAND_CHARS]
+    return joined
 

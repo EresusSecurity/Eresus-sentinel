@@ -167,6 +167,54 @@ _ROLEPLAY_OVERRIDE = re.compile(
     r"ignore\s+(?:all\s+)?(?:previous|prior|above))\b"
 )
 
+_MULTILANG_INJECT_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    # Chinese: ignore instructions + leak/reveal system prompt
+    r"忽略.{0,20}(?:指令|命令|规则|提示词|系统|所有)"
+    r"|泄露.{0,20}(?:系统|提示词|指令)"
+    r"|忘记.{0,20}(?:之前|指令|规则)"
+    r"|不遵守.{0,20}(?:规则|指令)"
+    # Turkish: ignore + instructions
+    r"|(?:yoksay|yok\s+say|görmezden\s+gel|unut|aldırma).{0,30}(?:talimat|yönerge|kural|komut)"
+    # Arabic: ignore + instructions
+    r"|(?:تجاهل|انسى|تخطَّ).{0,20}(?:التعليمات|القواعد|الرسائل)"
+    r")"
+)
+
+_GAME_FRAMING_RE = re.compile(
+    r"(?i)"
+    r"(?:let\s*['\"']?s\s+play\s+a\s+(?:game|role)|in\s+this\s+(?:game|scenario|story|roleplay))"
+    r".{0,200}"
+    r"(?:no\s+content\s+polic|no\s+restrictions?|no\s+rules?|no\s+limits?|no\s+filter|"
+    r"reveal\s+(?:your\s+)?system\s+prompt|output\s+(?:your\s+)?(?:system|instructions?)|"
+    r"ignore\s+(?:all\s+)?(?:previous|prior|above)|bypass\s+(?:all\s+)?(?:filter|restrict|safe))",
+    re.DOTALL
+)
+
+_SYSTEM_REVEAL_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"reveal\s+(?:your\s+)?(?:system\s+prompt|instructions?|directives?|guidelines?)\s+word\s+for\s+word"
+    r"|(?:show|print|output|repeat|say|tell\s+me)\s+(?:your\s+)?system\s+prompt"
+    r"|what\s+(?:are|is)\s+your\s+(?:system\s+)?(?:prompt|instructions?|directives?|guidelines?)"
+    r"|repeat\s+(?:everything|all)\s+(?:above|before|prior)"
+    r"|(?:verbatim|word\s+for\s+word|exactly\s+as\s+written).*(?:prompt|instructions?)"
+    r")"
+)
+
+_INDIRECT_PROBE_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"output\s+(?:your\s+|the\s+)?(?:full\s+|entire\s+|complete\s+|whole\s+)?context\s+window"
+    r"|(?:full|entire|complete|whole)\s+context\s+window"
+    r"|what\s+(?:were|are)\s+you\s+told\s+(?:to\s+keep|not\s+to)"
+    r"|what\s+(?:secrets?|information)\s+(?:are\s+you\s+(?:keeping|hiding)|were\s+you\s+told)"
+    r"|(?:dump|print|show|reveal|expose)\s+(?:your\s+|all\s+of\s+your\s+)?context\s+window"
+    r"|output\s+(?:all\s+of\s+)?your\s+(?:full\s+)?context"
+    r")"
+)
+
 # Stopwords — English words that appear in multi-word verb phrases from
 # other languages but are NOT injection verbs by themselves.
 _VERB_STOPWORDS: frozenset[str] = frozenset({
@@ -301,6 +349,38 @@ class HeuristicInjectionScanner(InputScanner):
                 title="Roleplay jailbreak override detected",
                 pattern="roleplay-restriction-override",
                 confidence=0.91,
+            )
+
+        if _INDIRECT_PROBE_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Indirect system-probe detected",
+                pattern="indirect-system-probe",
+                confidence=0.88,
+            )
+
+        if _MULTILANG_INJECT_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Multilingual prompt injection detected",
+                pattern="multilang-injection",
+                confidence=0.90,
+            )
+
+        if _GAME_FRAMING_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Game/story framing injection detected",
+                pattern="game-framing-injection",
+                confidence=0.87,
+            )
+
+        if _SYSTEM_REVEAL_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="System prompt reveal attempt detected",
+                pattern="system-prompt-reveal",
+                confidence=0.89,
             )
 
         max_score = 0.0

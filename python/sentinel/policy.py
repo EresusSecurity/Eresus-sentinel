@@ -323,7 +323,7 @@ class PolicyEngine:
                 if not self._config.fail_open:
                     raise
 
-        return FirewallPipeline(scanners)
+        return FirewallPipeline(scanners, fail_open=self._config.fail_open)
 
     def build_output_pipeline(self) -> FirewallPipeline:
         """Build an output scanner pipeline from policy rules."""
@@ -351,7 +351,7 @@ class PolicyEngine:
                 if not self._config.fail_open:
                     raise
 
-        return FirewallPipeline(scanners)
+        return FirewallPipeline(scanners, fail_open=self._config.fail_open)
 
     def list_scanners(self) -> dict[str, list[str]]:
         """List all available scanner names."""

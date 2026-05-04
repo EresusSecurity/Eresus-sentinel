@@ -130,9 +130,11 @@ def raw_byte_scan(
             ))
         i += 1
 
-    # Check for execution opcodes (REDUCE, NEWOBJ, NEWOBJ_EX, BUILD)
+    # Check for execution opcodes (REDUCE, NEWOBJ, NEWOBJ_EX, BUILD).
+    # Only mark has_reduce when dangerous imports were also found: raw byte search
+    # for 0x52 ('R') in binary tensor data produces false positives otherwise.
     has_exec = bool(_EXEC_OPCODES.intersection(data))
-    if has_exec:
+    if has_exec and analysis.dangerous_imports:
         analysis.has_reduce = True
         for imp in analysis.dangerous_imports:
             for exec_byte in _EXEC_OPCODES:

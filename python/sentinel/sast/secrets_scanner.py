@@ -545,7 +545,7 @@ class SecretsScanner:
         # Incremental: skip unchanged files
         try:
             with open(fp, "rb") as f:
-                file_hash = hashlib.md5(f.read()).hexdigest()
+                file_hash = hashlib.sha256(f.read()).hexdigest()
             if self._file_cache.get(path) == file_hash:
                 return []
             self._file_cache[path] = file_hash
@@ -561,10 +561,13 @@ class SecretsScanner:
         findings = []
         for line_num, line in enumerate(lines, 1):
             stripped = line.strip()
-            if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+            if not stripped:
                 continue
 
-            # Regex patterns
+            is_comment = stripped.startswith("#") or stripped.startswith("//")
+
+            # Regex patterns — run on ALL lines including comments
+            # (credentials left in comments are still leaked credentials)
             for sp in self._patterns:
                 match = sp.pattern.search(line)
                 if match:
@@ -574,18 +577,18 @@ class SecretsScanner:
                         title=sp.name,
                         description=sp.description,
                         severity=sp.severity,
-                        confidence=0.9,
+                        confidence=0.85 if is_comment else 0.9,
                         target=str(fp),
                         location=Location(file=str(fp), line_start=line_num),
                         evidence=self._redact(match.group(0)),
                         cwe_ids=["CWE-798"],
-                        tags=["category:secrets"],
-                        remediation="Move to environment variable or secrets manager",
+                        tags=["category:secrets"] + (["source:comment"] if is_comment else []),
+                        remediation="Remove the credential from the comment and rotate it immediately.",
                     ))
                     break  # One finding per line
 
-            # Entropy detection
-            if self._entropy:
+            # Entropy detection — skip comment lines to avoid FPs on normal text
+            if self._entropy and not is_comment:
                 findings.extend(self._entropy.scan_line(line, line_num, str(fp)))
 
         return findings

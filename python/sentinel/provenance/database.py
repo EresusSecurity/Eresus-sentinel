@@ -9,7 +9,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from .signals import ProvenanceSignal, extract_signals, signal_similarity, weighted_score
+from .signals import SIGNAL_IDS, ProvenanceSignal, extract_signals, signal_similarity, weighted_score
 
 _DB_HMAC_KEY = b"eresus-sentinel-provenance-seed-v1"
 
@@ -77,10 +77,31 @@ class FingerprintDatabase:
         references = [reference.to_dict() for reference in self.references]
         payload = {
             "schema_version": "provenance.db.v1",
+            "manifest": self.manifest_for(references),
             "references": references,
         }
         payload["hmac_sha256"] = self.hmac_for(references)
         return payload
+
+    def manifest_for(self, references: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """Build a compact integrity manifest for the reference database."""
+        body = references if references is not None else [reference.to_dict() for reference in self.references]
+        families = sorted({str(reference.get("family", "")) for reference in body if reference.get("family")})
+        publishers = sorted({str(reference.get("publisher", "")) for reference in body if reference.get("publisher")})
+        return {
+            "schema_version": "provenance.db-manifest.v1",
+            "reference_count": len(body),
+            "signal_ids": list(SIGNAL_IDS),
+            "families": families,
+            "publishers": publishers,
+            "shards": [
+                {
+                    "id": "seed",
+                    "reference_count": len(body),
+                    "hmac_sha256": self.hmac_for(body),
+                }
+            ],
+        }
 
     def write(self, path: str | Path) -> Path:
         output = Path(path)
@@ -98,7 +119,48 @@ class FingerprintDatabase:
             payload = self.to_dict()
         expected = str(payload.get("hmac_sha256", ""))
         actual = self.hmac_for(list(payload.get("references", [])))
-        return hmac.compare_digest(expected, actual)
+        if not hmac.compare_digest(expected, actual):
+            return False
+        manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else {}
+        shards = manifest.get("shards") if isinstance(manifest.get("shards"), list) else []
+        for shard in shards:
+            if not isinstance(shard, dict) or shard.get("id") != "seed":
+                continue
+            shard_hmac = str(shard.get("hmac_sha256", ""))
+            if shard_hmac and not hmac.compare_digest(shard_hmac, actual):
+                return False
+        return True
+
+    def write_shards(self, directory: str | Path, *, shard_size: int = 50) -> dict[str, Any]:
+        """Write deterministic JSON shard files and return their manifest."""
+        output = Path(directory)
+        output.mkdir(parents=True, exist_ok=True)
+        references = [reference.to_dict() for reference in self.references]
+        shards: list[dict[str, Any]] = []
+        shard_size = max(1, shard_size)
+        for index in range(0, len(references), shard_size):
+            body = references[index:index + shard_size]
+            shard_id = f"shard-{index // shard_size:04d}"
+            shard_payload = {
+                "schema_version": "provenance.db-shard.v1",
+                "id": shard_id,
+                "references": body,
+                "hmac_sha256": self.hmac_for(body),
+            }
+            path = output / f"{shard_id}.json"
+            path.write_text(json.dumps(shard_payload, indent=2, sort_keys=True), encoding="utf-8")
+            shards.append(
+                {
+                    "id": shard_id,
+                    "path": path.name,
+                    "reference_count": len(body),
+                    "hmac_sha256": shard_payload["hmac_sha256"],
+                }
+            )
+        manifest = self.manifest_for(references)
+        manifest["shards"] = shards
+        (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        return manifest
 
     def match(self, signals: dict[str, ProvenanceSignal], *, top_k: int = 5) -> list[dict[str, Any]]:
         matches: list[dict[str, Any]] = []
@@ -127,6 +189,7 @@ class FingerprintDatabase:
             "reference_count": len(self.references),
             "families": families,
             "publishers": publishers,
+            "manifest": self.manifest_for(),
             "hmac_sha256": self.to_dict()["hmac_sha256"],
             "integrity_ok": self.verify_integrity(),
         }

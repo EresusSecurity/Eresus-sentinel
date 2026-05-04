@@ -332,6 +332,34 @@ class YaraAnalyzer:
             return _native_scan(self._native_compiled, code, filename)
         return _fallback_scan(self._fallback_rules, code, filename)
 
+    def scan_text(self, code: str, source: str = "unknown") -> list[Any]:
+        """Scan text and return Sentinel Finding objects for report pipelines."""
+        from sentinel.finding import Finding, Severity
+
+        severity_map = {
+            YaraMatchSeverity.CRITICAL: Severity.CRITICAL,
+            YaraMatchSeverity.HIGH: Severity.HIGH,
+            YaraMatchSeverity.MEDIUM: Severity.MEDIUM,
+            YaraMatchSeverity.LOW: Severity.LOW,
+        }
+        findings = []
+        for match in self.scan(code, filename=source):
+            severity = severity_map.get(match.severity, Severity.MEDIUM)
+            findings.append(
+                Finding.agent_mcp(
+                    rule_id=f"MCP-YARA-{match.rule_name}",
+                    title=f"YARA match: {match.rule_name}",
+                    description=match.description,
+                    severity=severity,
+                    target=match.location,
+                    evidence=", ".join(match.matched_patterns[:8]),
+                    confidence=0.9,
+                    cwe_ids=[match.cwe] if match.cwe else [],
+                    tags=["mcp", "yara", "signature"],
+                )
+            )
+        return findings
+
     def scan_file(self, filepath: str | Path) -> list[YaraMatch]:
         p = Path(filepath)
         if not p.is_file():

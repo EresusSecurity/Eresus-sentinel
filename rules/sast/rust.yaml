@@ -1,0 +1,75 @@
+# Sentinel Multi-Language SAST — Rust rules
+version: "1"
+file_context_pattern: '(?:async-openai|openai|anthropic|langchain-rust|llm-chain|candle|tch|ort|tract|llama|mistral|reqwest.*openai|genai)'
+
+rules:
+  - id: MLSAST-110
+    title: "LLM API key hardcoded in Rust source"
+    description: "OpenAI/Anthropic/etc API key hardcoded as string literal in Rust."
+    severity: CRITICAL
+    confidence: 0.92
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use std::env::var(\"OPENAI_API_KEY\") or a secrets management crate (dotenvy, config)."
+    pattern: '(?:sk-(?:proj-|org-)?[A-Za-z0-9_\-]{20,80}|sk-ant-[A-Za-z0-9_\-]{20,80}|hf_[A-Za-z0-9]{30,50})'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-111
+    title: "Unsafe deserialization with serde from unvalidated source (Rust)"
+    description: "serde_json::from_str / from_slice applied to LLM output without error handling — panic risk."
+    severity: MEDIUM
+    confidence: 0.62
+    owasp_llm: LLM02
+    tags: [deserialization, llm-output]
+    remediation: "Use serde_json::from_str::<T>() with ? error propagation and schema validation."
+    # serde_json::from_str with .unwrap() after LLM variable
+    pattern: 'serde_json::from_str\s*\([^\n]{0,200}(?:response|llm_\w*|ai_\w*|completion|generated)[^\n]{0,50}\.unwrap\(\)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-112
+    title: "std::process::Command called with LLM output (Rust)"
+    description: "LLM response passed to std::process::Command — command injection risk."
+    severity: CRITICAL
+    confidence: 0.75
+    owasp_llm: LLM02
+    tags: [command-injection, llm-output]
+    remediation: "Never pass LLM output to process::Command. Use a strict command allowlist."
+    pattern: 'Command::new\s*\([^\n]{0,200}(?:response|llm_\w*|ai_\w*|completion|generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-113
+    title: "unsafe block loading ML model from unverified path (Rust)"
+    description: "unsafe Rust block used when loading ML model artifact — integrity not verified."
+    severity: HIGH
+    confidence: 0.58
+    owasp_llm: LLM05
+    tags: [supply-chain, model-loading, unsafe]
+    remediation: "Verify model file checksum (SHA-256) before loading into unsafe context."
+    # unsafe { } containing model load calls
+    pattern: 'unsafe\s*\{[^\}]{0,500}(?:from_file|load_model|from_path|read_to_end)[^\}]{0,200}(?:\.onnx|\.pt|\.bin|\.safetensors|\.gguf)'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - same_block_contains: "sha256|checksum|verify|hash"
+
+  - id: MLSAST-114
+    title: "tokio::fs::write with LLM output (Rust)"
+    description: "LLM response written to filesystem asynchronously without path validation."
+    severity: HIGH
+    confidence: 0.63
+    owasp_llm: LLM02
+    tags: [file-write, llm-output]
+    remediation: "Validate the file path (canonicalize + prefix check) before writing LLM output."
+    pattern: '(?:tokio::fs::write|std::fs::write|File::create)\s*\([^\n]{0,200}(?:response|llm_\w*|completion|generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

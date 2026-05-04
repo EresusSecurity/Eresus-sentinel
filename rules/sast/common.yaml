@@ -1,0 +1,90 @@
+# Sentinel Multi-Language SAST — Common rules (all languages)
+# Hardcoded credential detection: very low FP (<2%) due to specific format anchors.
+# These rules run on every supported language file.
+version: "1"
+rules:
+  - id: MLSAST-010
+    title: "Hardcoded OpenAI API key"
+    description: "OpenAI API key hardcoded in source code."
+    severity: CRITICAL
+    confidence: 0.95
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Move API key to environment variable or secrets manager. Use os.getenv('OPENAI_API_KEY')."
+    # Format: sk- or sk-proj- followed by 20-80 base64url chars
+    # FP rate <1%: format is highly specific. Suppressed in test files.
+    pattern: 'sk-(?:proj-|org-)?[A-Za-z0-9_\-]{20,80}'
+    fp_suppress:
+      - comment_line: true        # skip lines starting with //, #, *, --
+      - test_path: true           # skip files matching test|spec|fixture|mock|example
+      - in_string_assign_to: "example|placeholder|dummy|fake|test|sample|your_key_here"
+
+  - id: MLSAST-011
+    title: "Hardcoded Anthropic API key"
+    description: "Anthropic API key hardcoded in source code."
+    severity: CRITICAL
+    confidence: 0.97
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use ANTHROPIC_API_KEY environment variable."
+    pattern: 'sk-ant-(?:api03-)?[A-Za-z0-9_\-]{20,100}'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-012
+    title: "Hardcoded Google Gemini / VertexAI API key"
+    description: "Google AI API key hardcoded in source code."
+    severity: CRITICAL
+    confidence: 0.90
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use GOOGLE_API_KEY environment variable or GCP Secret Manager."
+    # AIza followed by exactly 35 base64 chars — very specific
+    pattern: 'AIza[A-Za-z0-9_\-]{35}'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-013
+    title: "Hardcoded Hugging Face access token"
+    description: "Hugging Face token hardcoded in source code."
+    severity: CRITICAL
+    confidence: 0.93
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use HUGGING_FACE_HUB_TOKEN environment variable."
+    # hf_ followed by 30-50 alphanumeric
+    pattern: 'hf_[A-Za-z0-9]{30,50}'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-014
+    title: "Hardcoded Cohere API key"
+    description: "Cohere API key hardcoded in source code."
+    severity: CRITICAL
+    confidence: 0.88
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use COHERE_API_KEY environment variable."
+    # Cohere keys: exactly 40 hex chars OR assigned to cohere_api_key variable
+    pattern: '(?:cohere[_\-]?(?:api[_\-]?)?key\s*[=:]\s*["\x27][A-Za-z0-9]{20,60}["\x27]|["\x27][a-zA-Z0-9]{40}["\x27]\s*#.*cohere)'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-015
+    title: "Hardcoded Mistral / Groq / Together AI API key"
+    description: "Third-party LLM provider API key hardcoded in source code."
+    severity: CRITICAL
+    confidence: 0.85
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use environment variables for all LLM provider keys."
+    # Variable assignment pattern: api_key = "..." near provider name
+    pattern: '(?:MISTRAL|GROQ|TOGETHER)[_\-]?API[_\-]?KEY\s*[=:]\s*["\x27][A-Za-z0-9_\-]{20,60}["\x27]'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - in_string_assign_to: "example|placeholder|dummy|your_"

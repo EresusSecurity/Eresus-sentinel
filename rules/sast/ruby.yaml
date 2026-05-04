@@ -1,0 +1,76 @@
+# Sentinel Multi-Language SAST — Ruby rules
+version: "1"
+file_context_pattern: '(?:openai|anthropic|ruby-openai|langchain|langchainrb|omniai|llm\.|OpenAI::Client|Anthropic::Client|VertexAI|Gemini|chat_completion|embedding|generate_content)'
+
+rules:
+  - id: MLSAST-004
+    title: "Unvalidated Rails params passed to LLM prompt (Ruby)"
+    description: "params[] hash value used directly in LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.68
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Use strong params (.permit, .require) and validate before LLM calls."
+    # params[:key] or params.require used within 200 chars of LLM message method
+    pattern: 'params\s*(?:\[:[\w\x27"]+\]|\.require\s*\(|\.fetch\s*\()[^\n]{0,200}(?:messages:|content:|prompt|\.chat\(|\.generate\(|\.complete\()'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-032
+    title: "Unsafe YAML.load / Psych.load call (Ruby)"
+    description: "YAML.load without safe_load deserializes arbitrary Ruby objects — code execution risk."
+    severity: HIGH
+    confidence: 0.82
+    owasp_llm: LLM05
+    tags: [deserialization, unsafe-yaml]
+    remediation: "Use YAML.safe_load or Psych.safe_load instead of YAML.load."
+    # YAML.load( or Psych.load( without safe — very specific, low FP
+    pattern: '(?:YAML|Psych)\.load\s*\('
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - same_line_contains: "safe_load"
+
+  - id: MLSAST-090
+    title: "Kernel.eval / instance_eval on LLM output (Ruby)"
+    description: "LLM response string passed to eval — arbitrary Ruby code execution."
+    severity: CRITICAL
+    confidence: 0.80
+    owasp_llm: LLM02
+    tags: [code-injection, llm-output]
+    remediation: "Never eval LLM output. Parse as JSON if structured data is needed."
+    pattern: '(?:eval|instance_eval|class_eval|module_eval)\s*\(\s*(?:response|llm_\w*|ai_\w*|completion|generated|message\.content)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-091
+    title: "system() / exec() called with LLM output (Ruby)"
+    description: "LLM response used as shell command — command injection risk."
+    severity: CRITICAL
+    confidence: 0.73
+    owasp_llm: LLM02
+    tags: [command-injection, llm-output]
+    remediation: "Never pass LLM output to system/exec. Use allowlist command dispatch."
+    pattern: '(?:system|exec|spawn|IO\.popen|`[^`]{0,50}#{[^}]{0,50}(?:response|llm_\w*|completion)[^}]{0,50}})'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-092
+    title: "Langchainrb chain run with unsanitized input (Ruby)"
+    description: "langchainrb chain invoked with raw user input — prompt injection risk."
+    severity: HIGH
+    confidence: 0.62
+    owasp_llm: LLM01
+    tags: [prompt-injection, langchain]
+    remediation: "Sanitize user input before passing to Langchain chains."
+    pattern: '(?:Langchain::|llm\.|chain\.|assistant\.)(?:run|call|chat|ask)\s*\([^\n]{0,200}(?:params\[|request\.body|user_input)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

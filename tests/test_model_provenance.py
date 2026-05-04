@@ -83,6 +83,35 @@ def test_fingerprint_database_integrity_round_trip(tmp_path):
 
     assert loaded.verify_integrity(payload)
     assert loaded.info()["reference_count"] >= 10
+    assert payload["manifest"]["schema_version"] == "provenance.db-manifest.v1"
+    assert payload["manifest"]["signal_ids"] == ["MFI", "TFV", "VOA", "EAS", "NLF", "LEP", "END", "WVC"]
+
+
+def test_fingerprint_database_writes_shard_manifest(tmp_path):
+    db = FingerprintDatabase()
+
+    manifest = db.write_shards(tmp_path / "shards", shard_size=4)
+
+    shard_dir = tmp_path / "shards"
+    assert (shard_dir / "manifest.json").exists()
+    assert manifest["schema_version"] == "provenance.db-manifest.v1"
+    assert len(manifest["shards"]) >= 3
+    for shard in manifest["shards"]:
+        payload = json.loads((shard_dir / shard["path"]).read_text(encoding="utf-8"))
+        assert payload["hmac_sha256"] == shard["hmac_sha256"]
+
+
+def test_provenance_top_k_threshold_snapshot(tmp_path):
+    _write_gpt2_model(tmp_path)
+
+    report = ModelProvenanceScanner().scan(tmp_path, top_k=2, threshold=0.4)
+
+    payload = report.to_dict()
+    assert len(payload["matches"]) == 2
+    assert payload["threshold"] == 0.4
+    assert payload["summary"]["match_count"] == 2
+    assert payload["summary"]["signal_coverage"] >= 6
+    assert payload["matches"][0]["score"] >= payload["matches"][1]["score"]
 
 
 def test_provenance_cli_scan_compare_and_db_info(tmp_path):

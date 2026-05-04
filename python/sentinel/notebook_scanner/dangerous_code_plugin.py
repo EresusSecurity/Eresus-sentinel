@@ -201,6 +201,49 @@ def scan_dangerous_code(cell: NotebookCell, path: str) -> list[Finding]:
     return findings
 
 
+def scan_dangerous_code_outputs(cell: NotebookCell, path: str) -> list[Finding]:
+    """Scan code cell *output* text (stream, display_data, execute_result) for dangerous patterns.
+
+    Malicious notebooks may hide exploits in pre-computed outputs to evade
+    source-only scanners.
+    """
+    if not cell.is_code or not cell.outputs:
+        return []
+
+    from sentinel.notebook_scanner.parser import NotebookParser
+
+    findings = []
+    patterns = _get_patterns()
+
+    # Concatenate all output text into a single searchable block
+    output_text = "\n".join(
+        NotebookParser.extract_output_text(o) for o in cell.outputs
+    )
+    if not output_text.strip():
+        return []
+
+    # Re-use the same pattern matching as source cells, but tag as output-origin
+    for category, entries in patterns.items():
+        rule_id, tag, default_cwe = _RULE_IDS.get(
+            category, ("NOTEBOOK-099", "unknown", "CWE-94")
+        )
+        for regex, name, risk, severity in entries:
+            if regex.search(output_text):
+                findings.append(_make_finding(
+                    rule_id=rule_id,
+                    title=f"{name} in cell output",
+                    reason=f"{risk} (detected in pre-computed cell output, not source)",
+                    cell=cell,
+                    path=path,
+                    sev=severity,
+                    cwe=default_cwe,
+                    tag=f"{tag}-output",
+                    confidence=0.9,
+                ))
+
+    return findings
+
+
 def _detect_shell_magic(source: str) -> Optional[tuple[str, str, Severity, float]]:
     """Detect notebook shell escapes and cell magics before YAML pattern matching."""
     stripped_lines = [line.strip() for line in source.splitlines() if line.strip()]

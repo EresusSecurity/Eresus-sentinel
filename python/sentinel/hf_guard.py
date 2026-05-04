@@ -121,6 +121,7 @@ class HFAssessment:
     model_card_warnings: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    all_files: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -186,8 +187,9 @@ class HFGuard:
             api = HfApi(token=self._token if self._token else None)
 
             # Get file listing
-            files = api.list_repo_files(repo_id, revision=revision)
+            files = list(api.list_repo_files(repo_id, revision=revision))
             assessment.total_files = len(files)
+            assessment.all_files = files
 
         except ImportError:
             logger.warning("huggingface_hub not installed — using filename-only assessment")
@@ -330,11 +332,73 @@ class HFGuard:
                 remediation="Request safetensors from model author or disable require_safetensors",
             ))
 
-        # Deep scan dangerous files
+        # ── Manifest scan: known config files + custom Python files ─────
+        # Only scan known safe config filenames — NOT all .json to avoid
+        # scanning tokenizer.json (vocabulary) and other data files
+        _SAST_EXTS = {".py"}
+        _MANIFEST_NAMES = {
+            "config.json", "tokenizer_config.json", "generation_config.json",
+            "special_tokens_map.json", "preprocessor_config.json",
+            "adapter_config.json", "quantize_config.json",
+        }
+        _MANIFEST_YAML = {".yaml", ".yml"}   # training config / conda env files
+        try:
+            from huggingface_hub import hf_hub_download
+            from sentinel.artifact.manifest_scanner import MLManifestScanner
+            from sentinel.sast.analyzer import SASTAnalyzer
+
+            manifest_scanner = MLManifestScanner()
+            sast_analyzer    = SASTAnalyzer()
+
+            all_files = assessment.all_files
+
+            # Collect files to manifest/SAST scan
+            manifest_targets = [
+                f for f in all_files
+                if Path(f).name in _MANIFEST_NAMES
+                or Path(f).suffix.lower() in _MANIFEST_YAML
+            ]
+            sast_targets = [
+                f for f in all_files
+                if Path(f).suffix.lower() in _SAST_EXTS
+            ]
+
+            with tempfile.TemporaryDirectory(prefix="sentinel_hf_manifest_") as tmpdir:
+                for filepath in manifest_targets[:20]:   # cap at 20 config files
+                    try:
+                        local_path = hf_hub_download(
+                            repo_id, filepath, revision=revision,
+                            local_dir=tmpdir,
+                            token=self._token if self._token else None,
+                        )
+                        mf = manifest_scanner.scan_file(local_path)
+                        for f in mf:
+                            f.target = f"{repo_id}/{filepath}"
+                        findings.extend(mf)
+                    except Exception as e:
+                        logger.debug("Manifest scan skip %s/%s: %s", repo_id, filepath, e)
+
+                for filepath in sast_targets[:10]:       # cap at 10 .py files
+                    try:
+                        local_path = hf_hub_download(
+                            repo_id, filepath, revision=revision,
+                            local_dir=tmpdir,
+                            token=self._token if self._token else None,
+                        )
+                        sf = sast_analyzer.scan_path(local_path)
+                        for f in sf:
+                            f.target = f"{repo_id}/{filepath}"
+                        findings.extend(sf)
+                    except Exception as e:
+                        logger.debug("SAST scan skip %s/%s: %s", repo_id, filepath, e)
+
+        except ImportError:
+            logger.warning("huggingface_hub not installed — skipping manifest/SAST scan")
+
+        # ── Deep scan dangerous binary files ──────────────────────────────
         if assessment.dangerous_files:
             try:
                 from huggingface_hub import hf_hub_download
-
                 from sentinel.cli_dispatch import _scan_single_artifact
 
                 with tempfile.TemporaryDirectory(prefix="sentinel_hf_") as tmpdir:
@@ -365,6 +429,122 @@ class HFGuard:
                 confidence=0.5,
                 target=f"{repo_id}/README.md",
             ))
+
+        # ── Typosquat detection ────────────────────────────────────────────
+        try:
+            from sentinel.supply_chain.typosquat_detector import TyposquatDetector
+            typo_findings = TyposquatDetector().check_repo(repo_id)
+            findings.extend(typo_findings)
+        except Exception as e:
+            logger.debug("Typosquat check failed: %s", e)
+
+        # ── Prompt injection + IOC + social engineering scan ──────────────
+        # Scan manifest text fields and README for hidden instructions
+        try:
+            from huggingface_hub import hf_hub_download
+            from sentinel.artifact.prompt_injection_analyzer import PromptInjectionAnalyzer
+
+            pinj = PromptInjectionAnalyzer()
+            _TEXT_TARGETS = {"README.md", "README.rst"} | set(_MANIFEST_NAMES)
+
+            with tempfile.TemporaryDirectory(prefix="sentinel_hf_pinj_") as tmpdir:
+                for filepath in assessment.all_files:
+                    if Path(filepath).name not in _TEXT_TARGETS:
+                        continue
+                    try:
+                        local_path = hf_hub_download(
+                            repo_id, filepath, revision=revision,
+                            local_dir=tmpdir,
+                            token=self._token if self._token else None,
+                        )
+                        pf = pinj.analyze_file(local_path)
+                        for f in pf:
+                            f.target = f"{repo_id}/{filepath}"
+                        findings.extend(pf)
+                    except Exception as e:
+                        logger.debug("Prompt injection scan skip %s/%s: %s", repo_id, filepath, e)
+        except ImportError:
+            logger.debug("PromptInjectionAnalyzer not available")
+
+        # ── auto_map AST deep scan ─────────────────────────────────────────
+        # For every .py referenced by auto_map, run full AST + GPU analysis
+        auto_map_files: list[str] = []
+        try:
+            for f in findings:
+                if getattr(f, "rule_id", "") == "MANIFEST-INJ-002":
+                    ev = getattr(f, "evidence", "") or ""
+                    for py_file in assessment.all_files:
+                        if py_file.endswith(".py") and py_file not in auto_map_files:
+                            auto_map_files.append(py_file)
+        except Exception:
+            pass
+
+        if auto_map_files:
+            try:
+                from huggingface_hub import hf_hub_download
+                from sentinel.artifact.auto_map_ast_analyzer import AutoMapASTAnalyzer
+                from sentinel.artifact.gpu_abuse_detector import GPUAbuseDetector
+
+                ast_analyzer = AutoMapASTAnalyzer()
+                gpu_detector = GPUAbuseDetector()
+
+                with tempfile.TemporaryDirectory(prefix="sentinel_hf_ast_") as tmpdir:
+                    for filepath in auto_map_files[:15]:
+                        try:
+                            local_path = hf_hub_download(
+                                repo_id, filepath, revision=revision,
+                                local_dir=tmpdir,
+                                token=self._token if self._token else None,
+                            )
+                            ast_findings = ast_analyzer.scan_file(local_path)
+                            gpu_findings = gpu_detector.scan_file(local_path)
+                            for f in ast_findings + gpu_findings:
+                                f.target = f"{repo_id}/{filepath}"
+                            findings.extend(ast_findings)
+                            findings.extend(gpu_findings)
+                        except Exception as e:
+                            logger.debug("AST/GPU scan skip %s/%s: %s", repo_id, filepath, e)
+            except ImportError:
+                logger.debug("AutoMapASTAnalyzer/GPUAbuseDetector not available")
+
+        # ── GPU abuse scan on all .py files ───────────────────────────────
+        try:
+            from huggingface_hub import hf_hub_download
+            from sentinel.artifact.gpu_abuse_detector import GPUAbuseDetector
+
+            gpu = GPUAbuseDetector()
+            gpu_targets = [f for f in assessment.all_files if f.endswith(".py")]
+
+            with tempfile.TemporaryDirectory(prefix="sentinel_hf_gpu_") as tmpdir:
+                for filepath in gpu_targets[:10]:
+                    if filepath in auto_map_files:
+                        continue
+                    try:
+                        local_path = hf_hub_download(
+                            repo_id, filepath, revision=revision,
+                            local_dir=tmpdir,
+                            token=self._token if self._token else None,
+                        )
+                        gf = gpu.scan_file(local_path)
+                        for f in gf:
+                            f.target = f"{repo_id}/{filepath}"
+                        findings.extend(gf)
+                    except Exception as e:
+                        logger.debug("GPU scan skip %s/%s: %s", repo_id, filepath, e)
+        except ImportError:
+            logger.debug("GPUAbuseDetector not available")
+
+        # ── Composite risk scoring (annotate findings in-place) ───────────
+        try:
+            from sentinel.analysis.risk_scorer import score_findings
+            scored = score_findings(findings)
+            for finding, risk in scored:
+                if not hasattr(finding, "metadata") or finding.metadata is None:
+                    finding.metadata = {}
+                finding.metadata["risk_score"] = risk.composite
+                finding.metadata["risk_label"] = risk.label
+        except Exception as e:
+            logger.debug("Risk scoring failed: %s", e)
 
         return findings
 

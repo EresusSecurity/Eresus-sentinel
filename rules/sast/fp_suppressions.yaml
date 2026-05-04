@@ -1,0 +1,72 @@
+# Sentinel SAST — Global FP suppression patterns
+# These apply across ALL language rule files.
+# The multilang_scanner.py loader references these in _COMMENT_PREFIXES,
+# _TEST_PATH_RE, and _PLACEHOLDER_RE constants.
+#
+# This file documents the suppression strategy; the actual implementation
+# is in multilang_scanner.py constants for performance.
+version: "1"
+
+comment_prefixes:
+  javascript:  ["//", "/*", " *", "#"]
+  typescript:  ["//", "/*", " *", "#"]
+  java:        ["//", "/*", " *"]
+  go:          ["//", "/*"]
+  ruby:        ["#"]
+  csharp:      ["//", "/*", " *"]
+  rust:        ["//", "/*"]
+  kotlin:      ["//", "/*", " *"]
+  swift:       ["//", "/*"]
+  php:         ["//", "#", "/*", " *"]
+
+test_path_patterns:
+  # Files in these directories are NOT scanned for injection rules
+  # (API key rules still apply)
+  - "test"
+  - "tests"
+  - "spec"
+  - "specs"
+  - "__tests__"
+  - "__mocks__"
+  - "fixtures"
+  - "examples"
+  - "example"
+  - "samples"
+  - "sample"
+  - "mock"
+  - "mocks"
+  - "stubs"
+  - "stub"
+  - "fakes"
+  - "fake"
+  - "dummies"
+
+placeholder_patterns:
+  # API key values matching these are suppressed
+  - "example"
+  - "placeholder"
+  - "dummy"
+  - "fake"
+  - "test"
+  - "sample"
+  - "your_api_key"
+  - "your-api-key"
+  - "xxx"
+  - "yyy"
+  - "zzz"
+  - "insert"
+  - "replace"
+  - "<key>"
+  - "<token>"
+  - "<secret>"
+  - "todo"
+  - "changeme"
+
+# Confidence thresholds by FP risk category
+# Rules below min_confidence for their category are filtered
+confidence_thresholds:
+  injection_rules:   0.55   # MLSAST-001..004: require_file_context guards
+  key_rules:         0.85   # MLSAST-010..015: format-specific anchors
+  exec_rules:        0.70   # MLSAST-020..023: LLM var name anchors
+  model_load_rules:  0.55   # MLSAST-030..032: format-specific patterns
+  secret_leak_rules: 0.65   # MLSAST-040..041: env var name anchors

@@ -67,9 +67,17 @@ def cmd_compliance(args) -> int:
             _ok(f"written {output}")
         else:
             _write(rendered + "\n")
-    else:
+    elif fmt == "table":
         _header(f"compliance · {framework}", args=args)
         _print_compliance_table(report)
+    else:
+        from sentinel.cli._export import _export
+        findings = _compliance_report_to_findings(report)
+        if fmt != "table":
+            import sys as _sys
+            from sentinel.cli._helpers import console as _console
+            _console.file = _sys.stderr
+        _export(args, findings)
 
     return 1 if report["summary"]["status"] == "fail" else 0
 
@@ -174,3 +182,39 @@ def _write(text: str) -> None:
     out = machine_stdout()
     out.write(text)
     out.flush()
+
+
+def _compliance_report_to_findings(report: dict[str, Any]) -> list:
+    """Convert compliance report violations to Finding objects for standard formatters."""
+    from sentinel.finding import Finding, Severity
+
+    _sev_map = {
+        "CRITICAL": Severity.CRITICAL,
+        "HIGH": Severity.HIGH,
+        "MEDIUM": Severity.MEDIUM,
+        "LOW": Severity.LOW,
+        "INFO": Severity.INFO,
+    }
+    findings = []
+    source = report.get("source", "")
+    for violation in report.get("violations", []):
+        sev_str = str(violation.get("severity", "MEDIUM")).upper()
+        sev = _sev_map.get(sev_str, Severity.MEDIUM)
+        violators = violation.get("violators", [])
+        evidence_parts = [
+            f"{v.get('type', '')}:{v.get('name', v.get('id', ''))}"
+            for v in violators[:10]
+        ]
+        findings.append(Finding.artifact(
+            rule_id=str(violation.get("rule_id", "COMPLIANCE")),
+            title=str(violation.get("title", "")),
+            description=(
+                f"Framework: {report.get('framework', '')}. "
+                f"{violation.get('violator_count', len(violators))} violator(s) found."
+            ),
+            severity=sev,
+            target=source,
+            evidence="; ".join(evidence_parts) if evidence_parts else "",
+            remediation=str(violation.get("remediation", "")),
+        ))
+    return findings

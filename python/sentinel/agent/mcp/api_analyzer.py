@@ -6,6 +6,7 @@ calling external APIs (VirusTotal, OSV) when keys are configured.
 from __future__ import annotations
 
 import logging
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -22,6 +23,7 @@ class MCPApiAnalysisResult:
     vuln_count: int = 0
     prompt_injection_issues: int = 0
     behavioral_issues: int = 0
+    yara_issues: int = 0
     vt_malicious: int = 0
     overall_risk: str = "unknown"
     findings: list[dict] = field(default_factory=list)
@@ -45,6 +47,7 @@ class MCPApiAnalyzer:
         use_osv: bool = True,
         use_behavioral_llm: Any = None,
         readiness_passing_score: float = 60.0,
+        enable_yara: bool = True,
     ) -> None:
         from sentinel.agent.mcp.behavioral_alignment import BehavioralAlignmentAnalyzer
         from sentinel.agent.mcp.prompt_defense import PromptDefenseAnalyzer
@@ -58,6 +61,14 @@ class MCPApiAnalyzer:
         self._vuln_pkg = VulnerablePackageAnalyzer(use_osv=use_osv)
         self._behavioral = BehavioralAlignmentAnalyzer(llm_client=use_behavioral_llm)
         self._readiness_threshold = readiness_passing_score
+        self._yara = None
+        if enable_yara:
+            try:
+                from sentinel.agent.yara_analyzer import YaraAnalyzer
+
+                self._yara = YaraAnalyzer()
+            except Exception as exc:
+                logger.debug("YARA analyzer unavailable for MCP API pipeline: %s", exc)
 
     def analyze(
         self,
@@ -86,6 +97,7 @@ class MCPApiAnalyzer:
             self._run_readiness(result, server_info, tools, capabilities or {})
             self._run_prompt_defense(result, tools)
             self._run_behavioral(result, tools)
+            self._run_yara(result, server_info, tools, capabilities or {})
             if project_path:
                 self._run_vuln_scan(result, project_path)
             if binary_path:
@@ -152,6 +164,47 @@ class MCPApiAnalyzer:
                     "issues": ba.issues,
                 })
 
+    def _run_yara(
+        self,
+        result: MCPApiAnalysisResult,
+        server_info: dict[str, Any],
+        tools: list[dict[str, Any]],
+        capabilities: dict[str, Any],
+    ) -> None:
+        if self._yara is None:
+            return
+        manifest_tools = [
+            {key: value for key, value in tool.items() if key != "_source_code"}
+            for tool in tools
+        ]
+        manifest_text = json.dumps(
+            {"server": server_info, "capabilities": capabilities, "tools": manifest_tools},
+            sort_keys=True,
+            default=str,
+        )
+        findings = list(self._yara.scan_text(manifest_text, source=f"{result.server_name}:manifest"))
+        for tool in tools:
+            source_code = tool.get("_source_code", "")
+            if source_code:
+                findings.extend(
+                    self._yara.scan_text(
+                        source_code,
+                        source=f"{result.server_name}:{tool.get('name', '<tool>')}",
+                    )
+                )
+        result.yara_issues = len(findings)
+        for finding in findings:
+            result.findings.append(
+                {
+                    "type": "yara",
+                    "severity": finding.severity.value.upper(),
+                    "rule_id": finding.rule_id,
+                    "target": finding.target,
+                    "message": finding.description,
+                    "evidence": finding.evidence,
+                }
+            )
+
     def _run_vuln_scan(self, result: MCPApiAnalysisResult, project_path: str) -> None:
         vr = self._vuln_pkg.scan_path(project_path)
         result.vuln_count = len(vr.vulnerabilities)
@@ -188,6 +241,8 @@ class MCPApiAnalyzer:
             return "critical"
         if result.behavioral_issues > 0 or result.prompt_injection_issues > 2:
             return "high"
+        if result.yara_issues > 0:
+            return "medium"
         if result.vuln_count > 0 or result.prompt_injection_issues > 0:
             return "medium"
         if result.readiness_score < 50:

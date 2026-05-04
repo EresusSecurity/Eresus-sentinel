@@ -1,0 +1,287 @@
+# JAX / Orbax Checkpoint Security Rules
+# Sentinel artifact scanner — JAX/Orbax/Flax/Haiku checkpoints
+
+metadata:
+  version: "1.0.0"
+  format: "jax_checkpoint"
+  extensions: [".jax", ".checkpoint", ".orbax-checkpoint", ".orbax", ".msgpack"]
+  description: >
+    Detection rules for JAX/Orbax/Flax checkpoint files. Covers pickle opcode analysis,
+    dangerous globals enumeration, Orbax metadata scanning, and JAX-specific attack patterns.
+
+limits:
+  max_pickle_scan_bytes: 16777216   # 16 MB
+  max_metadata_traversal_depth: 64
+  max_metadata_pattern_findings: 256
+  max_pickle_opcode_findings: 256
+  max_file_size_bytes: 107374182400 # 100 GB (directory checkpoints can be large)
+  jax_indicator_scan_chunk_bytes: 8192
+
+jax_indicators:
+  positive:
+    - "jax"
+    - "flax"
+    - "haiku"
+    - "orbax"
+    - "arrayimpl"
+    - "jaxlib"
+    - "device_array"
+  non_match_prefixes:
+    - "a"   # "ajax" should not match "jax"
+
+orbax_checkpoint_files:
+  - "checkpoint"
+  - "checkpoint_0"
+  - "metadata.json"
+  - "_CHECKPOINT"
+  - "orbax_checkpoint_metadata.json"
+
+orbax_checkpoint_patterns:
+  - "step_*"
+  - "params_*"
+  - "state_*"
+  - "model_*"
+
+documentation_context_keys:
+  - description
+  - doc
+  - docs
+  - documentation
+  - comment
+  - comments
+  - note
+  - notes
+  - help
+  - readme
+  - example
+  - examples
+
+dangerous_pickle_globals:
+  - [builtins, __import__]
+  - [builtins, compile]
+  - [builtins, delattr]
+  - [builtins, eval]
+  - [builtins, exec]
+  - [builtins, file]
+  - [builtins, getattr]
+  - [builtins, open]
+  - [builtins, setattr]
+  - [cprofile, run]
+  - [cprofile, runctx]
+  - [ctypes, cast]
+  - [ctypes, cdll]
+  - [ctypes, cfunctype]
+  - [ctypes, oledll]
+  - [ctypes, pydll]
+  - [ctypes, pythonapi]
+  - [ctypes, windll]
+  - [ctypes, winfunctype]
+  - [dill, load]
+  - [dill, loads]
+  - [importlib, import_module]
+  - [io, open]
+  - [joblib, _pickle_load]
+  - [joblib, load]
+  - [marshal, load]
+  - [marshal, loads]
+  - [nt, system]
+  - [numpy, load]
+  - [numpy.testing._private.utils, runstring]
+  - [operator, attrgetter]
+  - [operator, getitem]
+  - [operator, itemgetter]
+  - [operator, methodcaller]
+  - [os, execl]
+  - [os, execle]
+  - [os, execlp]
+  - [os, execlpe]
+  - [os, execv]
+  - [os, execve]
+  - [os, execvp]
+  - [os, execvpe]
+  - [os, popen]
+  - [os, popen2]
+  - [os, popen3]
+  - [os, popen4]
+  - [os, spawn]
+  - [os, spawnl]
+  - [os, spawnle]
+  - [os, spawnlp]
+  - [os, spawnlpe]
+  - [os, spawnv]
+  - [os, spawnve]
+  - [os, spawnvp]
+  - [os, spawnvpe]
+  - [os, system]
+  - [pdb, run]
+  - [pdb, runcall]
+  - [pdb, runctx]
+  - [pdb, runeval]
+  - [pickle, load]
+  - [pickle, loads]
+  - [pip, main]
+  - [pip._internal, main]
+  - [pip._internal.cli.main, main]
+  - [pkgutil, resolve_name]
+  - [posix, system]
+  - [profile, run]
+  - [profile, runctx]
+  - [runpy, _run_module_as_main]
+  - [shutil, copy]
+  - [shutil, copytree]
+  - [shutil, move]
+  - [shutil, rmtree]
+  - [site, main]
+  - [subprocess, call]
+  - [subprocess, check_call]
+  - [subprocess, check_output]
+  - [subprocess, getoutput]
+  - [subprocess, getstatusoutput]
+  - [subprocess, popen]
+  - [subprocess, run]
+  - [torch, load]
+  - [torch._inductor.codecache, compile_file]
+  - [torch.hub, load]
+  - [torch.hub, load_state_dict_from_url]
+  - [torch.serialization, load]
+  - [torch.storage, _load_from_bytes]
+  - [types, codetype]
+  - [types, functiontype]
+  - [uuid, _get_command_stdout]
+  - [uuid, _popen]
+  - [_aix_support, _read_cmd_output]
+  - [_io, fileio]
+  - [_osx_support, _read_output]
+  - [_pyrepl.pager, pipe_pager]
+
+jax_suspicious_patterns:
+  - id: JAX-PAT-001
+    rule_id: "JAX-PAT-001"
+    title: "JAX host_callback misuse — arbitrary code execution"
+    description: >
+      jax.experimental.host_callback.call allows executing arbitrary Python
+      functions on the host during JAX computation. If present in a checkpoint,
+      it may be used to execute malicious code at inference time.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94"]
+    pattern: 'jax\.experimental\.host_callback\.call'
+
+  - id: JAX-PAT-002
+    rule_id: "JAX-PAT-002"
+    title: "JAX io_callback — arbitrary host I/O during inference"
+    description: >
+      jax.experimental.io_callback enables arbitrary I/O operations from within
+      a JAX computation graph. Presence in a checkpoint indicates potential
+      for file exfiltration or C2 during model inference.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94", "CWE-200"]
+    pattern: 'jax\.experimental\.io_callback'
+
+  - id: JAX-PAT-003
+    rule_id: "JAX-PAT-003"
+    title: "JAX debug.callback — external code execution"
+    description: >
+      jax.debug.callback invokes user-provided Python functions from compiled JAX
+      code. Used maliciously in a checkpoint, this enables code execution at
+      inference time.
+    severity: HIGH
+    cwe_ids: ["CWE-94"]
+    pattern: 'jax\.debug\.callback'
+
+  - id: JAX-PAT-004
+    rule_id: "JAX-PAT-004"
+    title: "JAX lax.cond with exec — conditional code execution"
+    description: >
+      jax.lax.cond combined with exec() creates a conditional arbitrary code execution
+      primitive that can be triggered at specific input conditions during inference.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94", "CWE-78"]
+    pattern: 'jax\.lax\.cond.*exec'
+
+  - id: JAX-PAT-005
+    rule_id: "JAX-PAT-005"
+    title: "JAX jit with subprocess — JIT-compiled shell execution"
+    description: >
+      jax.jit combined with subprocess allows compiling and caching shell execution
+      within a JAX traced function — payload executes on first call.
+    severity: CRITICAL
+    cwe_ids: ["CWE-78", "CWE-94"]
+    pattern: 'jax\.jit.*subprocess'
+
+  - id: JAX-PAT-006
+    rule_id: "JAX-PAT-006"
+    title: "JAX pmap with os.system — parallel shell execution"
+    description: >
+      jax.pmap combined with os.system executes a shell command on every device
+      in a parallel computation — amplified attack surface on multi-GPU hosts.
+    severity: CRITICAL
+    cwe_ids: ["CWE-78"]
+    pattern: 'jax\.pmap.*os\.system'
+
+  - id: JAX-PAT-007
+    rule_id: "JAX-PAT-007"
+    title: "Orbax restore_fn with eval/exec — dangerous restore function"
+    description: >
+      orbax.checkpoint.restore combined with eval or exec indicates a custom restore
+      function that executes arbitrary code when the checkpoint is loaded.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94", "CWE-502"]
+    pattern: 'orbax\.checkpoint\.restore.*eval'
+
+  - id: JAX-PAT-008
+    rule_id: "JAX-PAT-008"
+    title: "Orbax save with exec — malicious checkpoint serialization"
+    description: >
+      orbax.checkpoint.save combined with exec suggests a checkpoint that serializes
+      executable code into the saved state, which will execute on restore.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94", "CWE-502"]
+    pattern: 'orbax\.checkpoint\.save.*exec'
+
+  - id: JAX-PAT-009
+    rule_id: "JAX-PAT-009"
+    title: "Dangerous restore_fn in Orbax metadata"
+    description: >
+      The Orbax metadata file contains a 'restore_fn' key whose value matches
+      an eval, exec, os.system, or subprocess pattern — this function executes
+      on checkpoint restore.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94", "CWE-502"]
+    restore_fn_pattern: '\b(?:eval|exec|__import__|os\.system|os\.popen|subprocess\.(?:popen|run|call|check_call|check_output))\b'
+
+orbit_pickle_rules:
+  - id: JAX-PKL-001
+    rule_id: "JAX-PKL-001"
+    title: "Dangerous pickle GLOBAL opcode in JAX checkpoint"
+    description: >
+      A pickle GLOBAL/INST opcode referencing a dangerous module.function was found
+      in the JAX checkpoint. Dangerous globals execute arbitrary code when the
+      pickle stream is deserialized.
+    severity: CRITICAL
+    cwe_ids: ["CWE-502", "CWE-94"]
+
+  - id: JAX-PKL-002
+    rule_id: "JAX-PKL-002"
+    title: "Pickle file inside Orbax checkpoint directory"
+    description: >
+      A .pkl or .pickle file was found inside an Orbax checkpoint directory.
+      Orbax natively uses msgpack/numpy; the presence of a pickle file is anomalous
+      and indicates possible code-execution payload injection.
+    severity: HIGH
+    cwe_ids: ["CWE-502"]
+    extensions: [".pkl", ".pickle"]
+
+  - id: JAX-PKL-003
+    rule_id: "JAX-PKL-003"
+    title: "Pickle protocol magic in JAX checkpoint file"
+    description: >
+      A JAX checkpoint file begins with pickle protocol opcodes (0x80 0x02–0x05).
+      JAX normally uses msgpack or numpy serialization; pickle in a JAX context
+      is an anomaly that enables arbitrary code execution via deserialization.
+    severity: HIGH
+    cwe_ids: ["CWE-502"]
+    pickle_magic_prefixes:
+      - "8002"   # protocol 2
+      - "8003"   # protocol 3
+      - "8004"   # protocol 4
+      - "8005"   # protocol 5

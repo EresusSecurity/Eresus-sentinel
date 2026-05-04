@@ -1,0 +1,88 @@
+# Sentinel Multi-Language SAST — TypeScript rules
+# TypeScript-specific: includes typed LLM SDK patterns, type assertion bypasses.
+version: "1"
+file_context_pattern: '(?:openai|anthropic|@google/generative-ai|langchain|llamaindex|ai-sdk|groq|mistral|cohere|together|ollama|ChatOpenAI|ChatAnthropic|GenerativeModel|LangChain|PromptTemplate|completion)'
+
+rules:
+  - id: MLSAST-001-TS
+    title: "Unvalidated HTTP body passed to LLM prompt (TS)"
+    description: "User-controlled HTTP request body used directly in an LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.73
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Validate request body with Zod/Joi schema before passing to LLM. Never trust raw user input."
+    pattern: '(?:req\.body|req\.query|request\.body|request\.query|ctx\.request\.body)\s*(?:\.\w+|\[["''\w]+\])?[^\n]{0,200}(?:messages\s*:|content\s*:|prompt\s*[=:+]|system\s*:)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-020-TS
+    title: "LLM output passed to eval() (TS)"
+    description: "LLM response passed to eval() — arbitrary code execution risk."
+    severity: CRITICAL
+    confidence: 0.80
+    owasp_llm: LLM02
+    tags: [code-injection, llm-output]
+    remediation: "Never eval() LLM output. Use JSON.parse() with schema validation (Zod)."
+    pattern: '(?:eval|new\s+Function)\s*\(\s*(?:llm[A-Z]\w*|ai[A-Z]\w*|chat[A-Z]\w*|completion|modelOutput|generatedCode|gptOutput|claudeOutput|response\.text\(\)|\.content)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-070
+    title: "Type assertion bypasses LLM output validation (TS)"
+    description: "LLM output cast with 'as any' or 'as unknown' bypasses TypeScript type safety."
+    severity: MEDIUM
+    confidence: 0.60
+    owasp_llm: LLM02
+    tags: [type-safety, llm-output]
+    remediation: "Use runtime schema validation (Zod.parse) instead of TypeScript type assertions on LLM output."
+    pattern: '(?:completion|llmOutput|aiResponse|modelOutput|generatedText)[^\n]{0,80}as\s+(?:any|unknown)\b'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-071
+    title: "Untyped LangChain chain invocation with user input (TS)"
+    description: "LangChain chain invoked with raw user input without schema validation."
+    severity: HIGH
+    confidence: 0.68
+    owasp_llm: LLM01
+    tags: [prompt-injection, langchain]
+    remediation: "Validate user inputs with Zod before passing to LangChain chains."
+    pattern: '(?:chain|pipe|invoke|call)\s*\(\s*(?:\{[^\n]{0,100}(?:req\.body|req\.query|request\.body)|(?:req\.body|req\.query|request\.body)[^\n]{0,100}\})'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-072
+    title: "Hardcoded OpenAI client with inline API key (TS)"
+    description: "OpenAI/Anthropic client instantiated with a hardcoded API key string literal."
+    severity: CRITICAL
+    confidence: 0.90
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use environment variables: new OpenAI({ apiKey: process.env.OPENAI_API_KEY })"
+    pattern: 'new\s+(?:OpenAI|Anthropic|GoogleGenerativeAI|Groq|MistralClient)\s*\(\s*\{[^\n]{0,200}apiKey\s*:\s*["\x27][A-Za-z0-9_\-]{20,80}["\x27]'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-073
+    title: "Dangerous permissions in Vercel AI tool definition (TS)"
+    description: "AI SDK tool definition grants filesystem write or shell execution capability."
+    severity: MEDIUM
+    confidence: 0.63
+    owasp_llm: LLM09
+    tags: [excessive-agency, ai-sdk]
+    remediation: "Restrict tool permissions. Require human-in-the-loop confirmation for destructive operations."
+    pattern: '(?:tool\s*\(\s*\{|defineTool\s*\(\s*\{)[^\n]{0,300}(?:writeFile|unlink|exec|spawn|shell)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

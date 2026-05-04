@@ -86,7 +86,7 @@ class AuditRecord:
 
     def to_json(self) -> str:
         """Serialize to single-line JSON."""
-        return json.dumps(self.to_dict(), default=str, ensure_ascii=False)
+        return json.dumps(self.to_dict(), default=str, ensure_ascii=True)
 
 
 def _redact_sensitive(value: Any, key: str = "") -> Any:

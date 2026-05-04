@@ -109,6 +109,14 @@ class PickleScanner:
             if (pf.rule_id, pf.target) not in seen:
                 findings.append(pf)
                 seen.add((pf.rule_id, pf.target))
+        # Suppress Rust STRUCTURAL-TAMPER/PICKLE-INCONCLUSIVE noise when the Python
+        # deep-analysis finds NO dangerous imports. Binary tensor storage bytes in
+        # legitimate PyTorch .bin files confuse the Rust opcode parser, producing
+        # mass false positives. A real attack requires a GLOBAL+REDUCE chain which
+        # always surfaces as dangerous_imports.
+        if rust_findings and not analysis.dangerous_imports:
+            _suppress = frozenset({"STRUCTURAL-TAMPER", "PICKLE-INCONCLUSIVE", "PICKLE-UNK"})
+            rust_findings = [f for f in rust_findings if f.rule_id not in _suppress]
         return self._merge_rust_findings(rust_findings, findings)
 
     def scan_file(self, file_path: str | Path) -> list[Finding]:

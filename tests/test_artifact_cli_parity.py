@@ -63,6 +63,32 @@ def test_artifact_scan_dry_run_honors_max_size(tmp_path):
     assert payload["skipped"][0]["reason"] == "max-size exceeded"
 
 
+def test_artifact_scan_strict_reports_unsupported_formats(tmp_path):
+    artifact = tmp_path / "unknown.weights"
+    artifact.write_bytes(b"opaque")
+
+    result = _run_cli("artifact", "scan", str(tmp_path), "--strict", "-f", "json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert any(finding["rule_id"] == "ARTIFACT-091" for finding in payload["findings"])
+
+
+def test_artifact_scan_plaintext_and_summary_exports(tmp_path):
+    artifact = tmp_path / "unknown.weights"
+    artifact.write_bytes(b"opaque")
+
+    plaintext = _run_cli("artifact", "scan", str(tmp_path), "--strict", "-f", "plaintext")
+    summary = _run_cli("artifact", "scan", str(tmp_path), "--strict", "-f", "summary")
+
+    assert plaintext.returncode == 1
+    assert "Eresus Sentinel Scan Report" in plaintext.stdout
+    assert "ARTIFACT-091" in plaintext.stdout
+    assert summary.returncode == 1
+    assert "Findings: 1" in summary.stdout
+    assert "ARTIFACT-091" in summary.stdout
+
+
 def test_artifact_metadata_outputs_safe_json(tmp_path):
     artifact = tmp_path / "safe.pkl"
     artifact.write_bytes(b"\x80\x04N.")

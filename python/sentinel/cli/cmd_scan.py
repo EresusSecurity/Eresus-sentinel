@@ -42,12 +42,30 @@ def _fails_threshold(findings, fail_on: str | None) -> bool:
     return any(order.get(_sev(f)[0], 0) >= threshold for f in findings)
 
 
-_ARTIFACT_OUTPUT_FORMATS = ["table", "json", "sarif", "csv", "markdown", "html", "junit"]
+_ARTIFACT_OUTPUT_FORMATS = [
+    "table",
+    "json",
+    "sarif",
+    "csv",
+    "markdown",
+    "html",
+    "junit",
+    "plaintext",
+    "summary",
+    "otlp",
+    "splunk",
+    "cyclonedx",
+    "spdx",
+    "webhook",
+    "modelcard",
+]
 
 
 def _add_artifact_output_args(parser: argparse.ArgumentParser, *, severity: bool = True) -> None:
     parser.add_argument("-f", "--format", choices=_ARTIFACT_OUTPUT_FORMATS, default=argparse.SUPPRESS)
     parser.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
+    parser.add_argument("--webhook-url", default=None, help="HTTP endpoint for -f webhook")
+    parser.add_argument("--webhook-token", default=None, help="Bearer token for -f webhook")
     if severity:
         parser.add_argument(
             "--min-severity",
@@ -159,6 +177,7 @@ def _artifact_options(args: argparse.Namespace):
     return ArtifactScanOptions(
         include=_scanner_tokens(getattr(args, "scanners", None)),
         exclude=_scanner_tokens(getattr(args, "exclude_scanner", None)),
+        strict=bool(getattr(args, "strict", False)),
         cache=True,
         fail_closed=True,
     )
@@ -260,6 +279,10 @@ def _scan_artifact_planned(planned: list[dict], skipped: list[dict], args: argpa
                 options=_artifact_options(args),
             )
         )
+    if getattr(args, "strict", False):
+        for item in skipped:
+            if item.get("reason") == "unsupported format":
+                findings.extend(scan_file(item["path"], options=_artifact_options(args)))
     if max_size:
         findings.extend(_max_size_finding(item["path"], max_size) for item in skipped if item.get("reason") == "max-size exceeded")
     return findings
@@ -296,6 +319,7 @@ def _cmd_artifact_scan(args: argparse.Namespace) -> int:
                 "metadata": {
                     "include": list(_scanner_tokens(getattr(args, "scanners", None))),
                     "exclude": list(_scanner_tokens(getattr(args, "exclude_scanner", None))),
+                    "strict": bool(getattr(args, "strict", False)),
                     "max_size": getattr(args, "max_size", None),
                     "sbom": getattr(args, "sbom", None),
                 },
@@ -395,8 +419,11 @@ def _artifact_scan_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scanners", help="comma-separated scanner allowlist (id, class, or extension)")
     parser.add_argument("--exclude-scanner", help="comma-separated scanner denylist (id, class, or extension)")
     parser.add_argument("--dry-run", action="store_true", help="preview files and scanners without scanning")
+    parser.add_argument("--strict", action="store_true", help="emit findings for unsupported artifact formats and scanner failures")
     parser.add_argument("--stream", action="store_true", help="download remote URL to a temporary file before scanning")
     parser.add_argument("--max-size", help="skip artifacts larger than this size, e.g. 10GB")
+    parser.add_argument("--trust-loaders", action="store_true", dest="trust_loaders",
+                        help="opt-in to deserialization for formats that require it (pickle, torch, joblib)")
     parser.add_argument("--sbom", help="write a CycloneDX SBOM JSON file")
     parser.add_argument("--show-skipped", action="store_true", default=argparse.SUPPRESS)
     parser.add_argument(
@@ -757,7 +784,12 @@ def cmd_firewall(args):
         text = text[:MAX_FIREWALL_INPUT]
 
     t0 = time.perf_counter()
-    findings = dispatch_firewall_output(text) if direction == "output" else dispatch_firewall_input(text)
+    if direction == "output":
+        findings = dispatch_firewall_output(text)
+    elif direction == "both":
+        findings = list(dispatch_firewall_input(text)) + list(dispatch_firewall_output(text))
+    else:
+        findings = dispatch_firewall_input(text)
     ms = (time.perf_counter() - t0) * 1000
 
     findings = _apply_severity_filter(findings, args)
@@ -916,6 +948,7 @@ def cmd_hf_guard(args):
         if fmt == "table":
             console.print("\n  Running deep scan...")
         findings = guard.scan(args.repo)
+        findings = _apply_severity_filter(findings, args)
         _print_findings(findings, args=args)
         _export(args, findings)
         return 1 if findings else 0

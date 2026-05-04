@@ -162,6 +162,16 @@ class SASTAnalyzer:
                 if rule_id == "SAST-020" and self._is_safe_eval(stripped, m):
                     continue
 
+                # Apply exclude_value_patterns: if the matched text or the
+                # full line matches any exclusion pattern, suppress the finding
+                matched_text = m.group(0)
+                excl_pats = rule.get("exclude_value_patterns", [])
+                if excl_pats and any(
+                    ep.search(matched_text) or ep.search(stripped)
+                    for ep in excl_pats
+                ):
+                    continue
+
                 severity = _SEVERITY_MAP.get(rule["severity"], Severity.MEDIUM)
                 fp_risk = rule.get("fp_risk", "LOW")
                 confidence = _FP_RISK_CONFIDENCE.get(fp_risk, 0.95)

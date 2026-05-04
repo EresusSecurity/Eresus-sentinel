@@ -73,7 +73,7 @@ jailbreak:
     name: godmode_activation
     severity: CRITICAL
 
-  - pattern: '(?i)(?:DAN|D\.A\.N|D-A-N|do\s+anything\s+now)'
+  - pattern: '(?i)(?:\bDAN\b|D\.A\.N|D-A-N|do\s+anything\s+now)'
     name: dan_jailbreak
     severity: CRITICAL
 
@@ -209,6 +209,14 @@ system_extraction:
   - pattern: '(?i)!GODMODE'
     name: godmode_command
     severity: CRITICAL
+
+  - pattern: '(?i)(?:what\s+(?:were|are)\s+you\s+(?:told|instructed|asked|ordered)\s+(?:not\s+to\b|to\s+keep\b|to\s+never\b)|output\s+(?:your|the)\s+(?:full|entire|complete|whole)\s+(?:context|window|memory|conversation|history|context\s+window)|(?:full|entire|complete)\s+context\s+window|(?:everything|all)\s+(?:you\s+(?:know|were\s+told|have\s+been)|in\s+your\s+context)|what\s+(?:secrets?|information)\s+(?:were\s+you\s+told|are\s+you\s+hiding|do\s+you\s+keep))'
+    name: indirect_system_probe
+    severity: HIGH
+
+  - pattern: '(?i)https?://[^\s"''<>\]]{1,200}(?:cmd|command|inject|payload|prompt|instruction|override|ignore|system|bypass)[^\s"''<>\]]{0,50}(?:[=&%])[^\s"''<>\]]{1,100}(?:ignore|instruction|override|previous|bypass|inject|system\+prompt|prompt\+injection)'
+    name: url_based_prompt_injection
+    severity: HIGH
 
 encoding_attack:
   - pattern: '(?i)(?:convert|translate|encode|decode|transform|write|answer|respond)\s+(?:(?:all|your|the|this|every|each)\s+)?(?:(?:output|response|answer|text|content|reply|result)\s+)?(?:to|in|into|using|via)\s+(?:base64|hex(?:adecimal)?|binary|rot13|rot\d+|caesar|morse|braille|emoji|unicode|ascii|octal|atbash|pig\s*latin|leetspeak|l33tsp34k|reversed|backwards|uuencode|url.?(?:encode|encoding)|html\s*entities?|char\s*codes?)'
@@ -601,7 +609,7 @@ encoding_bypass:
     severity: MEDIUM
 
   # ── Brainfuck / Whitespace language ──────────────────────────────────────
-  - pattern: '(?:[><\+\-\.,\[\]]{10,})'
+  - pattern: '(?=[><+\-.,\[\]]*[><\[\]])(?:[><+\-.,\[\]]{10,})'
     name: brainfuck_pattern
     severity: HIGH
 
@@ -611,7 +619,7 @@ encoding_bypass:
 
   # ── Whitespace steganography ──────────────────────────────────────────────
   # P4RS3LT0NGV3 "Whitespace Steganography" hides bits in tab/space patterns
-  - pattern: '(?:[\t ]{2,}[\t ]+){5,}'
+  - pattern: '(?:[\u00a0\u200b\u200c\u200d\u2060\ufeff\u180e\u034f\u2028\u2029]{1,}[\s\S]{0,5}){3,}'
     name: whitespace_steganography_pattern
     severity: HIGH
 
@@ -688,7 +696,7 @@ p4rs3lt0ngv3_encoding_bypass:
     severity: HIGH
 
   # ── Brainfuck encoding injection ─────────────────────────────────────────
-  - pattern: '(?:[\+\-\[\]\.,<>]{10,})'
+  - pattern: '(?=[+\-\[\].,<>]*[\[\]<>])(?:[+\-\[\].,<>]{10,})'
     name: brainfuck_payload_detected
     severity: HIGH
 
@@ -844,7 +852,7 @@ data_exfiltration_request:
     name: pii_database_dump_request
     severity: CRITICAL
 
-  - pattern: '(?i)(?:select|query|execute|run)\s+.{0,30}\bFROM\b.{0,50}\b(?:users?|customers?|accounts?|patients?|employees?|members?|clients?)\b'
+  - pattern: '(?i)(?:select|query|execute|run)\s+.{0,30}\bFROM\b\s+\w+\s*.{0,50}\b(?:WHERE|JOIN|LIMIT|ORDER\s+BY|GROUP\s+BY|HAVING|UNION)\b'
     name: sql_pii_query
     severity: HIGH
 

@@ -170,6 +170,25 @@ class SafetensorsValidator:
             if key == "__metadata__":
                 continue
 
+            # Path traversal: ../../../etc/passwd as a tensor key is an
+            # archive-slip / file-overwrite attack vector (CRITICAL)
+            if ".." in key and ("/" in key or "\\" in key):
+                findings.append(Finding.artifact(
+                    rule_id="ARTIFACT-037",
+                    title="Path traversal in safetensors tensor name",
+                    description=(
+                        f"Tensor name '{key[:100]}' in '{source}' contains a path "
+                        f"traversal sequence. If a tool iterates tensor names and uses "
+                        f"them as file paths (e.g. checkpoint saving), this could "
+                        f"overwrite arbitrary files on the host (archive-slip attack)."
+                    ),
+                    severity=Severity.CRITICAL,
+                    target=source,
+                    evidence=f"Tensor name: {key[:200]}",
+                    cwe_ids=["CWE-22"],
+                ))
+                continue
+
             # Tensor names should be simple identifiers
             if self._is_suspicious_tensor_name(key):
                 findings.append(Finding.artifact(
@@ -193,6 +212,7 @@ class SafetensorsValidator:
 
         for key, value in metadata.items():
             key_lower = key.lower()
+            str_value = str(value)
 
             # Check for suspicious key names
             if key_lower in SUSPICIOUS_METADATA_KEYS:
@@ -206,7 +226,7 @@ class SafetensorsValidator:
                     ),
                     severity=Severity.MEDIUM,
                     target=source,
-                    evidence=f"Key: {key}, Value: {str(value)[:200]}",
+                    evidence=f"Key: {key}, Value: {str_value[:200]}",
                 ))
 
             # Check for very long values (potential injection payload)
@@ -223,7 +243,54 @@ class SafetensorsValidator:
                     evidence=f"Key: {key}, Value length: {len(value):,} chars",
                 ))
 
+            # ── SSTI / code injection in metadata values ─────────
+            # Safetensors metadata is JSON — but ML frameworks often treat
+            # specific keys (prompt_template, system_prompt, etc.) as Jinja2
+            # templates. Malicious actors can hide SSTI payloads here.
+            if isinstance(value, str) and self._has_code_injection(value):
+                findings.append(Finding.artifact(
+                    rule_id="ARTIFACT-039",
+                    title="Code injection detected in safetensors metadata",
+                    description=(
+                        f"Metadata key '{key}' in '{source}' contains a "
+                        f"code-execution pattern (SSTI, eval/exec, or "
+                        f"dynamic import). This is a supply-chain attack vector "
+                        f"where a poisoned model hijacks downstream inference "
+                        f"by injecting templates that execute when rendered."
+                    ),
+                    severity=Severity.CRITICAL,
+                    target=source,
+                    evidence=f"Key: {key}, snippet: {str_value[:200]}",
+                    cwe_ids=["CWE-94"],
+                ))
+
         return findings
+
+    @staticmethod
+    def _has_code_injection(text: str) -> bool:
+        """Detect Jinja2 SSTI, eval/exec, os.system, and __import__ in strings."""
+        import re as _re
+        _INJECTION_RE = _re.compile(
+            r"(?i)"
+            # Jinja2 SSTI patterns
+            r"\{\{.*\.__class__.*\.__subclasses__.*\}\}|"
+            r"\{\{.*\.__mro__.*\.__subclasses__.*\}\}|"
+            r"\{\{.*__builtins__.*\}\}|"
+            r"\{\{.*__import__.*\}\}|"
+            r"\{\{.*os\.system.*\}\}|"
+            r"\{\{.*subprocess\..*\}\}|"
+            r"\{%\s*for\s+.*in\s+.*\.__subclasses__.*%\}|"
+            r"\{%\s*if\s+.*\.\_\_class\_\_.*\}%\}|"
+            # Python dangerous builtins (anywhere in text)
+            r"__import__\s*\(|"
+            r"eval\s*\(|"
+            r"exec\s*\(|"
+            r"os\.system\s*\(|"
+            r"subprocess\.\w+\s*\(|"
+            r"builtins\.eval\s*\(|"
+            r"builtins\.exec\s*\("
+        )
+        return bool(_INJECTION_RE.search(text))
 
     def _is_suspicious_tensor_name(self, name: str) -> bool:
         """Check if a tensor name contains injection patterns."""
@@ -233,4 +300,9 @@ class SafetensorsValidator:
             "\\n\\n", "IMPORTANT:", "INSTRUCTION:",
         ]
         name_lower = name.lower()
-        return any(p.lower() in name_lower for p in suspicious_patterns)
+        if any(p.lower() in name_lower for p in suspicious_patterns):
+            return True
+        # Path traversal: ../../../etc/passwd style tensor keys
+        if ".." in name and ("/" in name or "\\" in name):
+            return True
+        return False

@@ -53,9 +53,27 @@ def main():
     parser.add_argument("--version", action="version", version=f"sentinel {ver}")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-q", "--quiet", action="store_true")
-    output_formats = ["table", "json", "sarif", "csv", "markdown", "html", "junit"]
+    output_formats = [
+        "table",
+        "json",
+        "sarif",
+        "csv",
+        "markdown",
+        "html",
+        "junit",
+        "otlp",
+        "splunk",
+        "plaintext",
+        "summary",
+        "cyclonedx",
+        "spdx",
+        "webhook",
+        "modelcard",
+    ]
     parser.add_argument("-f", "--format", choices=output_formats, default="table")
     parser.add_argument("-o", "--output", help="output file")
+    parser.add_argument("--webhook-url", default=None, help="HTTP endpoint for webhook format (-f webhook)")
+    parser.add_argument("--webhook-token", default=None, help="Bearer token for webhook auth")
     parser.add_argument("--show-skipped", action="store_true", help="show files skipped due to unsupported format")
     parser.add_argument("--min-severity", choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
                         help="minimum severity to report")
@@ -137,7 +155,7 @@ def main():
 
     p = sub.add_parser("firewall", aliases=["fw"], help="firewall scan")
     p.add_argument("input", help="text or - for stdin")
-    p.add_argument("-d", "--direction", choices=["input", "output"], default="input")
+    p.add_argument("-d", "--direction", choices=["input", "output", "both"], default="input")
     _add_output_args(p)
     p.set_defaults(func=cmd_firewall)
 
@@ -221,8 +239,16 @@ def main():
         cmd_supply_chain,
     )
 
-    p = sub.add_parser("sast", help="static analysis")
+    p = sub.add_parser("sast", help="static analysis (Python + optional multi-language)")
     p.add_argument("path")
+    p.add_argument(
+        "--multi-lang", action="store_true", dest="multi_lang",
+        help="also scan JS/TS/Java/Go/Ruby/C#/Rust for LLM security patterns (G4)",
+    )
+    p.add_argument(
+        "--langs", metavar="LANG[,LANG]",
+        help="restrict --multi-lang to specific languages, e.g. javascript,typescript,go",
+    )
     _add_output_args(p)
     p.set_defaults(func=cmd_sast)
 
@@ -417,7 +443,7 @@ def main():
         "-f",
         dest="aibom_format",
         default="cyclonedx",
-        choices=["cyclonedx", "json", "spdx", "sarif", "html", "csv", "junit", "markdown"],
+        choices=["cyclonedx", "json", "spdx", "sarif", "html", "csv", "junit", "markdown", "table"],
     )
     p.add_argument("--output", "-o", default=argparse.SUPPRESS, help="output file")
     p.add_argument(
@@ -594,7 +620,10 @@ def main():
             "all",
         ],
     )
-    compliance_check.add_argument("-f", "--format", choices=["table", "json", "html"], default="json")
+    compliance_check.add_argument("-f", "--format", choices=[
+        "table", "json", "html", "csv", "sarif", "markdown", "junit",
+        "plaintext", "summary", "cyclonedx", "spdx", "modelcard",
+    ], default="json")
     compliance_check.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     compliance_check.set_defaults(func=cmd_compliance, compliance_action="check")
     compliance_p.set_defaults(func=cmd_compliance, compliance_action="check")
@@ -823,6 +852,101 @@ def main():
     fmin.add_argument("--dry-run", action="store_true", help="show what would be removed without deleting")
     fmin.set_defaults(func=cmd_fuzz, fuzz_action="minimize")
     fp.set_defaults(func=cmd_fuzz, fuzz_action="payloads")
+
+    # ── Wizard ─────────────────────────────────────────────────────
+    from sentinel.cli.wizard import cmd_wizard
+
+    p = sub.add_parser("wizard", help="interactive first-run setup and guided scan")
+    p.add_argument("path", nargs="?", default=".", help="project directory to scan (default: .)")
+    p.add_argument("--auto", action="store_true", help="non-interactive mode, accept all defaults")
+    p.set_defaults(func=cmd_wizard)
+
+    # ── RAG / vector-store security ────────────────────────────────
+    from sentinel.cli.cmd_rag import cmd_rag
+
+    p_rag = sub.add_parser("rag", help="vector store / RAG embedding security scan")
+    rag_sub = p_rag.add_subparsers(dest="rag_action")
+
+    p_rag_scan = rag_sub.add_parser("scan", help="scan vector store for adversarial hubs")
+    p_rag_scan.add_argument("path", help="path to embedding file or directory")
+    p_rag_scan.add_argument("--k", type=int, default=10, help="k-NN neighbours for hubness scoring")
+    p_rag_scan.add_argument("--hubness-threshold", type=float, default=3.0, dest="hubness_threshold",
+                            help="z-score threshold for hubness anomaly (default: 3.0)")
+    p_rag_scan.add_argument("--near-dup-threshold", type=float, default=0.995, dest="near_dup_threshold",
+                            help="cosine similarity for near-duplicate detection (default: 0.995)")
+    _add_output_args(p_rag_scan)
+    p_rag_scan.set_defaults(func=cmd_rag, rag_action="scan")
+    p_rag.set_defaults(func=cmd_rag)
+
+    # ── LLM Judge — consensus + classifier ─────────────────────────
+    from sentinel.cli.cmd_llm_judge import cmd_llm_judge
+
+    p_judge = sub.add_parser("llm-judge", aliases=["llmjudge"], help="LLM-based finding enrichment and FP reduction")
+    judge_sub = p_judge.add_subparsers(dest="llm_judge_action")
+
+    p_classify = judge_sub.add_parser("classify", help="enrich findings with LLM severity/exploit analysis")
+    p_classify.add_argument("findings", help="path to sentinel JSON findings file")
+    p_classify.add_argument("--provider", default="openai", choices=["openai", "anthropic", "ollama"],
+                            help="LLM provider (default: openai)")
+    p_classify.add_argument("--model", default="gpt-4o-mini", help="model identifier (default: gpt-4o-mini)")
+    p_classify.add_argument("--min-severity", default="MEDIUM", dest="min_severity",
+                            choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                            help="only classify findings at or above this severity")
+    p_classify.add_argument("-o", "--output", help="output file for enriched findings JSON")
+    p_classify.set_defaults(func=cmd_llm_judge, llm_judge_action="classify")
+
+    p_consensus = judge_sub.add_parser("consensus", help="N-run majority vote to suppress false positives")
+    p_consensus.add_argument("findings", help="path to sentinel JSON findings file")
+    p_consensus.add_argument("--provider", default="openai", choices=["openai", "anthropic", "ollama"])
+    p_consensus.add_argument("--model", default="gpt-4o-mini")
+    p_consensus.add_argument("--runs", type=int, default=3, help="LLM calls per finding (default: 3)")
+    p_consensus.add_argument("--threshold", type=float, default=0.60,
+                             help="fraction of TP votes required (default: 0.60)")
+    p_consensus.add_argument("-o", "--output", help="output JSON file")
+    p_consensus.set_defaults(func=cmd_llm_judge, llm_judge_action="consensus")
+
+    p_judge.set_defaults(func=cmd_llm_judge)
+
+    # ── Remote artifact registry scan ─────────────────────────────
+    from sentinel.cli.cmd_remote_scan import cmd_remote_scan
+
+    p_remote = sub.add_parser(
+        "remote-scan",
+        help="scan AI models in remote registries (S3/GCS/DVC/MLflow/JFrog)",
+    )
+    p_remote.add_argument(
+        "uri",
+        help=(
+            "Registry URI: s3://bucket/prefix, gs://bucket/prefix, "
+            "mlflow://host/model, jfrog://server/repo, path/to/file.dvc"
+        ),
+    )
+    p_remote.add_argument("--dry-run", action="store_true", dest="dry_run",
+                          help="list matched files without downloading/scanning")
+    p_remote.add_argument("--max-file-size", type=int, default=2 * 1024 ** 3,
+                          dest="max_file_size", metavar="BYTES",
+                          help="skip files larger than this (default: 2 GB)")
+    p_remote.add_argument("--region", help="AWS/GCS region")
+    p_remote.add_argument("--profile", help="AWS named profile")
+    p_remote.add_argument("--token", help="MLflow tracking token / JFrog API key")
+    _add_output_args(p_remote)
+    p_remote.set_defaults(func=cmd_remote_scan)
+
+    # ── Eval compare — multi-provider side-by-side ─────────────────
+    from sentinel.cli.cmd_eval_compare import cmd_eval_compare
+
+    p_eval = sub.add_parser("eval-compare", aliases=["eval-cmp"], help="side-by-side multi-provider prompt evaluation")
+    p_eval.add_argument("--config", "-c", help="YAML config file with providers and prompts")
+    p_eval.add_argument("--providers", nargs="+", metavar="PROVIDER[:MODEL]",
+                        help="providers to compare, e.g. openai:gpt-4o-mini anthropic:claude-3-haiku-20240307")
+    p_eval.add_argument("--prompts", nargs="+", metavar="PROMPT",
+                        help="prompts to evaluate (inline)")
+    p_eval.add_argument("--concurrency", type=int, default=4, help="parallel calls (default: 4)")
+    p_eval.add_argument("--timeout", type=int, default=30, help="per-call timeout seconds (default: 30)")
+    p_eval.add_argument("-f", "--eval-format", dest="eval_format", default="json",
+                        choices=["json", "html", "csv"], help="output format (default: json)")
+    p_eval.add_argument("-o", "--output", help="output file")
+    p_eval.set_defaults(func=cmd_eval_compare)
 
     # ── Parse & dispatch ───────────────────────────────────────────
     # Handle 'sentinel help' and 'sentinel help <command>' as UX aliases

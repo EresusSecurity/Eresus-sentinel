@@ -14,7 +14,7 @@ from typing import Optional
 
 _log = logging.getLogger(__name__)
 
-from sentinel.finding import Finding
+from sentinel.finding import Finding, Severity
 
 
 class ScanAction(str, Enum):
@@ -86,19 +86,100 @@ class InputScanner(ABC):
         """
         pass
 
+    @staticmethod
+    def _check_encoding_bypass(text: str) -> ScanResult | None:
+        """Detect encoding bypass attacks in successfully-decoded text.
+
+        UTF-16-LE/BE of ASCII text decodes as valid UTF-8 with null bytes
+        interspersed. Latin-1 of ASCII is identical to UTF-8. Both are
+        classic encoding-bypass techniques that defeat keyword scanning.
+        """
+        if not text:
+            return None
+        null_count = text.count("\x00")
+        if null_count > 0 and null_count / len(text) > 0.10:
+            _log.warning("Encoding bypass detected: %.0f%% null bytes (likely UTF-16)",
+                         100 * null_count / len(text))
+            finding = Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-ENC-003",
+                title="UTF-16 encoding bypass attempt detected",
+                description=(
+                    f"Input decoded as UTF-8 but contains {null_count} null bytes "
+                    f"({100*null_count/len(text):.0f}% of content). This is a classic "
+                    "UTF-16-LE/BE re-encoding attack to bypass keyword scanners."
+                ),
+                severity=Severity.HIGH,
+                confidence=0.95,
+                target="<prompt>",
+                evidence=f"null_byte_ratio={null_count/len(text):.2f}",
+                cwe_ids=["CWE-116"],
+                remediation="Input must be plain UTF-8 text without null bytes.",
+            )
+            stripped = text.replace("\x00", "")
+            return ScanResult(sanitized=stripped, action=ScanAction.WARN, risk_score=0.7, findings=[finding])
+        return None
+
+    def _rescan_stripped(self, stripped: str, enc_finding: "Finding") -> "ScanResult":
+        """Rescan null-stripped content and escalate to BLOCK if injection found."""
+        try:
+            inner = self.scan(stripped)
+        except Exception:
+            return ScanResult(sanitized=stripped, action=ScanAction.WARN, risk_score=0.7, findings=[enc_finding])
+        merged_findings = [enc_finding] + list(inner.findings)
+        if inner.action == ScanAction.BLOCK or inner.risk_score >= 0.7:
+            return ScanResult(
+                sanitized=inner.sanitized,
+                action=ScanAction.BLOCK,
+                risk_score=max(0.9, inner.risk_score),
+                findings=merged_findings,
+            )
+        return ScanResult(
+            sanitized=inner.sanitized,
+            action=ScanAction.WARN,
+            risk_score=max(0.7, inner.risk_score),
+            findings=merged_findings,
+        )
+
     def safe_scan(self, prompt: str | bytes) -> ScanResult:
         """Wrapper that handles binary/non-UTF-8 data gracefully."""
         if isinstance(prompt, bytes):
             try:
                 prompt = prompt.decode("utf-8")
             except UnicodeDecodeError:
-                _log.warning("%s: binary/non-UTF-8 input, skipping", type(self).__name__)
-                return ScanResult(sanitized="", action=ScanAction.PASS, risk_score=0.0)
+                _log.warning("%s: binary/non-UTF-8 input blocked", type(self).__name__)
+                finding = Finding.firewall_input(
+                    rule_id="FIREWALL-INPUT-ENC-001",
+                    title="Binary/non-UTF-8 input rejected",
+                    description="Input could not be decoded as UTF-8. Non-text encodings are blocked to prevent encoding-bypass attacks.",
+                    severity=Severity.HIGH,
+                    confidence=1.0,
+                    target="<prompt>",
+                    evidence="Input bytes are not valid UTF-8",
+                    cwe_ids=["CWE-116"],
+                    remediation="Ensure all input is UTF-8 encoded.",
+                )
+                return ScanResult(sanitized="", action=ScanAction.BLOCK, risk_score=0.9, findings=[finding])
+        enc_finding_result = self._check_encoding_bypass(prompt)
+        if enc_finding_result is not None:
+            enc_finding = enc_finding_result.findings[0]
+            stripped = enc_finding_result.sanitized
+            return self._rescan_stripped(stripped, enc_finding)
         try:
             return self.scan(prompt)
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            _log.warning("%s: encoding error during scan, skipping", type(self).__name__)
-            return ScanResult(sanitized=prompt, action=ScanAction.PASS, risk_score=0.0)
+        except (UnicodeDecodeError, UnicodeEncodeError) as exc:
+            _log.warning("%s: encoding error during scan — treating as suspicious: %s", type(self).__name__, exc)
+            finding = Finding.firewall_input(
+                rule_id="FIREWALL-INPUT-ENC-002",
+                title="Encoding error during scan",
+                description="A Unicode encoding error occurred while scanning. Input flagged as suspicious.",
+                severity=Severity.MEDIUM,
+                confidence=0.7,
+                target="<prompt>",
+                evidence=str(exc)[:200],
+                cwe_ids=["CWE-116"],
+                remediation="Review input for unusual Unicode sequences.",
+            )
+            return ScanResult(sanitized=prompt, action=ScanAction.WARN, risk_score=0.6, findings=[finding])
 
 
 class OutputScanner(ABC):
@@ -136,13 +217,35 @@ class OutputScanner(ABC):
             try:
                 output = output.decode("utf-8")
             except UnicodeDecodeError:
-                _log.warning("%s: binary/non-UTF-8 output, skipping", type(self).__name__)
-                return ScanResult(sanitized="", action=ScanAction.PASS, risk_score=0.0)
+                _log.warning("%s: binary/non-UTF-8 output blocked", type(self).__name__)
+                finding = Finding.firewall_input(
+                    rule_id="FIREWALL-OUTPUT-ENC-001",
+                    title="Binary/non-UTF-8 output rejected",
+                    description="Output could not be decoded as UTF-8. Non-text encodings are blocked.",
+                    severity=Severity.HIGH,
+                    confidence=1.0,
+                    target="<output>",
+                    evidence="Output bytes are not valid UTF-8",
+                    cwe_ids=["CWE-116"],
+                    remediation="Ensure all output is UTF-8 encoded.",
+                )
+                return ScanResult(sanitized="", action=ScanAction.BLOCK, risk_score=0.9, findings=[finding])
         try:
             return self.scan(prompt, output)
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            _log.warning("%s: encoding error during scan, skipping", type(self).__name__)
-            return ScanResult(sanitized=output, action=ScanAction.PASS, risk_score=0.0)
+        except (UnicodeDecodeError, UnicodeEncodeError) as exc:
+            _log.warning("%s: encoding error during output scan — treating as suspicious: %s", type(self).__name__, exc)
+            finding = Finding.firewall_input(
+                rule_id="FIREWALL-OUTPUT-ENC-002",
+                title="Encoding error during output scan",
+                description="A Unicode encoding error occurred while scanning output. Flagged as suspicious.",
+                severity=Severity.MEDIUM,
+                confidence=0.7,
+                target="<output>",
+                evidence=str(exc)[:200],
+                cwe_ids=["CWE-116"],
+                remediation="Review output for unusual Unicode sequences.",
+            )
+            return ScanResult(sanitized=output, action=ScanAction.WARN, risk_score=0.6, findings=[finding])
 
 
 class FirewallPipeline:

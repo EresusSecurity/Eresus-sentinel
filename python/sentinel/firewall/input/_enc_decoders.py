@@ -341,7 +341,7 @@ def _suspicious_keyword_delta(original: str, decoded: str) -> int:
 
 def try_rot47(text: str) -> list[tuple[str, str]]:
     decoded = apply_rot47(text)
-    if decoded != text and is_meaningful(decoded):
+    if decoded != text and is_meaningful(decoded) and _suspicious_keyword_delta(text, decoded) >= 2:
         return [("rot47", decoded)]
     return []
 
@@ -382,12 +382,16 @@ def strip_zero_width(text: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 MAX_DECODE_LAYERS = 3
+_MAX_DECODE_BRANCHES = 10
+_MAX_DECODE_RESULTS = 50
 
 
 def multi_layer_decode(text: str) -> list[tuple[str, str]]:
     """Peel up to MAX_DECODE_LAYERS of stacked encodings.
 
     Returns ``[(chain_label, decoded_text), ...]``.
+    Branch count and total results are capped to prevent exponential
+    memory/CPU growth on adversarial inputs.
     """
     results: list[tuple[str, str]] = []
     current_texts = [("", text)]
@@ -400,9 +404,11 @@ def multi_layer_decode(text: str) -> list[tuple[str, str]]:
                 if is_meaningful(decoded) and decoded != txt:
                     results.append((full_label, decoded))
                     next_texts.append((full_label, decoded))
+                if len(results) >= _MAX_DECODE_RESULTS:
+                    return results
         if not next_texts:
             break
-        current_texts = next_texts
+        current_texts = next_texts[:_MAX_DECODE_BRANCHES]
 
     return results
 

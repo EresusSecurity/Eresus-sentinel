@@ -32,8 +32,10 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Optional
@@ -111,7 +113,7 @@ class SessionState:
     blocked_count: int = 0
     total_findings: int = 0
     last_activity: float = 0.0
-    tools_called: list[str] = field(default_factory=list)
+    tools_called: deque = field(default_factory=lambda: deque(maxlen=500))
     anomaly_score: float = 0.0
     rate_tokens: float = 0.0
     rate_last_refill: float = 0.0
@@ -139,8 +141,13 @@ class ProxyConfig:
     circuit_breaker_timeout: float = 30.0
     sanitize_responses: bool = True
     strip_sensitive_params: list[str] = field(default_factory=lambda: [
-        "password", "secret", "token", "api_key", "apikey",
-        "access_token", "private_key", "credentials",
+        "password", "passwd", "pass", "secret", "token", "api_key", "apikey",
+        "access_token", "private_key", "credentials", "credential",
+        "bearer", "auth", "authorization", "x-api-key", "x_api_key",
+        "jwt", "id_token", "refresh_token", "client_secret", "client_id",
+        "session", "session_token", "session_key", "cookie", "cookies",
+        "sig", "signature", "nonce", "hmac", "signing_key",
+        "aws_secret", "aws_access_key", "gcp_key", "azure_key",
     ])
 
     @classmethod
@@ -176,20 +183,22 @@ class TokenBucketLimiter:
     def __init__(self, rate: float, burst: int):
         self._rate = rate
         self._burst = burst
+        self._lock = threading.Lock()
 
     def check(self, session: SessionState) -> bool:
-        now = time.monotonic()
-        elapsed = now - session.rate_last_refill
-        session.rate_tokens = min(
-            self._burst,
-            session.rate_tokens + elapsed * self._rate,
-        )
-        session.rate_last_refill = now
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - session.rate_last_refill
+            session.rate_tokens = min(
+                self._burst,
+                session.rate_tokens + elapsed * self._rate,
+            )
+            session.rate_last_refill = now
 
-        if session.rate_tokens >= 1.0:
-            session.rate_tokens -= 1.0
-            return True
-        return False
+            if session.rate_tokens >= 1.0:
+                session.rate_tokens -= 1.0
+                return True
+            return False
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,367 @@
+# CNTK Model Security Rules
+# Sentinel artifact scanner — Microsoft Cognitive Toolkit (.dnn, .cmf)
+
+metadata:
+  version: "2.0.0"
+  format: "cntk"
+  extensions: [".dnn", ".cmf"]
+  description: >
+    Detection rules for Microsoft CNTK model artifacts. Covers legacy v1
+    (UTF-16LE BCN/BVersion headers) and CNTKv2 (protobuf CompositeFunction).
+    v2.0: added split-signal weak-context terms, native exec (ctypes/cffi),
+    persistence (schtasks/registry), HTTP fetch, advanced obfuscation,
+    and crypto-miner indicators.
+
+# ─── Magic / Format Identification ─────────────────────────────────────────
+magic:
+  legacy_v1:
+    magic_bytes_hex: "42004300 4E000000"   # b"B\x00C\x00N\x00\x00\x00"
+    version_marker_hex: "420056006500720073 0069006F006E000000"
+    description: "Legacy CNTK v1 UTF-16LE BCN/BVersion header"
+  cntk_v2_protobuf:
+    required_markers:
+      - "0a07version"  # protobuf field 1 with 'version'
+      - "0a03uid"      # protobuf field 1 with 'uid'
+    structure_markers:
+      - "CompositeFunction"
+      - "primitive_functions"
+      - "PrimitiveFunction"
+    description: "CNTKv2 protobuf artifact — requires all required_markers and any structure_marker"
+
+# ─── Known-safe metadata keys (FP suppression) ───────────────────────────
+safe_metadata_keys:
+  - version
+  - uid
+  - name
+  - type
+  - inputs
+  - outputs
+  - attributes
+  - shape
+  - parameter
+  - constant
+  - placeholder
+  - primitive_functions
+  - compositefunction
+  - times
+  - plus
+  - relu
+  - convolution
+  - batchnormalization
+  - labelnodes
+  - featurenodes
+  - outputnodes
+  - criterionnodes
+  - times_function
+  - block_function
+  - dropout_function
+  - pooling_function
+  - transpose_function
+  - flatten_function
+
+# ─── External Library / Native Load Detection ────────────────────────────
+external_load_rules:
+  - id: CNTK-EXT-001
+    rule_id: "CNTK-EXT-001"
+    title: "External native library reference in CNTK model"
+    description: >
+      CNTK model contains a string that looks like a native library path combined
+      with a dynamic-load context keyword. Custom native user functions registered
+      via LoadLibrary/dlopen execute arbitrary code at model load time.
+    severity: CRITICAL
+    cwe_ids: ["CWE-114", "CWE-506"]
+    load_context_patterns:
+      - "loadlibrary"
+      - "loadlibrarya"
+      - "loadlibraryw"
+      - "loadlibraryex"
+      - "dlopen"
+      - "dlsym"
+      - "getprocaddress"
+      - "native_user_function"
+      - "register_native_user_function"
+      - "plugin"
+      - "importlib"
+      - "__import__"
+      - "virtualalloc"
+      - "virtualprotect"
+      - "createremotethread"
+      - "writeprocessmemory"
+      - "rundll32"
+      - "regsvr32"
+    weak_load_context_patterns:
+      - "module"
+      - "library"
+      - "ctypes"
+      - "cffi"
+      - "ffi"
+    library_path_patterns:
+      - "\\b[a-z]:\\\\(?:[^\\s\"\\\\]+\\\\)*[^\\s\"\\\\]+\\.(?:dll|so|dylib)\\b"
+      - "\\.\\.{2}[/\\\\](?:[^\\s\"/\\\\]+[/\\\\])*[^\\s\"/\\\\]+\\.(?:dll|so|dylib)\\b"
+      - "/(?:[^\\s\"/]+/)*[^\\s\"/]+\\.(?:dll|so|dylib)\\b"
+      - "(?:[^\\s\"/\\\\]+[/\\\\])*[^\\s\"/\\\\]+\\.(?:dll|so|dylib)\\b"
+    require_both: true   # both a load_context_pattern AND a library_path_pattern must match
+
+  - id: CNTK-EXT-002
+    rule_id: "CNTK-EXT-002"
+    title: "HTTP/HTTPS remote resource reference in CNTK model"
+    description: >
+      CNTK model metadata contains an HTTP/HTTPS URL alongside a load-context
+      keyword. This may indicate a CNTK model that fetches and executes a remote
+      payload on load.
+    severity: HIGH
+    cwe_ids: ["CWE-494", "CWE-829"]
+    url_patterns:
+      - 'https?://[^\s"<>]+'
+      - 'ftp://[^\s"<>]+'
+    load_context_patterns:
+      - "loadlibrary"
+      - "dlopen"
+      - "importlib"
+      - "__import__"
+    require_both: false  # URL alone is WARNING; URL + load_context = CRITICAL
+
+# ─── Command / Network Execution Detection ───────────────────────────────
+command_rules:
+  - id: CNTK-CMD-001
+    rule_id: "CNTK-CMD-001"
+    title: "Command execution string in CNTK model metadata"
+    description: >
+      A command-execution keyword was found in a printable string extracted from
+      the CNTK artifact. CNTK custom functions can invoke arbitrary shell commands
+      through native user functions.
+    severity: CRITICAL
+    cwe_ids: ["CWE-78", "CWE-94"]
+    patterns:
+      - 'os\.system'
+      - 'subprocess\.(?:run|popen|call|check_output|check_call|getoutput|getstatusoutput)'
+      - 'powershell(?:\.exe)?'
+      - 'cmd(?:\.exe)?\s+/c'
+      - '/bin/sh'
+      - '/bin/bash'
+      - '/bin/zsh'
+      - '/bin/dash'
+      - 'bash\s+-c'
+      - 'sh\s+-c'
+      - 'curl\s+'
+      - 'wget\s+'
+      - 'netcat'
+      - '\bnc\s+'
+      - 'certutil(?:\.exe)?\s+'
+      - 'bitsadmin(?:\.exe)?\s+'
+      - 'mshta(?:\.exe)?\s+'
+      - '\bwscript(?:\.exe)?'
+      - '\bcscript(?:\.exe)?'
+      - 'regsvr32(?:\.exe)?\s+'
+      - 'rundll32(?:\.exe)?\s+'
+      - 'msiexec(?:\.exe)?\s+'
+      - 'wmic\s+'
+      - 'invoke-expression'
+      - 'invoke-webrequest'
+      - 'start-process'
+      - 'new-object\s+system\.net\.webclient'
+
+  - id: CNTK-CMD-002
+    rule_id: "CNTK-CMD-002"
+    title: "Command + network execution correlation in CNTK model"
+    description: >
+      A command-execution pattern and a network-communication indicator were found
+      together in the same extracted string. This high-signal combination suggests
+      a backdoor or C2 callback embedded in the CNTK model.
+    severity: CRITICAL
+    cwe_ids: ["CWE-78", "CWE-200"]
+    network_patterns:
+      - 'https?://'
+      - 'ftp://'
+      - 'tcp://'
+      - 'udp://'
+      - '\bsocket\b'
+      - '\b(?:\d{1,3}\.){3}\d{1,3}\b'
+      - 'socket\.connect\s*\('
+      - 'socket\.AF_INET'
+      - '\.connect\s*\(\s*\('
+      - '/dev/tcp/'
+      - '/dev/udp/'
+    requires_command_pattern: true
+
+# ─── Obfuscation / Encoded Payload Detection ─────────────────────────────
+obfuscation_rules:
+  - id: CNTK-OBF-001
+    rule_id: "CNTK-OBF-001"
+    title: "Base64-encoded payload with decode/exec context in CNTK model"
+    description: >
+      A long Base64-like string was found adjacent to a decode or exec keyword.
+      This pattern is characteristic of stage-2 payload delivery via embedded
+      encoded blobs executed through custom CNTK user functions.
+    severity: CRITICAL
+    cwe_ids: ["CWE-506", "CWE-94"]
+    base64_min_length: 80
+    decode_context_patterns:
+      - "base64"
+      - "b64decode"
+      - "frombase64string"
+      - "decode\\("
+      - "atob\\("
+    exec_context_patterns:
+      - "eval\\("
+      - "exec\\("
+      - "os\\.system"
+      - "subprocess\\."
+
+# ─── Eval / Exec Direct Detection ────────────────────────────────────────
+eval_rules:
+  - id: CNTK-EVAL-001
+    rule_id: "CNTK-EVAL-001"
+    title: "Direct eval/exec call in CNTK model metadata"
+    description: >
+      An eval(), exec(), or __import__() call was found in the extracted string
+      data of the CNTK model. These functions execute arbitrary Python code.
+    severity: CRITICAL
+    cwe_ids: ["CWE-94"]
+    patterns:
+      - 'eval\s*\('
+      - 'exec\s*\('
+      - '__import__\s*\('
+      - 'compile\s*\(\s*[\x27"]'  # only code-string compiles (avoids model.compile() FP)
+
+# ─── Native Code Execution via Python FFI ───────────────────────────────
+native_exec_rules:
+  - id: CNTK-NATIVE-001
+    rule_id: "CNTK-NATIVE-001"
+    title: "Native code execution via ctypes/cffi in CNTK model"
+    description: >
+      CNTK model metadata contains ctypes or cffi function calls that load and
+      invoke native shared libraries. This executes arbitrary machine code at
+      model load time without restriction.
+    severity: CRITICAL
+    cwe_ids: ["CWE-114", "CWE-94"]
+    patterns:
+      - 'ctypes\.cdll\.LoadLibrary'
+      - 'ctypes\.windll\.LoadLibrary'
+      - 'ctypes\.CDLL\s*\('
+      - 'ctypes\.WinDLL\s*\('
+      - 'ctypes\.LibraryLoader'
+      - 'cffi\.FFI\s*\('
+      - 'ffi\.dlopen\s*\('
+      - 'ffi\.cdef\s*\('
+      - '__import__\s*\(\s*["\x27]ctypes'
+
+# ─── Persistence Mechanism Detection ────────────────────────────────────────
+persistence_rules:
+  - id: CNTK-PERSIST-001
+    rule_id: "CNTK-PERSIST-001"
+    title: "Persistence mechanism string in CNTK model metadata"
+    description: >
+      CNTK model metadata contains strings associated with OS-level persistence:
+      scheduled tasks, registry modifications, or startup folder manipulation.
+      These are strong indicators of a backdoored model designed to survive reboots.
+    severity: CRITICAL
+    cwe_ids: ["CWE-912", "CWE-78"]
+    patterns:
+      - 'schtasks(?:\.exe)?\s+/create'
+      - 'schtasks(?:\.exe)?\s+/run'
+      - '\bat\.exe\b'
+      - 'reg\s+add\s+HK'
+      - 'HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run'
+      - 'HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run'
+      - 'HKEY_CURRENT_USER'
+      - 'HKEY_LOCAL_MACHINE'
+      - 'startup\\\\.*\.(?:bat|vbs|ps1|exe)'
+      - 'crontab\s+-[el]'
+      - '/etc/cron\.d/'
+      - '/etc/init\.d/'
+      - '~/.bashrc'
+      - '~/.profile'
+      - '~/.bash_profile'
+
+# ─── HTTP Fetch / Remote Resource Retrieval ──────────────────────────────────
+http_fetch_rules:
+  - id: CNTK-FETCH-001
+    rule_id: "CNTK-FETCH-001"
+    title: "HTTP fetch call in CNTK model metadata"
+    description: >
+      CNTK model metadata contains Python HTTP client calls. Combined with
+      exec/eval context this indicates remote payload fetching at load time.
+    severity: HIGH
+    cwe_ids: ["CWE-494", "CWE-829"]
+    patterns:
+      - 'requests\.(?:get|post|put|delete|head|patch)\s*\('
+      - 'urllib\.request\.urlopen\s*\('
+      - 'urllib\.request\.urlretrieve\s*\('
+      - 'urllib2\.urlopen\s*\('
+      - 'http\.client\.HTTPConnection'
+      - 'http\.client\.HTTPSConnection'
+      - 'httpx\.(?:get|post|Client)'
+      - 'aiohttp\.ClientSession'
+      - '__import__\s*\(\s*["\x27]requests'
+      - '__import__\s*\(\s*["\x27]urllib'
+
+# ─── Advanced Obfuscation ────────────────────────────────────────────────────
+obfuscation_advanced_rules:
+  - id: CNTK-OBF-002
+    rule_id: "CNTK-OBF-002"
+    title: "PowerShell encoded command in CNTK model metadata"
+    description: >
+      CNTK model metadata contains a PowerShell -EncodedCommand flag which
+      is exclusively used to hide the actual command being executed.
+    severity: CRITICAL
+    cwe_ids: ["CWE-506", "CWE-94"]
+    patterns:
+      - '-(?:EncodedCommand|enc|en|e)\s+[A-Za-z0-9+/=]{20,}'
+      - 'powershell.*-[Ee]ncodedCommand'
+      - 'iex\s*\(\s*\[System\.Text\.Encoding'
+      - 'iex\s*\(\s*New-Object'
+      - '\[Convert\]::FromBase64String'
+      - 'IEX\s*\('
+
+  - id: CNTK-OBF-003
+    rule_id: "CNTK-OBF-003"
+    title: "Hex/unicode shellcode pattern in CNTK model metadata"
+    description: >
+      CNTK model metadata contains a long sequence of hex-encoded bytes or
+      unicode escapes characteristic of shellcode or obfuscated payloads.
+    severity: CRITICAL
+    cwe_ids: ["CWE-506", "CWE-94"]
+    hex_sequence_min_length: 32
+    patterns:
+      - '(?:\\x[0-9a-fA-F]{2}){16,}'
+      - '(?:%u[0-9a-fA-F]{4}){8,}'
+      - '(?:0x[0-9a-fA-F]{2},\s*){16,}'
+      - '(?:\\\\x[0-9a-fA-F]{2}){16,}'
+
+# ─── Crypto-Miner Indicators ────────────────────────────────────────────────
+crypto_miner_rules:
+  - id: CNTK-MINER-001
+    rule_id: "CNTK-MINER-001"
+    title: "Crypto-miner indicator in CNTK model metadata"
+    description: >
+      CNTK model metadata contains strings associated with cryptocurrency
+      mining software. Models embedding miner strings execute mining code
+      at load time, consuming victim compute resources.
+    severity: HIGH
+    cwe_ids: ["CWE-506"]
+    patterns:
+      - '\bxmrig\b'
+      - 'stratum\+tcp://'
+      - 'stratum\+ssl://'
+      - 'stratum2\+tcp://'
+      - '\bmonero\b'
+      - '\bxmr-stak\b'
+      - 'minexmr\.com'
+      - 'pool\.supportxmr\.com'
+      - 'donate\.v2\.xmrig\.com'
+      - '\bcpuminer\b'
+      - 'nicehash\.com'
+
+# ─── Multi-signal Correlation ─────────────────────────────────────────────
+correlation_rules:
+  - id: CNTK-MULTI-001
+    rule_id: "CNTK-MULTI-001"
+    title: "Multiple independent suspicious signals in CNTK model"
+    description: >
+      Two or more independent categories of suspicious signals were found in the
+      CNTK model. Multiple independent signals strongly indicate a compromised or
+      backdoored model.
+    severity: CRITICAL
+    cwe_ids: ["CWE-506", "CWE-94", "CWE-78"]
+    min_signal_categories: 2

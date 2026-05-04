@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "eresus-sentinel"
 version = "0.1.0"
-description = "Production-grade AI/LLM Security Platform — Artifact scanning, input/output firewalls, red teaming, agent security, and ML supply chain auditing"
+description = "Deterministic-first AI security toolkit for artifact scanning, prompt firewalls, MCP/agent security, and ML supply chain auditing"
 readme = "README.md"
 license = "LicenseRef-ESL-1.1"
 requires-python = ">=3.10,<3.15"
@@ -81,6 +81,9 @@ remote = [
 archive = [
     "py7zr>=0.21.0,<1",
 ]
+rust = [
+    "maturin>=1.9,<2",
+]
 vault = [
     "cryptography>=46.0.7,<47",
 ]
@@ -128,6 +131,7 @@ all = [
     "eresus-sentinel[analysis]",
     "eresus-sentinel[remote]",
     "eresus-sentinel[archive]",
+    "eresus-sentinel[rust]",
     "eresus-sentinel[db]",
 ]
 
@@ -181,6 +185,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+pythonpath = [".", "python"]
 addopts = "-p no:warnings --tb=short"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

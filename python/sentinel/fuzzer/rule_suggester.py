@@ -159,7 +159,7 @@ def _extract_utf8_sequences(data: bytes, min_len: int = 5) -> list[str]:
 
 
 def _make_rule_id(category: str, pattern: str) -> str:
-    digest = hashlib.sha1((category + pattern).encode()).hexdigest()[:8].upper()
+    digest = hashlib.sha256((category + pattern).encode()).hexdigest()[:8].upper()
     cat = re.sub(r"[^A-Z0-9]", "", category.upper())[:8]
     return f"AUTO-{cat}-{digest}"
 

@@ -14,6 +14,7 @@ from sentinel.cli._helpers import (
     _finding_line,
     _header,
     _ok,
+    _warn,
     _print_findings,
     _severity_dashboard,
     machine_stdout,
@@ -22,12 +23,45 @@ from sentinel.cli._helpers import (
 
 
 def cmd_sast(args):
+    import sys as _sys
+    import tempfile as _tmp
     from sentinel.cli_dispatch import dispatch_sast
-    if not Path(args.path).exists():
+
+    scan_path = args.path
+    _tmpfile = None
+
+    if args.path == "-":
+        data = _sys.stdin.buffer.read()
+        _tmpfile = _tmp.NamedTemporaryFile(suffix=".py", delete=False)
+        _tmpfile.write(data)
+        _tmpfile.flush()
+        scan_path = _tmpfile.name
+
+    if not Path(scan_path).exists():
         _fail(f"path not found: {args.path}")
         return 2
+
     _header(f"sast → {args.path}", args=args)
-    findings = _apply_severity_filter(dispatch_sast(args.path), args)
+    findings = list(dispatch_sast(scan_path))
+
+    multi_lang = getattr(args, "multi_lang", False)
+    if multi_lang:
+        from sentinel.sast.multilang_scanner import MultiLangSASTScanner
+        langs = getattr(args, "langs", None)
+        lang_list = [l.strip() for l in langs.split(",")] if langs else None
+        ml_scanner = MultiLangSASTScanner(languages=lang_list)
+        ml_result = ml_scanner.scan_path(args.path)
+        findings.extend(ml_result.findings)
+        if ml_result.errors:
+            for err in ml_result.errors[:5]:
+                _warn(err)
+        if ml_result.scanned_files > 0:
+            console.print(
+                f"  [dim]multi-lang: {ml_result.scanned_files} files scanned, "
+                f"{len(ml_result.findings)} findings[/dim]"
+            )
+
+    findings = _apply_severity_filter(findings, args)
     _print_findings(findings, args=args)
     _export(args, findings)
     return 1 if findings else 0

@@ -41,3 +41,33 @@ benchmark_summary*.md
 
 # Type checker cache
 .mypy_cache/
+
+# Local test / run scripts (not part of the distributed package)
+scripts/test_*.sh
+scripts/run_*.py
+scripts/run_*.sh
+scripts/inject_branding.py
+scripts/hf_full_pipeline.sh
+
+# Generated reports
+reports/
+
+# Demo recordings
+demos/
+demo.cast
+demo.tape
+
+# Forum / promo docs
+FORUM_POST.md
+FORUM_POST_TR.md
+docs_generation_prompt.md
+
+# IDE / editor configs
+.windsurf/
+
+# Local runtime configs
+sandbox.yaml
+policy.yaml
+
+# Generated adversarial test corpus (contains intentional fake secrets)
+tests/adversarial_corpus/generated/

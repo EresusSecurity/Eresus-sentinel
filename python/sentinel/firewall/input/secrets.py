@@ -219,7 +219,7 @@ class SecretScanner(InputScanner):
         if self._redact_mode == RedactMode.ALL:
             return "******"
         elif self._redact_mode == RedactMode.HASH:
-            return hashlib.md5(secret.encode()).hexdigest()
+            return hashlib.sha256(secret.encode()).hexdigest()
         elif self._redact_mode == RedactMode.PARTIAL:
             if len(secret) <= 8:
                 return "****"

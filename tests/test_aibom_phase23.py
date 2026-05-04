@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
+import io
 
 from sentinel.aibom.models import AIBOMResult, AIComponent, AIComponentType
 from sentinel.aibom.scan_pipeline import ScanPipeline
@@ -51,6 +53,32 @@ def test_aibom_scan_accepts_container_image_reference_json():
     assert payload["metadata"]["container_image_scan"] is True
     assert payload["components"][0]["type"] == AIComponentType.CONTAINER.value
     assert payload["components"][0]["properties"]["image"].startswith("ghcr.io/huggingface")
+
+
+def test_aibom_scan_reads_source_files_from_container_layer_tar(tmp_path):
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w") as tf:
+        data = b'import OpenAI from "openai"; const model_id = "gpt-4o-mini";'
+        info = tarfile.TarInfo(name="app/service.ts")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+
+    image_tar = tmp_path / "image.tar"
+    with tarfile.open(image_tar, mode="w") as tf:
+        layer_bytes = layer.getvalue()
+        layer_info = tarfile.TarInfo(name="layer.tar")
+        layer_info.size = len(layer_bytes)
+        tf.addfile(layer_info, io.BytesIO(layer_bytes))
+
+    result = _run_cli("aibom", "scan", str(image_tar), "--container-extraction-tier", "tarball", "-f", "json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["metadata"]["container_image_scan"] is True
+    assert payload["metadata"]["extraction_status"] == "tarball-scanned"
+    assert payload["metadata"]["archive_members_scanned"] == 1
+    names = {component["name"] for component in payload["components"]}
+    assert "gpt-4o-mini" in names
 
 
 def test_aibom_diff_subcommand_alias_outputs_json(tmp_path):

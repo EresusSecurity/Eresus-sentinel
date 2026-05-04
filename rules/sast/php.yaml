@@ -1,0 +1,73 @@
+# Sentinel Multi-Language SAST — PHP rules
+version: "1"
+file_context_pattern: '(?:openai|anthropic|openai-php|orhanerday|llphant|LLM|ChatGPT|gpt-3|gpt-4|claude|gemini|huggingface|OpenAI\\\\Client|Anthropic\\\\Client)'
+
+rules:
+  - id: MLSAST-130
+    title: "Unvalidated $_POST/$_GET passed to LLM prompt (PHP)"
+    description: "Raw PHP superglobal used directly in LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.70
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Sanitize with htmlspecialchars(), strip_tags(), or use a validation library (Respect\\Validation)."
+    pattern: '\$_(?:POST|GET|REQUEST)\s*\[[^\]]+\][^\n]{0,200}(?:messages|prompt|content|generate|chat|complete)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-131
+    title: "LLM output passed to eval() (PHP)"
+    description: "LLM response evaluated as PHP code — arbitrary code execution risk."
+    severity: CRITICAL
+    confidence: 0.82
+    owasp_llm: LLM02
+    tags: [code-injection, llm-output]
+    remediation: "Never eval() LLM output. Parse as JSON (json_decode) with schema validation."
+    pattern: 'eval\s*\([^\n]{0,200}(?:\$response|\$output|\$llm\w*|\$ai\w*|\$completion|\$generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-132
+    title: "PHP shell_exec/exec called with LLM output"
+    description: "LLM response passed to shell function — command injection risk."
+    severity: CRITICAL
+    confidence: 0.80
+    owasp_llm: LLM02
+    tags: [command-injection, llm-output]
+    remediation: "Never pass LLM output to shell functions. Use escapeshellarg() as minimum; prefer allowlist."
+    pattern: '(?:shell_exec|exec|passthru|system|popen|proc_open)\s*\([^\n]{0,200}(?:\$response|\$output|\$llm\w*|\$ai\w*|\$completion)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-133
+    title: "LLM output written to file without path validation (PHP)"
+    description: "LLM response written to filesystem using user-influenced path — path traversal risk."
+    severity: HIGH
+    confidence: 0.65
+    owasp_llm: LLM02
+    tags: [file-write, llm-output]
+    remediation: "Use realpath() + base directory check before writing. Sanitize filename component."
+    pattern: '(?:file_put_contents|fwrite|fputs)\s*\([^\n]{0,200}(?:\$response|\$output|\$llm\w*|\$ai\w*|\$completion|\$generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-134
+    title: "PHP LLM client created with hardcoded API key"
+    description: "LLM API key hardcoded as PHP string literal."
+    severity: CRITICAL
+    confidence: 0.88
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use $_ENV['OPENAI_API_KEY'] or getenv('OPENAI_API_KEY') loaded via .env file."
+    pattern: '(?:sk-(?:proj-|org-)?[A-Za-z0-9_\-]{20,80}|sk-ant-[A-Za-z0-9_\-]{20,80}|AIza[A-Za-z0-9_\-]{35})'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

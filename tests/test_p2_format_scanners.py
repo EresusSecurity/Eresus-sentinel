@@ -16,16 +16,21 @@ def test_rknn_scanner_detects_dangerous_metadata(tmp_path):
 
     findings = RKNNScanner().scan_file(str(path))
 
-    assert "RKNN-002" in _rule_ids(findings)
+    assert "RKNN-CMD-001" in _rule_ids(findings)
 
 
 def test_cntk_scanner_detects_executable_pattern(tmp_path):
     path = tmp_path / "model.dnn"
-    path.write_bytes(b"CNTK\x00__import__('os').system('id')")
+    # Valid CNTK legacy v1 magic + BVersion marker + eval pattern → CNTK-EVAL-001
+    path.write_bytes(
+        b"B\x00C\x00N\x00\x00\x00"                          # CNTK legacy magic
+        + b"B\x00V\x00e\x00r\x00s\x00i\x00o\x00n\x00\x00\x00"  # BVersion marker
+        + b"__import__('os').system('id')                     "  # triggering payload
+    )
 
     findings = CNTKScanner().scan_file(str(path))
 
-    assert "CNTK-001" in _rule_ids(findings)
+    assert "CNTK-EVAL-001" in _rule_ids(findings)
 
 
 def test_xgboost_scanner_covers_bst_extension(tmp_path):
@@ -67,7 +72,11 @@ def test_lz4_wrapper_fails_closed(tmp_path):
 def test_artifact_catalog_routes_p2_scanners(tmp_path):
     cases = {
         "model.rknn": b"RKNN\x00subprocess",
-        "model.dnn": b"CNTK\x00eval(",
+        "model.dnn": (
+            b"B\x00C\x00N\x00\x00\x00"                          # legacy magic
+            + b"B\x00V\x00e\x00r\x00s\x00i\x00o\x00n\x00\x00\x00"  # BVersion marker
+            + b"__import__('os').system('id')                  "  # triggers CNTK-EVAL-001
+        ),
         "model.bst": b"bad",
         "model.exe": b"MZ",
         "payload.pkl.gz": gzip.compress(b"cos\nsystem\n(S'id'\ntR."),

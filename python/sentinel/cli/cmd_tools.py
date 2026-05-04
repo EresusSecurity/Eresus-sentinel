@@ -221,6 +221,41 @@ def _render_aibom_result(args, result, target, fmt: str) -> str:
             "errors": result.metadata.get("errors", []),
         })
         return json.dumps(data, indent=2, default=str)
+
+    if fmt == "table":
+        import io
+        from rich.console import Console as RichConsole
+        buf = io.StringIO()
+        rc = RichConsole(file=buf, highlight=False, markup=False)
+        rc.print(f"[bold]AIBOM[/bold] — {target}  "
+                 f"({len(result.components)} components, {len(result.relationships)} relationships)",
+                 markup=True)
+        if not result.components:
+            rc.print("  (no AI components detected)")
+            return buf.getvalue()
+        tbl = Table(box=box.SIMPLE_HEAVY, show_header=True, header_style="bold cyan")
+        tbl.add_column("Type", style="cyan", no_wrap=True, max_width=26)
+        tbl.add_column("Name", style="white", max_width=40)
+        tbl.add_column("Version", style="dim", max_width=16, no_wrap=True)
+        tbl.add_column("Path", style="dim", max_width=38)
+        tbl.add_column("Risks", style="yellow", max_width=30)
+        by_type = result.group_by_type()
+        for type_name in sorted(by_type):
+            for comp in by_type[type_name]:
+                risks = ", ".join(comp.risks[:3]) if comp.risks else ""
+                tbl.add_row(
+                    type_name,
+                    comp.name or "",
+                    comp.version or "",
+                    comp.path or "",
+                    risks,
+                )
+        rc.print(tbl)
+        errors = result.metadata.get("errors", [])
+        if errors:
+            rc.print(f"[yellow]  {len(errors)} scanner error(s)[/yellow]", markup=True)
+        return buf.getvalue()
+
     return _REPORTERS[fmt]().render(result)
 
 
@@ -1100,7 +1135,7 @@ def cmd_watch(args):
 
     try:
         while True:
-            h = hashlib.md5()
+            h = hashlib.sha256()
             for f in sorted(path.rglob("*.py")):
                 h.update(f"{f}:{f.stat().st_mtime}".encode())
             cur = h.hexdigest()

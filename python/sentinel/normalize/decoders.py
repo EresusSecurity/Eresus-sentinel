@@ -118,6 +118,10 @@ def decode_common(text: str, max_decode: int = 4) -> list[str]:
 
 # ── URL decoding ──────────────────────────────────────────────
 
+_URL_DECODE_SIZE_LIMIT = 50_000
+_U_ESCAPE_RE = re.compile(r"%u([0-9A-Fa-f]{4})")
+
+
 def decode_url(text: str) -> str:
     """URL-decode *text* (%XX and %uXXXX).
 
@@ -126,12 +130,10 @@ def decode_url(text: str) -> str:
     single-pass if the double-decoded result becomes non-printable.
     """
     try:
-        # Handle %uXXXX (non-standard IE extension used in attacks)
-        text = re.sub(
-            r"%u([0-9A-Fa-f]{4})",
-            lambda m: chr(int(m.group(1), 16)),
-            text,
-        )
+        if "%" not in text:
+            return text
+        if "%u" in text and len(text) <= _URL_DECODE_SIZE_LIMIT:
+            text = _U_ESCAPE_RE.sub(lambda m: chr(int(m.group(1), 16)), text)
         single = urllib.parse.unquote(text, errors="replace")
         double = urllib.parse.unquote(single, errors="replace")
         if _looks_printable(double):
@@ -210,13 +212,23 @@ def recursive_decode(text: str, budget: int = 4) -> str:
     return text
 
 
+_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9A-Fa-f]{4})|\\x([0-9A-Fa-f]{2})")
+
+
 def _unicode_escape_single_pass(text: str) -> str:
-    """Single-pass unicode_escape decode (non-raising)."""
+    """Single-pass unicode-escape decode using safe regex (no codecs.decode).
+
+    Replaces \\uXXXX and \\xXX sequences directly via chr() to avoid the
+    codecs.decode('unicode_escape') Latin-1 encoding confusion bug.
+    """
     if "\\u" not in text and "\\x" not in text:
         return text
     try:
-        decoded = codecs.decode(text, "unicode_escape")
-    except (UnicodeDecodeError, ValueError):
+        def _replace(m: re.Match) -> str:
+            hex_u, hex_x = m.group(1), m.group(2)
+            return chr(int(hex_u or hex_x, 16))
+        decoded = _UNICODE_ESCAPE_RE.sub(_replace, text)
+    except (ValueError, OverflowError):
         return text
     return decoded if _looks_printable(decoded) else text
 

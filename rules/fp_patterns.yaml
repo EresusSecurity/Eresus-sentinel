@@ -393,3 +393,88 @@ known_safe_payloads:
     note: 'Hex of "Hello World" — test vector'
   - text: '01001000 01100101 01101100 01101100 01101111'
     note: 'Binary of "Hello" — test vector'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HF MODEL CARD FP SUPPRESSORS
+# Context-specific suppressors for HuggingFace model card / README content.
+# These fire on legitimate ML documentation patterns that resemble attack strings.
+# ──────────────────────────────────────────────────────────────────────────────
+hf_model_card_suppressors:
+
+  # Markdown/HTML table multi-space alignment triggers whitespace_steganography
+  - id: FP-HF-001
+    triggered_by_rules:
+      - whitespace_steganography_pattern
+      - whitespace_steganography
+    evidence_pattern: '(?:width=|height=|px"|em"|</?(?:p|div|img|table|tr|td|th)\b)'
+    action: suppress
+    rationale: >
+      HTML markup in README triggers whitespace pattern. Image tags, div elements
+      and table cells legitimately contain multi-space attributes.
+
+  # Markdown benchmark tables: "| --- | --- |" rows have many spaces/pipes
+  - id: FP-HF-002
+    triggered_by_rules:
+      - whitespace_steganography_pattern
+      - whitespace_steganography
+    evidence_pattern: '(?:\|[-: ]+\||\|\s{2,}[A-Za-z]|\bBench(?:mark)?\b)'
+    action: suppress
+    rationale: >
+      Markdown benchmark comparison tables have repetitive spacing that looks like
+      whitespace steganography to the scanner.
+
+  # "query it from <service>" — natural English, not SQL PII query
+  - id: FP-HF-003
+    triggered_by_rules:
+      - sql_pii_query
+    evidence_pattern: '(?i)query\s+it\s+from|query\s+(?:the\s+)?(?:API|endpoint|service|model|server|client)'
+    action: suppress
+    rationale: >
+      "query it from any OpenAI-compatible client" is natural language describing
+      API usage, not a SQL query against sensitive tables.
+
+  # Terminal-Bench, BrainBench, BenchmarkFoo — benchmark dataset names
+  # that contain "bench" → triggers brainfuck heuristics in some patterns
+  - id: FP-HF-004
+    triggered_by_rules:
+      - brainfuck_pattern
+      - brainfuck_payload_detected
+      - brainfuck_payload_detect
+    evidence_pattern: '(?i)(?:Terminal|Brain|Code|Math|Reason|Logic|Lang)[\s\-]?Bench(?:\s+\d|\s+2\.0|\s+v\d)?'
+    action: suppress
+    rationale: >
+      ML benchmark dataset names like "Terminal-Bench 2.0" or "BrainBench"
+      contain "Bench" which triggers brainfuck detection heuristics.
+
+  # Official package wheel indexes (vllm, torch nightly, etc.)
+  - id: FP-HF-005
+    triggered_by_rules:
+      - social_engineering_pip_untrusted
+      - pip_install_untrusted
+    evidence_pattern: '(?i)(?:wheels?\.vllm\.ai|download\.pytorch\.org|pypi\.ngc\.nvidia\.com|pip\.pytorch\.org|download\.openmmlab\.com)'
+    action: downgrade_to_info
+    rationale: >
+      Known legitimate ML framework wheel repositories. vllm, PyTorch nightly,
+      NVIDIA NGC, and OpenMMLab use non-PyPI indexes for GPU-specific builds.
+
+  # Official vendor CLI installers via curl (poolside, huggingface, etc.)
+  - id: FP-HF-006
+    triggered_by_rules:
+      - curl_pipe_shell
+      - wget_pipe_shell
+    evidence_pattern: '(?i)(?:downloads?\.poolside\.ai|raw\.githubusercontent\.com/huggingface|install\.python-poetry\.org|sh\.rustup\.rs|get\.docker\.com)'
+    action: downgrade_to_medium
+    rationale: >
+      Vendor-official curl-pipe-shell installers documented in README.
+      Still worth noting (medium) but not a critical active attack vector.
+
+  # "trust_remote_code=True" in *code examples* showing correct HF usage
+  - id: FP-HF-007
+    triggered_by_rules:
+      - trust_remote_code_encouragement
+    evidence_pattern: '(?i)```\s*(?:python|shell|bash)|from_pretrained\s*\('
+    action: downgrade_to_low
+    rationale: >
+      README code blocks showing from_pretrained(..., trust_remote_code=True) are
+      standard HF usage documentation. The hf-guard already flags the config flag
+      at CRITICAL; double-firing on docs adds noise.

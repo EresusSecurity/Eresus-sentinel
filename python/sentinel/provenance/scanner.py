@@ -35,6 +35,8 @@ class ProvenanceReport:
                 "verdict": self.verdict,
                 "pipeline_score": round(self.pipeline_score, 6),
                 "top_match": self.matches[0]["model_id"] if self.matches else None,
+                "match_count": len(self.matches),
+                "signal_coverage": sum(1 for signal in self.signals.values() if signal.confidence > 0.0),
             },
         }
 
@@ -77,6 +79,7 @@ def compare_models(left: str | Path, right: str | Path) -> dict[str, Any]:
         "summary": {
             "pipeline_score": round(score, 6),
             "verdict": "related" if score >= 0.65 else "possibly_related" if score >= 0.4 else "different",
+            "signal_count": len(similarities),
         },
     }
 

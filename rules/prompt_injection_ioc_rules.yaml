@@ -1,0 +1,164 @@
+# ============================================================================
+# Eresus Sentinel — Prompt Injection IOC & Social Engineering Rules
+# ============================================================================
+#
+# Companion to injection_patterns.yaml.
+# Covers:
+#   ioc_patterns          - C2 infrastructure, exfiltration endpoints
+#   social_engineering    - Privilege escalation, antivirus bypass, sudo abuse
+#   hidden_unicode        - Zero-width / RTL override characters (codepoints)
+# ============================================================================
+
+metadata:
+  version: "1.0.0"
+  description: >
+    IOC and social engineering patterns for model cards, chat templates,
+    config files, and any text fields embedded in HuggingFace artifacts.
+
+# ── IOC patterns ─────────────────────────────────────────────────────────────
+# Each entry: pattern (regex), severity, description
+ioc_patterns:
+  - pattern: '(?i)https?://[a-z0-9\-\.]+\.onion(?:/|$|\s)'
+    severity: HIGH
+    description: "Tor .onion URL — anonymized C2 endpoint"
+
+  - pattern: 'discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_\-]+'
+    severity: HIGH
+    description: "Discord webhook URL — data exfiltration endpoint"
+
+  - pattern: '(?i)t\.me/[A-Za-z0-9_]{3,}'
+    severity: MEDIUM
+    description: "Telegram link — possible C2 or phishing channel"
+
+  - pattern: '(?i)api\.telegram\.org/bot[A-Za-z0-9_\-:]{20,}/'
+    severity: CRITICAL
+    description: "Telegram bot API token pattern — active bot credential"
+
+  - pattern: '(?i)ngrok\.(?:io|com)/[a-z0-9]+'
+    severity: HIGH
+    description: "ngrok tunnel URL — common C2 proxy"
+
+  - pattern: '(?i)webhook\s*=\s*[''"]https?://'
+    severity: MEDIUM
+    description: "Hardcoded webhook URL assignment"
+
+  - pattern: '(?i)pastebin\.com/(?:raw/)?[A-Za-z0-9]+'
+    severity: MEDIUM
+    description: "Pastebin URL — common payload staging location"
+
+  - pattern: '(?i)raw\.githubusercontent\.com/.+/(?:payload|shell|backdoor|exploit|dropper|stager)'
+    severity: HIGH
+    description: "Suspicious GitHub raw URL path (payload/shell/backdoor)"
+
+  - pattern: '\b(?:25[0-5]|2[0-4]\d|[01]?\d\d?)(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d\d?)){3}\b'
+    severity: MEDIUM
+    description: "Hardcoded IPv4 address — possible C2 server"
+
+  - pattern: '(?i)(?:transfer\.sh|file\.io|gofile\.io|anonfiles\.com|0x0\.st)/[A-Za-z0-9]+'
+    severity: HIGH
+    description: "Anonymous file sharing URL — payload drop site"
+
+  - pattern: '(?i)(?:ipinfo\.io|ifconfig\.me|checkip\.amazonaws\.com|icanhazip\.com)'
+    severity: MEDIUM
+    description: "Public IP lookup service — reconnaissance beacon"
+
+  - pattern: '(?i)(?:\.duckdns\.org|\.no-ip\.(?:biz|com)|\.freedns\.afraid\.org)'
+    severity: HIGH
+    description: "Dynamic DNS domain — common C2 infrastructure"
+
+  - pattern: '(?i)(?:burpcollab|interactsh|oast\.(?:me|pro|live|site|fun|online))'
+    severity: HIGH
+    description: "OAST / out-of-band interaction domain — exfil detection evasion"
+
+# ── Social engineering patterns ───────────────────────────────────────────────
+# Each entry: pattern (regex), severity, description
+social_engineering:
+  - pattern: '(?i)trust_remote_code\s*=\s*True'
+    severity: MEDIUM
+    description: "Documentation encourages trust_remote_code=True — enables arbitrary code execution"
+
+  - pattern: '(?i)disable\s+(?:your\s+)?(?:antivirus|av|firewall|defender|windows\s+security)'
+    severity: HIGH
+    description: "Social engineering: instruct user to disable security software"
+
+  - pattern: '(?i)run\s+(?:as\s+)?(?:root|admin(?:istrator)?|sudo)\b'
+    severity: HIGH
+    description: "Privilege escalation instruction in documentation"
+
+  - pattern: '(?i)sudo\s+python[23]?\b'
+    severity: HIGH
+    description: "sudo python execution instruction"
+
+  - pattern: '(?i)pip\s+install\s.{0,80}(?:git\+https?://|http://|https://[^pypi])'
+    severity: HIGH
+    description: "Install dependency from untrusted URL (not PyPI)"
+
+  - pattern: '(?i)curl\s.{0,150}(?:\|\s*(?:sudo\s+)?(?:bash|sh|python[23]?|perl|ruby|php))'
+    severity: CRITICAL
+    description: "Curl pipe to shell — remote code execution vector"
+
+  - pattern: '(?i)wget\s.{0,150}(?:\|\s*(?:sudo\s+)?(?:bash|sh|python[23]?|perl|ruby|php))'
+    severity: CRITICAL
+    description: "Wget pipe to shell — remote code execution vector"
+
+  - pattern: '(?i)ignore\s+(?:all\s+)?(?:security|safety)\s+warnings?'
+    severity: HIGH
+    description: "Instructs user to ignore security warnings"
+
+  - pattern: '(?i)(?:download|execute|run)\s+(?:this\s+)?(?:script|binary|executable|\.exe|\.bat|\.sh)\s+(?:first|before|manually)'
+    severity: HIGH
+    description: "Suspicious pre-execution instruction in model docs"
+
+  - pattern: '(?i)(?:won.?t|doesn.?t|can.?t|will\s+not)\s+(?:harm|hurt|damage|affect)\s+your\s+(?:system|computer|machine|device)'
+    severity: MEDIUM
+    description: "False safety assurance — downplaying risks"
+
+  - pattern: '(?i)add\s+(?:an?\s+)?exception\s+(?:for|to)\s+(?:your\s+)?(?:antivirus|av|firewall|defender)'
+    severity: HIGH
+    description: "Social engineering: add security exception"
+
+  - pattern: '(?i)temporarily\s+(?:disable|turn\s+off|deactivate)\s+(?:antivirus|av|firewall|defender)'
+    severity: HIGH
+    description: "Temporary security disable instruction"
+
+  - pattern: '(?i)set\s+(?:environment\s+variable\s+)?(?:PYTHONDONTWRITEBYTECODE|PYTHONPATH)\s*=\s*(?:/tmp|/var|/dev)'
+    severity: HIGH
+    description: "Suspicious PYTHONPATH redirect to writable/temp directory"
+
+  - pattern: '(?i)chmod\s+(?:777|\+x|a\+rwx)\s'
+    severity: HIGH
+    description: "Overly permissive chmod instruction"
+
+  - pattern: '(?i)(?:launch|start|run|execute)\s+with\s+(?:elevated|administrator|root|superuser)\s+(?:privileges?|rights?|permissions?)'
+    severity: HIGH
+    description: "Explicit elevated privilege execution instruction"
+
+# ── Hidden Unicode codepoints to flag ────────────────────────────────────────
+# Listed as hex codepoint strings; loader converts to actual characters
+hidden_unicode:
+  zero_width:
+    - "200B"  # ZERO WIDTH SPACE
+    - "200C"  # ZERO WIDTH NON-JOINER
+    - "200D"  # ZERO WIDTH JOINER
+    - "200E"  # LEFT-TO-RIGHT MARK
+    - "200F"  # RIGHT-TO-LEFT MARK
+    - "202A"  # LEFT-TO-RIGHT EMBEDDING
+    - "202B"  # RIGHT-TO-LEFT EMBEDDING
+    - "202C"  # POP DIRECTIONAL FORMATTING
+    - "2060"  # WORD JOINER
+    - "2061"  # FUNCTION APPLICATION
+    - "2062"  # INVISIBLE TIMES
+    - "2063"  # INVISIBLE SEPARATOR
+    - "2064"  # INVISIBLE PLUS
+    - "FEFF"  # BOM / ZERO WIDTH NO-BREAK SPACE
+    - "00AD"  # SOFT HYPHEN
+    - "034F"  # COMBINING GRAPHEME JOINER
+    - "3164"  # HANGUL FILLER
+    - "FFA0"  # HALFWIDTH HANGUL FILLER
+  rtl_override:
+    - "202E"  # RIGHT-TO-LEFT OVERRIDE  ← critical: reverses displayed text
+    - "202D"  # LEFT-TO-RIGHT OVERRIDE
+    - "202B"  # RIGHT-TO-LEFT EMBEDDING
+    - "200F"  # RIGHT-TO-LEFT MARK
+    - "061C"  # ARABIC LETTER MARK
+    - "2067"  # RIGHT-TO-LEFT ISOLATE

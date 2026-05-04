@@ -38,7 +38,12 @@ from .catboost_scanner import CatBoostScanner
 from .compressed_scanner import CompressedWrapperScanner
 from .coreml_scanner import CoreMLScanner
 from .cve_detector import CVEDetector
-from .extra_format_scanners import CNTKScanner, RKNNScanner
+from .cntk_scanner import CNTKScanner
+from .jax_scanner import JAXCheckpointScanner
+from .jinja2_scanner import Jinja2InjectionScanner
+from .manifest_scanner import MLManifestScanner
+from .rknn_scanner import RKNNScanner
+from .tf_metagraph_scanner import TFMetaGraphScanner
 from .flax_scanner import FlaxScanner
 from .gguf_analyzer import GGUFAnalyzer
 from .huggingface_scanner import HuggingFaceScanner
@@ -109,8 +114,9 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("pickle", (".pkl", ".pickle", ".p", ".dill", ".dat", ".data", ".joblib"), PickleScanner, True),
         ArtifactScannerSpec("torch", (".pt", ".pth", ".bin", ".ckpt"), TorchScanner, True),
         ArtifactScannerSpec("safetensors", (".safetensors",), SafetensorsValidator),
-        ArtifactScannerSpec("gguf", (".gguf",), GGUFAnalyzer),
+        ArtifactScannerSpec("gguf", (".gguf", ".ggml", ".ggmf", ".ggjt", ".ggla", ".ggsa"), GGUFAnalyzer),
         ArtifactScannerSpec("tensorflow", (".pb",), TensorFlowScanner),
+        ArtifactScannerSpec("tf_metagraph", (".meta",), TFMetaGraphScanner),
         ArtifactScannerSpec("torchscript", (".torchscript", ".ptc"), TorchScriptScanner, True),
         ArtifactScannerSpec("tflite", (".tflite",), TFLiteScanner),
         ArtifactScannerSpec("torchmobile", (".ptl",), TorchMobileScanner, True),
@@ -119,12 +125,12 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("keras", (".keras", ".h5", ".hdf5"), KerasScanner, True),
         ArtifactScannerSpec("xgboost", (".xgb", ".bst", ".ubj", ".model"), XGBoostScanner),
         ArtifactScannerSpec("numpy", (".npy", ".npz"), NumpyScanner, True),
-        ArtifactScannerSpec("archive", (".zip", ".tar", ".tar.gz", ".tgz"), ArchiveSlipDetector),
+        ArtifactScannerSpec("archive", (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"), ArchiveSlipDetector),
         ArtifactScannerSpec("7z", (".7z",), SevenZipScanner),
         ArtifactScannerSpec("yaml", (".yaml", ".yml"), YamlScanner),
         ArtifactScannerSpec("catboost", (".cbm",), CatBoostScanner),
         ArtifactScannerSpec("coreml", (".mlmodel", ".mlpackage"), CoreMLScanner),
-        ArtifactScannerSpec("flax", (".msgpack", ".orbax", ".flax"), FlaxScanner),
+        ArtifactScannerSpec("flax", (".msgpack", ".orbax", ".flax", ".jax", ".checkpoint", ".orbax-checkpoint"), FlaxScanner),
         ArtifactScannerSpec("lightgbm", (".lgb", ".lightgbm"), LightGBMScanner),
         ArtifactScannerSpec("mxnet", ("-symbol.json", ".params"), MXNetScanner),
         ArtifactScannerSpec("nemo", (".nemo",), NeMoScanner, True),
@@ -141,7 +147,9 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("compressed", (".gz", ".bz2", ".xz", ".lz4", ".zlib"), CompressedWrapperScanner, True),
         ArtifactScannerSpec("executorch", (".pte",), ExecuTorchScanner),
         ArtifactScannerSpec("tensorrt", (".engine", ".plan", ".trt"), TensorRTScanner),
-        ArtifactScannerSpec("oci", (".oci",), OCIScanner),
+        ArtifactScannerSpec("oci", (".oci", ".manifest"), OCIScanner),
+        ArtifactScannerSpec("jinja2", (".jinja", ".jinja2", ".j2", ".template"), Jinja2InjectionScanner),
+        ArtifactScannerSpec("mlmanifest", (".json",), MLManifestScanner),
     )
 
 

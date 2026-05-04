@@ -34,6 +34,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+PLAYBOOK_SCHEMA_VERSION = "redteam.playbook.v1"
+PLAYBOOK_REPORT_SCHEMA_VERSION = "redteam.playbook.report.v1"
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # DATA TYPES
@@ -116,6 +119,7 @@ class PlaybookSpec:
     """Complete attack playbook specification."""
     playbook_id: str
     name: str
+    schema_version: str = PLAYBOOK_SCHEMA_VERSION
     description: str = ""
     version: str = "1.0"
     target_type: str = "mcp_server"   # mcp_server, llm_api, web_api, agent
@@ -146,6 +150,7 @@ class PlaybookReport:
     outcomes: list[ProbeOutcome] = field(default_factory=list)
     summary: str = ""
     timestamp: float = 0.0
+    schema_version: str = PLAYBOOK_REPORT_SCHEMA_VERSION
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -187,8 +192,25 @@ class PlaybookLoader:
 
     @staticmethod
     def _parse(data: dict, source: str = "") -> PlaybookSpec:
+        if not isinstance(data, dict):
+            raise ValueError(f"Playbook {source or '<unknown>'} must be a mapping")
+
+        schema_version = str(data.get("schema_version") or data.get("$schema") or PLAYBOOK_SCHEMA_VERSION)
+        if schema_version not in (PLAYBOOK_SCHEMA_VERSION, "1.0", ""):
+            raise ValueError(
+                f"Unsupported playbook schema_version '{schema_version}' in {source or '<unknown>'}"
+            )
+
+        raw_probes = data.get("probes", [])
+        if raw_probes is None:
+            raw_probes = []
+        if not isinstance(raw_probes, list):
+            raise ValueError(f"Playbook {source or '<unknown>'} field 'probes' must be a list")
+
         probes = []
-        for i, p in enumerate(data.get("probes", [])):
+        for i, p in enumerate(raw_probes):
+            if not isinstance(p, dict):
+                raise ValueError(f"Probe #{i} in {source or '<unknown>'} must be a mapping")
             try:
                 probe_type = ProbeType(p.get("type", "prompt_injection"))
             except ValueError:
@@ -198,7 +220,7 @@ class PlaybookLoader:
                 probe_id=p.get("id", f"probe-{i:03d}"),
                 name=p.get("name", f"Probe {i}"),
                 type=probe_type,
-                payload=p.get("payload", ""),
+                payload=str(p.get("payload", "")),
                 description=p.get("description", ""),
                 expected_behavior=p.get("expected", "blocked"),
                 severity=p.get("severity", "HIGH"),
@@ -215,6 +237,7 @@ class PlaybookLoader:
         return PlaybookSpec(
             playbook_id=data.get("id", f"pb-{uuid.uuid4().hex[:8]}"),
             name=data.get("name", "Unnamed Playbook"),
+            schema_version=schema_version if schema_version else PLAYBOOK_SCHEMA_VERSION,
             description=data.get("description", ""),
             version=data.get("version", "1.0"),
             target_type=data.get("target_type", "mcp_server"),
@@ -241,16 +264,19 @@ class ProbeExecutor:
         self._variables = variables or {}
         self._target_type = target_config.get("type", "mcp_stdio")
 
-    def _resolve_payload(self, payload: str) -> str:
-        """Replace {{variable}} placeholders."""
-        result = payload
+    def _resolve_payload(self, probe: ProbeSpec) -> str:
+        """Replace {{variable}} placeholders and apply payload metadata."""
+        result = probe.payload
         for key, val in self._variables.items():
             result = result.replace(f"{{{{{key}}}}}", val)
+        repeat = probe.metadata.get("repeat_payload")
+        if isinstance(repeat, int) and repeat > 1:
+            result = result * repeat
         return result
 
     async def execute(self, probe: ProbeSpec) -> ProbeOutcome:
         """Execute a single probe with retries."""
-        payload = self._resolve_payload(probe.payload)
+        payload = self._resolve_payload(probe)
         last_error = ""
 
         for attempt in range(max(probe.retries, 1)):
@@ -452,6 +478,18 @@ class ProbeExecutor:
 
         response_lower = response.lower()
 
+        if probe.expected_behavior == "blocked":
+            trusted_block_signals = [
+                "blocked by sentinel",
+                '"code": -32600',
+                '"message": "blocked',
+                '"message":"blocked',
+                "rate limited",
+            ]
+            for signal in trusted_block_signals:
+                if signal in response_lower:
+                    return ProbeResult.PASS, [f"PASS:{signal}"]
+
         # Check failure indicators (attack succeeded = FAIL)
         for indicator in probe.failure_indicators:
             if re.search(indicator, response, re.IGNORECASE):
@@ -550,7 +588,50 @@ class ReportGenerator:
     @staticmethod
     def to_json(report: PlaybookReport) -> str:
         """Export report as JSON."""
+        totals = {
+            "probes": report.total_probes,
+            "passed": report.passed,
+            "failed": report.failed,
+            "errors": report.errors,
+            "timeouts": report.timeouts,
+        }
+        summary = {
+            "playbook_id": report.playbook_id,
+            "playbook_name": report.playbook_name,
+            "target": report.target,
+            "grade": report.grade.value,
+            "pass_rate": report.pass_rate,
+            "duration_sec": report.duration_sec,
+        }
+        outcomes = [
+            {
+                "probe_id": o.probe_id,
+                "probe_name": o.probe_name,
+                "probe_type": o.probe_type,
+                "result": o.result.value,
+                "severity": o.severity,
+                "duration_ms": o.duration_ms,
+                "error": o.error,
+                "evidence": o.evidence,
+                "matched_indicators": o.matched_indicators,
+            } for o in report.outcomes
+        ]
         return json.dumps({
+            "schema_version": report.schema_version,
+            "summary": summary,
+            "totals": totals,
+            "outcomes": outcomes,
+            "metadata": report.metadata,
+            "errors": [
+                {
+                    "probe_id": o.probe_id,
+                    "error": o.error,
+                    "result": o.result.value,
+                }
+                for o in report.outcomes
+                if o.result in (ProbeResult.ERROR, ProbeResult.TIMEOUT) or o.error
+            ],
+            # Backwards-compatible top-level fields for existing callers.
             "playbook_id": report.playbook_id,
             "playbook_name": report.playbook_name,
             "target": report.target,
@@ -563,23 +644,31 @@ class ReportGenerator:
             "timeouts": report.timeouts,
             "duration_sec": report.duration_sec,
             "timestamp": report.timestamp,
-            "outcomes": [
-                {
-                    "probe_id": o.probe_id,
-                    "probe_name": o.probe_name,
-                    "probe_type": o.probe_type,
-                    "result": o.result.value,
-                    "severity": o.severity,
-                    "duration_ms": o.duration_ms,
-                    "error": o.error,
-                    "matched_indicators": o.matched_indicators,
-                } for o in report.outcomes
+            "findings": [
+                outcome for outcome in outcomes
+                if outcome["result"] in ("fail", "error", "timeout")
             ],
         }, indent=2)
 
     @staticmethod
     def to_sarif(report: PlaybookReport) -> dict:
         """Export report as SARIF 2.1."""
+        rule_ids = sorted({
+            f"PLAYBOOK-{o.probe_type.upper()}"
+            for o in report.outcomes
+        })
+        rules = [
+            {
+                "id": rule_id,
+                "name": rule_id,
+                "shortDescription": {"text": "Red-team playbook probe"},
+                "fullDescription": {
+                    "text": "A red-team probe was not blocked by the target."
+                },
+                "properties": {"schema_version": report.schema_version},
+            }
+            for rule_id in rule_ids
+        ]
         results = []
         for o in report.outcomes:
             if o.result != ProbeResult.FAIL:
@@ -610,9 +699,18 @@ class ReportGenerator:
                         "name": "Eresus Sentinel Playbook Engine",
                         "version": "0.1.0",
                         "informationUri": "https://eresussec.com",
+                        "rules": rules,
                     },
                 },
                 "results": results,
+                "properties": {
+                    "schema_version": report.schema_version,
+                    "summary": {
+                        "grade": report.grade.value,
+                        "pass_rate": report.pass_rate,
+                        "total_probes": report.total_probes,
+                    },
+                },
             }],
         }
 
@@ -764,6 +862,11 @@ class PlaybookEngine:
             duration_sec=elapsed,
             outcomes=list(outcomes),
             timestamp=time.time(),
+            metadata={
+                "playbook_schema_version": spec.schema_version,
+                "execution_mode": spec.execution_mode,
+                "tags": spec.tags,
+            },
         )
 
         report.summary = self._grader.generate_summary(report)

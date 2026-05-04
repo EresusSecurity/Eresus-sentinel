@@ -1,7 +1,9 @@
 """BOM diff comparison — compare two AIBOM results and report changes."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from sentinel.aibom.models import AIBOMResult, AIComponent
@@ -69,6 +71,39 @@ def diff_bom(old: AIBOMResult, new: AIBOMResult) -> BOMDiff:
     return result
 
 
+def load_bom_json(path: str | Path) -> AIBOMResult:
+    """Load an Eresus AIBOM JSON file."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("AIBOM JSON must be an object")
+    return AIBOMResult.from_dict(data)
+
+
+def format_diff_json(diff: BOMDiff) -> dict[str, Any]:
+    """Format a BOMDiff as a stable JSON payload."""
+    return {
+        "schema_version": "aibom.diff.v1",
+        "summary": diff.summary(),
+        "has_changes": diff.has_changes,
+        "components": {
+            "added": [component.as_dict() for component in diff.components.added],
+            "removed": [component.as_dict() for component in diff.components.removed],
+            "modified": [
+                {
+                    "old": old.as_dict(),
+                    "new": new.as_dict(),
+                    "changes": changes,
+                }
+                for old, new, changes in diff.components.modified
+            ],
+        },
+        "metadata_changes": {
+            key: {"old": old, "new": new}
+            for key, (old, new) in diff.metadata_changes.items()
+        },
+    }
+
+
 def _index_components(bom: AIBOMResult) -> dict[str, AIComponent]:
     index: dict[str, AIComponent] = {}
     for comp in bom.components:
@@ -80,7 +115,7 @@ def _index_components(bom: AIBOMResult) -> dict[str, AIComponent]:
 def _compare_components(old: AIComponent, new: AIComponent) -> list[str]:
     changes: list[str] = []
     if old.version != new.version:
-        changes.append(f"version: {old.version!r} → {new.version!r}")
+        changes.append(f"version: {old.version!r} -> {new.version!r}")
     if old.description != new.description:
         changes.append("description changed")
     if set(old.evidence) != set(new.evidence):

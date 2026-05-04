@@ -93,3 +93,23 @@ class DepGraph:
 
     def edge_count(self) -> int:
         return sum(len(n.out_edges) for n in self._nodes.values())
+
+    def to_adjacency(self) -> dict:
+        """Export graph data for dashboards and static visualization."""
+        return {
+            "schema_version": "aibom.graph.v1",
+            "nodes": [
+                {
+                    "id": cid,
+                    "name": node.component.name,
+                    "type": node.component.type.value,
+                    "path": node.component.path,
+                }
+                for cid, node in self._nodes.items()
+            ],
+            "edges": [
+                {"source": cid, "target": target}
+                for cid, node in self._nodes.items()
+                for target in node.out_edges
+            ],
+        }

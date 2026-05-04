@@ -1,0 +1,172 @@
+# Jinja2 Template Injection (SSTI) Security Rules
+# Sentinel artifact scanner — Jinja2 templates in ML model artifacts
+# Covers CVE-2024-34359 and general SSTI attack patterns
+
+metadata:
+  version: "1.0.0"
+  format: "jinja2_template"
+  extensions: [".jinja", ".j2", ".template", ".json", ".yaml", ".yml"]
+  description: >
+    SSTI detection rules for Jinja2 templates embedded in ML model artifacts.
+    Targets tokenizer_config.json, chat_template fields, GGUF metadata,
+    and standalone template files.
+
+limits:
+  max_template_size_bytes: 51200
+  max_file_size_bytes: 10485760
+  max_findings_per_category: 10
+  raw_fallback_context_bytes: 1024
+  raw_fallback_max_windows: 8
+  raw_fallback_read_bytes: 262144
+
+template_indicators:
+  - "{{"
+  - "{%"
+  - "{#"
+
+ml_context_filenames:
+  - "tokenizer_config.json"
+  - "tokenizer.json"
+  - "chat_template.json"
+  - "generation_config.json"
+
+ml_context_path_terms:
+  - "model"
+  - "checkpoint"
+  - "huggingface"
+  - "transformers"
+  - "config"
+
+safe_ml_patterns:
+  - "messages"
+  - "role"
+  - "content"
+  - "user"
+  - "assistant"
+  - "system"
+  - "bos_token"
+  - "eos_token"
+  - "add_generation_prompt"
+  - "loop.last"
+  - "loop.first"
+  - "loop.index"
+  - "loop.index0"
+  - "loop.revindex"
+  - "loop.length"
+  - "loop.depth"
+  - "joiner"
+  - "namespace"
+
+ssti_patterns:
+  critical_rce:
+    severity: CRITICAL
+    cwe_ids: ["CWE-94", "CWE-78"]
+    description: >
+      Direct Remote Code Execution via Jinja2 SSTI. These patterns allow
+      arbitrary Python/OS command execution when the template is rendered.
+    patterns:
+      - '__class__\s*\.\s*__mro__'
+      - '__subclasses__\s*\(\s*\)'
+      - '__globals__\s*\[\s*["'']os["'']'
+      - '__builtins__\s*\[\s*["'']__import__["'']'
+      - 'popen\s*\('
+      - 'subprocess\s*\.\s*(?:call|run|Popen|check_output|check_call)'
+      - 'os\s*\.\s*system\s*\('
+      - '__import__\s*\(\s*["''](os|subprocess|sys|importlib|builtins)["'']\s*\)'
+      - 'eval\s*\('
+      - 'exec\s*\('
+      - 'compile\s*\(\s*'
+      - 'getattr\s*\(\s*.*__class__'
+      - '__reduce__\s*\('
+      - '__reduce_ex__\s*\('
+
+  code_execution:
+    severity: CRITICAL
+    cwe_ids: ["CWE-94"]
+    description: >
+      Code execution via attribute traversal or Python object introspection
+      in Jinja2 template context.
+    patterns:
+      - '\{\{[^}]*__class__[^}]*\}\}'
+      - '\{\{[^}]*__mro__[^}]*\}\}'
+      - '\{\{[^}]*__subclasses__[^}]*\}\}'
+      - '\{%[^%]*__import__[^%]*%\}'
+      - '\{\{[^}]*\[\s*["'']__[a-z]+__["''].*\]\s*\}\}'
+      - 'request\s*\.\s*application\s*\.\s*__globals__'
+      - 'config\s*\.\s*__class__\s*\.\s*__init__'
+      - '\[\s*["'']\s*__class__\s*["'']'
+      - 'lipsum\s*\.__globals__'
+      - 'cycler\s*\.__init__\s*\.__globals__'
+      - 'joiner\s*\.__init__\s*\.__globals__'
+      - 'namespace\s*\.__init__\s*\.__globals__'
+
+  attribute_access:
+    severity: HIGH
+    cwe_ids: ["CWE-94", "CWE-200"]
+    description: >
+      Suspicious attribute access patterns that may be used as stepping stones
+      toward full SSTI exploitation via Python object introspection.
+    patterns:
+      - '\|attr\s*\(\s*["''][_a-z]'
+      - '__dict__\s*\['
+      - '__dict__\s*\.'
+      - 'request\s*\.\s*environ\s*\['
+      - 'request\s*\.\s*environ\s*\.\s*get'
+      - 'config\s*\.\s*items\s*\(\s*\)'
+      - 'self\s*\.\s*_sa_instance_state'
+
+  filter_bypass:
+    severity: HIGH
+    cwe_ids: ["CWE-94"]
+    description: >
+      Jinja2 filter-based bypass techniques used to obfuscate SSTI payloads
+      from WAFs and static analysis tools.
+    patterns:
+      - '\|int\s*\|chr'
+      - '\|map\s*\(\s*["''](eval|exec|import)'
+      - '\|select\s*\(\s*["''](eval|exec|import)'
+      - 'format\s*\(\s*.*__class__'
+      - '\|lower\s*\|replace'
+      - '\|upper\s*\|replace'
+      - 'request\|attr'
+      - '\[\s*request\s*\.\s*args'
+      - '\[\s*request\s*\.\s*form'
+
+  obfuscation:
+    severity: HIGH
+    cwe_ids: ["CWE-94", "CWE-506"]
+    description: >
+      Encoded or obfuscated SSTI payload delivery. Base64-encoded strings
+      adjacent to decode/eval patterns.
+    patterns:
+      - 'b64decode\s*\('
+      - 'base64\s*\.\s*b64decode'
+      - 'frombase64string\s*\('
+      - '\\\\x[0-9a-fA-F]{2}.*__class__'
+      - 'chr\s*\(\s*\d+\s*\)'
+      - '\|replace\s*\(["''](?:[0-9a-zA-Z/+]{40,})["'']'
+
+  waf_bypass:
+    severity: HIGH
+    cwe_ids: ["CWE-94"]
+    description: >
+      Techniques specifically designed to bypass WAF or template sandboxing,
+      including use of Unicode escapes and string concatenation.
+    patterns:
+      - '["'']\s*~\s*["''].*__class__'
+      - '\[\s*\(\s*["''][a-z_]+["''].*\~.*["''][a-z_]+["'']\s*\)\s*\]'
+      - '__class__.*__init__.*__globals__.*__builtins__'
+      - '\\\\u0027.*__class__'
+      - 'dict\.__doc__\[0\]'
+
+suspicious_template_keys:
+  - "chat_template"
+  - "restore_fn"
+  - "custom_template"
+  - "jinja_template"
+  - "prompt_template"
+  - "system_template"
+  - "instruction_template"
+  - "template_string"
+  - "format_string"
+  - "eval_template"

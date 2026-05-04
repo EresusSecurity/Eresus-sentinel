@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a crash, incorrect behavior, or regression.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include the exact command, target shape, and relevant config.
+      placeholder: |
+        sentinel scan ./project --profile fast -f json
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Paste relevant logs. Redact secrets before submitting.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Sentinel version
+      placeholder: sentinel --version
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Domain
+      options:
+        - CLI
+        - Artifact scanner
+        - Prompt firewall
+        - MCP/agent
+        - MCP proxy
+        - HF/supply chain
+        - Dashboard/API
+        - Docs
+        - Other

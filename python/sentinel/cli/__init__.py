@@ -1,11 +1,10 @@
-"""
-Eresus Sentinel CLI package.
+"""Eresus Sentinel CLI package."""
 
-Re-exports main() for backward compatibility with:
-    - pyproject.toml entry point: sentinel.cli:main
-    - __main__.py: from sentinel.cli import main
-"""
 
-from sentinel.cli.main import main
+def main():
+    """Lazy entry point wrapper for `sentinel.cli:main`."""
+    from sentinel.cli.main import main as _main
+
+    return _main()
 
 __all__ = ["main"]

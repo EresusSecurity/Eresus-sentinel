@@ -39,6 +39,16 @@ from typing import Generator
 
 logger = logging.getLogger(__name__)
 
+METRICS_SCHEMA_VERSION = "metrics.snapshot.v1"
+PROMETHEUS_METRIC_NAMES = {
+    "scan_total": "sentinel_scan_total",
+    "findings_total": "sentinel_findings_total",
+    "scan_duration_seconds": "sentinel_scan_duration_seconds",
+    "risk_score": "sentinel_risk_score",
+    "active_scanners": "sentinel_active_scanners",
+    "policy_version": "sentinel_policy_version",
+}
+
 
 @dataclass
 class _CounterData:
@@ -291,6 +301,8 @@ class MetricsCollector:
         """Export all metrics as a JSON-compatible dict."""
         with self._lock:
             return {
+                "schema_version": METRICS_SCHEMA_VERSION,
+                "metric_names": dict(PROMETHEUS_METRIC_NAMES),
                 "counters": {
                     "scan_total": dict(self._scan_total.values),
                     "findings_total": dict(self._findings_total.values),

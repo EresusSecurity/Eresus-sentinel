@@ -12,10 +12,14 @@ Scans Hugging Face model repositories for:
 
 import json
 import os
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional, TypeVar
 
 from ..finding import Finding, Severity
+from ..offline import offline_enabled
+
+T = TypeVar("T")
 
 # Dangerous model file extensions
 DANGEROUS_EXTENSIONS = {
@@ -61,8 +65,18 @@ SUSPICIOUS_CONFIG_PATTERNS = [
 class HuggingFaceScanner:
     """Scans Hugging Face model repositories for security issues."""
 
-    def __init__(self, api_token: Optional[str] = None):
+    def __init__(
+        self,
+        api_token: Optional[str] = None,
+        *,
+        offline: bool | None = None,
+        max_retries: int = 2,
+        retry_backoff: float = 0.25,
+    ):
         self.api_token = api_token or os.environ.get("HF_TOKEN")
+        self.offline = offline_enabled(offline)
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff = max(0.0, retry_backoff)
 
     def scan_local_repo(self, repo_path: str) -> List[Finding]:
         """Scan a locally cloned HuggingFace repository."""
@@ -108,11 +122,21 @@ class HuggingFaceScanner:
     def scan_remote_repo(self, repo_id: str) -> List[Finding]:
         """Scan a remote HuggingFace repository via API."""
         findings = []
+        if self.offline:
+            return [Finding.artifact(
+                rule_id="HF-022",
+                title="HuggingFace remote scan skipped in offline mode",
+                description="SENTINEL_OFFLINE/HF_HUB_OFFLINE is enabled; remote Hub API calls were not made.",
+                severity=Severity.INFO,
+                source=repo_id,
+                evidence="offline=true",
+            )]
+
         try:
             from huggingface_hub import HfApi, hf_hub_url
 
             api = HfApi(token=self.api_token)
-            repo_info = api.repo_info(repo_id)
+            repo_info = self._with_retries(lambda: api.repo_info(repo_id))
 
             # Check siblings (files)
             for sibling in repo_info.siblings:
@@ -164,10 +188,10 @@ class HuggingFaceScanner:
             card_text = None
             try:
                 from huggingface_hub import hf_hub_download
-                readme_path = hf_hub_download(
+                readme_path = self._with_retries(lambda: hf_hub_download(
                     repo_id=repo_id, filename="README.md",
                     token=self.api_token, local_dir=None,
-                )
+                ))
                 with open(readme_path, encoding="utf-8", errors="replace") as fh:
                     card_text = fh.read()
             except Exception:
@@ -193,6 +217,24 @@ class HuggingFaceScanner:
             ))
 
         return findings
+
+    def _with_retries(self, fn: Callable[[], T]) -> T:
+        """Run a HuggingFace Hub call with bounded exponential backoff."""
+        last_exc: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001 - hub clients expose several exception types
+                last_exc = exc
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status is not None and status not in {429, 500, 502, 503, 504}:
+                    break
+                if attempt >= self.max_retries:
+                    break
+                if self.retry_backoff:
+                    time.sleep(self.retry_backoff * (2 ** attempt))
+        assert last_exc is not None
+        raise last_exc
 
     # ── Model card completeness scoring ─────────────────────────
 

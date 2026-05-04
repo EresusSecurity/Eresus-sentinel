@@ -1,4 +1,4 @@
-"""TorchServe .mar, Torch7 .t7/.th, ExecuTorch .pte, TensorRT .engine scanners."""
+"""TorchServe .mar, Torch7 .t7/.th/.net, ExecuTorch .pte, TensorRT .engine scanners."""
 from __future__ import annotations
 
 import json
@@ -14,7 +14,7 @@ DANGEROUS_STRINGS = [b"__import__", b"os.system", b"subprocess", b"eval(", b"exe
 
 
 class TorchServeScanner:
-    """Scan TorchServe .mar archives, Torch7 .t7, ExecuTorch .pte, and TensorRT .engine files."""
+    """Scan TorchServe .mar archives for handler and dependency risks."""
 
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
@@ -38,6 +38,20 @@ class TorchServeScanner:
                     except json.JSONDecodeError:
                         findings.append(Finding.artifact(rule_id="MAR-004", title="Invalid MAR manifest", description="Cannot parse MANIFEST.json", severity=Severity.MEDIUM, target=filepath))
                 for name in zf.namelist():
+                    if name.endswith((".py", ".sh")):
+                        data = zf.read(name)[:20000]
+                        for pat in DANGEROUS_STRINGS:
+                            if pat in data:
+                                findings.append(Finding.artifact(
+                                    rule_id="MAR-008",
+                                    title=f"Dangerous handler code in MAR: {name}",
+                                    description=f"TorchServe handler contains dangerous pattern {pat.decode(errors='replace')}",
+                                    severity=Severity.CRITICAL,
+                                    target=filepath,
+                                    evidence=f"{name}:{pat.decode(errors='replace')}",
+                                    cwe_ids=["CWE-94"],
+                                ))
+                                break
                     if name.endswith((".pkl", ".pickle", ".pt", ".pth")):
                         data = zf.read(name)[:10000]
                         for m in PICKLE_MARKERS:
@@ -54,12 +68,12 @@ class TorchServeScanner:
 
 
 class Torch7Scanner:
-    """Scan legacy Torch7 .t7/.th files for pickle-based deserialization threats."""
+    """Scan legacy Torch7 .t7/.th/.net files for Lua execution threats."""
 
     def scan_file(self, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         path = Path(filepath)
-        if not path.exists() or path.suffix.lower() not in (".t7", ".th"):
+        if not path.exists() or path.suffix.lower() not in (".t7", ".th", ".net"):
             return findings
         try:
             data = path.read_bytes()

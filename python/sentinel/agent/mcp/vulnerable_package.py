@@ -26,13 +26,24 @@ class PackageVuln:
     vuln_id: str
     summary: str
     severity: str = "UNKNOWN"
+    ecosystem: str = "PyPI"
     aliases: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PackageRef:
+    ecosystem: str
+    name: str
+    version: str = ""
+
+    def as_tuple(self) -> tuple[str, str]:
+        return (self.name, self.version)
 
 
 @dataclass
 class VulnScanResult:
     path: str
-    packages: list[tuple[str, str]] = field(default_factory=list)
+    packages: list[PackageRef] = field(default_factory=list)
     vulnerabilities: list[PackageVuln] = field(default_factory=list)
     error: Optional[str] = None
 
@@ -71,8 +82,8 @@ class VulnerablePackageAnalyzer:
 
         return result
 
-    def _collect_packages(self, root: Path) -> list[tuple[str, str]]:
-        packages: list[tuple[str, str]] = []
+    def _collect_packages(self, root: Path) -> list[PackageRef]:
+        packages: list[PackageRef] = []
 
         req = root / "requirements.txt"
         if req.exists():
@@ -89,48 +100,48 @@ class VulnerablePackageAnalyzer:
         return packages
 
     @staticmethod
-    def _parse_requirements(path: Path) -> list[tuple[str, str]]:
-        pkgs: list[tuple[str, str]] = []
+    def _parse_requirements(path: Path) -> list[PackageRef]:
+        pkgs: list[PackageRef] = []
         for line in path.read_text(errors="ignore").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
             m = re.match(r"^([A-Za-z0-9_\-\.]+)[=~<>!]+([^\s;#]+)", line)
             if m:
-                pkgs.append((m.group(1).lower(), m.group(2)))
+                pkgs.append(PackageRef("PyPI", m.group(1).lower(), m.group(2)))
             else:
                 name_only = re.match(r"^([A-Za-z0-9_\-\.]+)", line)
                 if name_only:
-                    pkgs.append((name_only.group(1).lower(), ""))
+                    pkgs.append(PackageRef("PyPI", name_only.group(1).lower(), ""))
         return pkgs
 
     @staticmethod
-    def _parse_pyproject(path: Path) -> list[tuple[str, str]]:
-        pkgs: list[tuple[str, str]] = []
+    def _parse_pyproject(path: Path) -> list[PackageRef]:
+        pkgs: list[PackageRef] = []
         text = path.read_text(errors="ignore")
         for m in re.finditer(r'"([A-Za-z0-9_\-\.]+)[=~<>!]+([^"]+)"', text):
-            pkgs.append((m.group(1).lower(), m.group(2)))
+            pkgs.append(PackageRef("PyPI", m.group(1).lower(), m.group(2)))
         return pkgs
 
     @staticmethod
-    def _parse_package_json(path: Path) -> list[tuple[str, str]]:
-        pkgs: list[tuple[str, str]] = []
+    def _parse_package_json(path: Path) -> list[PackageRef]:
+        pkgs: list[PackageRef] = []
         try:
             data = json.loads(path.read_text(errors="ignore"))
             for section in ("dependencies", "devDependencies"):
                 for name, ver in data.get(section, {}).items():
                     ver_clean = re.sub(r"[^0-9.]", "", ver).strip(".")
-                    pkgs.append((name.lower(), ver_clean))
+                    pkgs.append(PackageRef("npm", name.lower(), ver_clean))
         except Exception:
             pass
         return pkgs
 
-    def _query_osv(self, packages: list[tuple[str, str]]) -> list[PackageVuln]:
+    def _query_osv(self, packages: list[PackageRef]) -> list[PackageVuln]:
         queries = []
-        for name, version in packages:
-            q: dict = {"package": {"name": name, "ecosystem": "PyPI"}}
-            if version:
-                q["version"] = version
+        for package in packages:
+            q: dict = {"package": {"name": package.name, "ecosystem": package.ecosystem}}
+            if package.version:
+                q["version"] = package.version
             queries.append(q)
 
         payload = json.dumps({"queries": queries}).encode()
@@ -145,7 +156,7 @@ class VulnerablePackageAnalyzer:
 
         vulns: list[PackageVuln] = []
         results = data.get("results", [])
-        for (pkg_name, pkg_ver), result in zip(packages, results):
+        for package, result in zip(packages, results):
             for vuln in result.get("vulns", []):
                 severity = "UNKNOWN"
                 for sev in vuln.get("severity", []):
@@ -161,11 +172,12 @@ class VulnerablePackageAnalyzer:
                             severity = "LOW"
                         break
                 vulns.append(PackageVuln(
-                    package=pkg_name,
-                    version=pkg_ver,
+                    package=package.name,
+                    version=package.version,
                     vuln_id=vuln.get("id", ""),
                     summary=vuln.get("summary", ""),
                     severity=severity,
+                    ecosystem=package.ecosystem,
                     aliases=vuln.get("aliases", []),
                 ))
         return vulns

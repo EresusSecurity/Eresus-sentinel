@@ -39,6 +39,7 @@ import sys
 from pathlib import Path
 
 from sentinel.finding import Finding, Location, Severity
+from sentinel.interfaces import normalize_severity
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,7 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     """Scan a single model artifact file with safety limits."""
     from sentinel.artifact import (
         GGUFAnalyzer,
+        Jinja2InjectionScanner,
         LlamaFileScanner,
         PickleScanner,
         SafetensorsValidator,
@@ -198,6 +200,7 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         TorchServeScanner,
     )
     from sentinel.artifact.xgboost_scanner import XGBoostScanner
+    from sentinel.artifact.manifest_scanner import MLManifestScanner
     from sentinel.artifact.yaml_scanner import YamlScanner
     from sentinel.finding import Severity
     from sentinel.scan_safety import FileTooLargeError, check_file_size
@@ -247,7 +250,8 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".joblib",): XGBoostScanner,
         (".npy",): NumpyScanner,
         (".npz",): NumpyScanner,
-        (".yaml", ".yml"): YamlScanner,
+        (".yaml", ".yml"): [YamlScanner, MLManifestScanner],
+        (".json",): [MLManifestScanner],
         (".nemo",): NeMoScanner,
         (".mar",): TorchServeScanner,
         (".tar", ".tar.gz", ".tgz", ".zip"): ArchiveSlipDetector,
@@ -266,12 +270,18 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".pte", ".ptl"): ExecuTorchScanner,
         (".engine", ".plan", ".trt"): TensorRTScanner,
         (".xml",): OpenVINOScanner,
+        (".jinja", ".jinja2", ".j2", ".template"): Jinja2InjectionScanner,
     }
 
-    for extensions, scanner_cls in scanner_map.items():
+    for extensions, scanner_classes in scanner_map.items():
         if any(name_lower.endswith(ext) for ext in extensions):
-            scanner = scanner_cls()
-            findings.extend(_findings_from_artifact_result(scanner.scan_file(str(path))))
+            classes = scanner_classes if isinstance(scanner_classes, list) else [scanner_classes]
+            for scanner_cls in classes:
+                try:
+                    scanner = scanner_cls()
+                    findings.extend(_findings_from_artifact_result(scanner.scan_file(str(path))))
+                except Exception as exc:
+                    logger.warning("Scanner %s failed on %s: %s", scanner_cls.__name__, path, exc)
             return findings
 
     # PyTorch: check if TorchScript archive (ZIP with code/ dir)
@@ -413,10 +423,7 @@ def dispatch_agent(target: str) -> list[Finding]:
             return []
         converted: list[Finding] = []
         for item in skill_scanner.scan_skill(text, file_path.name):
-            try:
-                severity = Severity[str(item.severity).upper()]
-            except KeyError:
-                severity = Severity.MEDIUM
+            severity = normalize_severity(str(item.severity))
             line_start = None
             if item.location and ":" in item.location:
                 maybe_line = item.location.rsplit(":", 1)[-1]

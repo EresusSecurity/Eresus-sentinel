@@ -67,6 +67,35 @@ def test_empty_or_non_pickle_bytes_do_not_emit_parser_evasion_finding() -> None:
         assert all(finding.rule_id != "ARTIFACT-000" for finding in findings)
 
 
+def test_pickle_backend_selector_honors_python_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sentinel.artifact.pickle_scanner import PickleScanner
+
+    monkeypatch.setenv("SENTINEL_PICKLE_BACKEND", "python")
+
+    scanner = PickleScanner()
+
+    assert scanner.requested_backend == "python"
+    assert scanner.engine == "python"
+
+
+def test_pickle_backend_selector_rejects_unknown_backend() -> None:
+    from sentinel.artifact.pickle_scanner import PickleScanner
+
+    with pytest.raises(ValueError, match="pickle backend"):
+        PickleScanner(backend="cuda")
+
+
+def test_pickle_backend_selector_fails_loudly_when_rust_required_without_extension() -> None:
+    from sentinel.artifact.pickle.scanner import HAS_RUST_ENGINE
+    from sentinel.artifact.pickle_scanner import PickleScanner
+
+    if HAS_RUST_ENGINE:
+        pytest.skip("Rust extension is available in this environment")
+
+    with pytest.raises(RuntimeError, match="Rust extension"):
+        PickleScanner(backend="rust")
+
+
 @pytest.mark.parametrize("seed_name", sorted(MALICIOUS_SEEDS))
 def test_malicious_seed_produces_findings(seed_name: str) -> None:
     """Known-bad seeds must trigger at least one finding."""

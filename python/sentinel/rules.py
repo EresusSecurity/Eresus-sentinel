@@ -37,6 +37,9 @@ def _clear_rule_cache():
     load_sast_secret_patterns.cache_clear()
     load_taint_rules.cache_clear()
     load_aibom_patterns.cache_clear()
+    load_cntk_rules.cache_clear()
+    load_backdoor_patterns.cache_clear()
+    load_fp_patterns.cache_clear()
 
 
 def get_rules_dir() -> Path:
@@ -203,6 +206,15 @@ def load_sast_rules() -> List[Dict[str, Any]]:
     for entry in entries:
         try:
             compiled = re.compile(entry["pattern"])
+            raw_excl = entry.get("exclude_value_patterns", [])
+            excl_compiled = []
+            for ep in raw_excl:
+                ep_str = str(ep).split('#')[0].strip()
+                if ep_str:
+                    try:
+                        excl_compiled.append(re.compile(ep_str))
+                    except re.error:
+                        pass
             rules.append({
                 "id": entry.get("id", entry.get("name", "unknown")),
                 "name": entry.get("name", entry.get("id", "unknown")),
@@ -213,6 +225,7 @@ def load_sast_rules() -> List[Dict[str, Any]]:
                 "fix_hint": entry.get("fix_hint", ""),
                 "fp_risk": entry.get("fp_risk", "MEDIUM"),
                 "references": entry.get("references", []),
+                "exclude_value_patterns": excl_compiled,
             })
         except re.error as exc:
             _log.warning(
@@ -506,3 +519,184 @@ def load_aibom_patterns() -> Dict[str, Any]:
     }
 
     return result
+
+
+@functools.lru_cache(maxsize=1)
+def load_cntk_rules() -> Dict[str, Any]:
+    """Load CNTK model security rules from cntk_rules.yaml.
+
+    Returns the raw YAML dict. Patterns are compiled by the CNTK scanner
+    (which has cntk-specific compilation logic). This function provides
+    caching and centralised path resolution via rules.get_rules_dir().
+    """
+    try:
+        return load_yaml("cntk_rules.yaml") or {}
+    except FileNotFoundError:
+        _log.warning("rules.py: cntk_rules.yaml not found in %s", get_rules_dir())
+        return {}
+    except Exception as exc:
+        _log.warning("rules.py: failed to load cntk_rules.yaml: %s", exc)
+        return {}
+
+
+@functools.lru_cache(maxsize=1)
+def load_backdoor_patterns() -> Dict[str, Any]:
+    """Load backdoor & reverse-shell detection patterns from backdoor_patterns.yaml.
+
+    Returns a dict keyed by category section. Each list entry includes a
+    'compiled' key with the pre-compiled regex for fast matching.
+    """
+    try:
+        data = load_yaml("backdoor_patterns.yaml") or {}
+    except FileNotFoundError:
+        _log.warning("rules.py: backdoor_patterns.yaml not found in %s", get_rules_dir())
+        return {}
+    except Exception as exc:
+        _log.warning("rules.py: failed to load backdoor_patterns.yaml: %s", exc)
+        return {}
+
+    compiled: Dict[str, Any] = {}
+    for section, entries in data.items():
+        if section == "version":
+            compiled[section] = entries
+            continue
+        if not isinstance(entries, list):
+            compiled[section] = entries
+            continue
+        compiled_entries = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            pat_str = entry.get("pattern", "")
+            if not pat_str:
+                compiled_entries.append(entry)
+                continue
+            try:
+                compiled_entry = dict(entry)
+                compiled_entry["compiled"] = re.compile(pat_str, re.IGNORECASE)
+                compiled_entries.append(compiled_entry)
+            except re.error as exc:
+                _log.warning(
+                    "rules.py: bad pattern in backdoor_patterns.yaml "
+                    "section=%r id=%r: %s",
+                    section,
+                    entry.get("id", "?"),
+                    exc,
+                )
+        compiled[section] = compiled_entries
+    return compiled
+
+
+@functools.lru_cache(maxsize=1)
+def load_fp_patterns() -> List[Dict[str, Any]]:
+    """Load false-positive suppression patterns from fp_patterns.yaml.
+
+    Returns a list of compiled FP entries with 'compiled', 'id', 'description',
+    and 'category' fields.
+    """
+    try:
+        data = load_yaml("fp_patterns.yaml") or {}
+    except FileNotFoundError:
+        _log.warning("rules.py: fp_patterns.yaml not found in %s", get_rules_dir())
+        return []
+    except Exception as exc:
+        _log.warning("rules.py: failed to load fp_patterns.yaml: %s", exc)
+        return []
+
+    entries = data if isinstance(data, list) else data.get("patterns", [])
+    compiled_list = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        pat_str = entry.get("pattern", "")
+        if not pat_str:
+            continue
+        try:
+            compiled_list.append({
+                "id": entry.get("id", entry.get("name", "unknown")),
+                "description": entry.get("description", ""),
+                "category": entry.get("category", "generic"),
+                "compiled": re.compile(pat_str, re.IGNORECASE),
+            })
+        except re.error as exc:
+            _log.warning(
+                "rules.py: bad FP pattern id=%r: %s",
+                entry.get("id", entry.get("name", "?")),
+                exc,
+            )
+    return compiled_list
+
+
+def validate_all_rule_files() -> Dict[str, Any]:
+    """Health-check: attempt to load every known YAML rule file and compile patterns.
+
+    Returns a report dict:
+      - 'ok': list of filenames that loaded successfully
+      - 'failed': list of (filename, error_message) tuples
+      - 'bad_patterns': list of (filename, rule_id, error_message) tuples
+    """
+    _RULE_FILES = [
+        "secret_patterns.yaml",
+        "injection_patterns.yaml",
+        "sast_rules.yaml",
+        "artifact_blocklist.yaml",
+        "mcp_rules.yaml",
+        "supply_chain_rules.yaml",
+        "scanner_rules.yaml",
+        "sast_secret_patterns.yaml",
+        "taint_rules.yaml",
+        "backdoor_patterns.yaml",
+        "fp_patterns.yaml",
+        "cntk_rules.yaml",
+        "dangerous_code_patterns.yaml",
+        "deception_patterns.yaml",
+        "rknn_rules.yaml",
+        "jax_rules.yaml",
+        "tf_metagraph_rules.yaml",
+        "manifest_rules.yaml",
+        "model_format_rules.yaml",
+    ]
+
+    report: Dict[str, Any] = {"ok": [], "failed": [], "bad_patterns": []}
+    rules_dir = get_rules_dir()
+
+    def _check_patterns(section: Any, fname: str) -> None:
+        if isinstance(section, list):
+            for entry in section:
+                if not isinstance(entry, dict):
+                    continue
+                pat = entry.get("pattern", "")
+                if not pat:
+                    continue
+                try:
+                    re.compile(pat, re.IGNORECASE)
+                except re.error as exc:
+                    report["bad_patterns"].append(
+                        (fname, entry.get("id", entry.get("name", "?")), str(exc))
+                    )
+        elif isinstance(section, dict):
+            for v in section.values():
+                _check_patterns(v, fname)
+
+    for filename in _RULE_FILES:
+        path = rules_dir / filename
+        if not path.exists():
+            report["failed"].append((filename, "file not found"))
+            continue
+        try:
+            import yaml as _yaml
+            with open(path, "r", encoding="utf-8") as fh:
+                data = _yaml.safe_load(fh) or {}
+        except Exception as exc:
+            report["failed"].append((filename, str(exc)))
+            continue
+
+        if isinstance(data, list):
+            _check_patterns(data, filename)
+        elif isinstance(data, dict):
+            for v in data.values():
+                _check_patterns(v, filename)
+
+        report["ok"].append(filename)
+
+    return report

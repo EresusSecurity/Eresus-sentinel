@@ -23,6 +23,7 @@ from sentinel.cli._helpers import (
     _sev,
     _severity_dashboard,
     _warn,
+    machine_stdout,
     console,
 )
 
@@ -45,8 +46,9 @@ def _emit_info(args, data: dict) -> None:
         Path(out).write_text(payload, encoding="utf-8")
         _ok(f"written {out}")
     else:
-        sys.stdout.write(payload + "\n")
-        sys.stdout.flush()
+        out_stream = machine_stdout()
+        out_stream.write(payload + "\n")
+        out_stream.flush()
 
 
 def cmd_evaluate(args):
@@ -90,10 +92,96 @@ _AIBOM_MAX_FILES = 5000
 
 def cmd_aibom(args):
     """Generate an AI bill of materials from the unified CLI."""
-    from sentinel.aibom.cli import _REPORTERS
+    from sentinel.aibom.diff import diff_bom, format_diff_json, format_diff_markdown, load_bom_json
+    from sentinel.aibom.container_image import scan_container_image
+    from sentinel.aibom.multi_repo import MultiRepoConfig, merge_results
     from sentinel.aibom.scan_pipeline import ScanPipeline
+    from sentinel.aibom.scanners import scanner_registry
 
-    target = Path(args.path)
+    fmt = getattr(args, "aibom_format", "cyclonedx")
+    tokens = [getattr(args, "path", ".")]
+    tokens.extend(getattr(args, "extra_paths", []) or [])
+
+    if getattr(args, "list_scanners", False):
+        payload = {
+            "schema_version": "aibom.scanner-registry.v1",
+            "summary": {"scanner_count": len(scanner_registry())},
+            "scanners": scanner_registry(),
+        }
+        rendered = (
+            json.dumps(payload, indent=2, default=str)
+            if fmt == "json"
+            else "\n".join(f"{s['id']}\t{s['class']}" for s in payload["scanners"])
+        )
+        _write_aibom_output(args, rendered)
+        return 0
+
+    if tokens and tokens[0] == "diff":
+        if len(tokens) < 3:
+            _fail("aibom diff requires OLD and NEW")
+            return 2
+        args.diff = [tokens[1], tokens[2]]
+
+    diff_paths = getattr(args, "diff", None)
+    if diff_paths:
+        old, new = (load_bom_json(diff_paths[0]), load_bom_json(diff_paths[1]))
+        bom_diff = diff_bom(old, new)
+        rendered = (
+            json.dumps(format_diff_json(bom_diff), indent=2, default=str)
+            if fmt == "json"
+            else format_diff_markdown(bom_diff)
+        )
+        _write_aibom_output(args, rendered)
+        return 1 if bom_diff.has_changes else 0
+
+    if tokens and tokens[0] == "scan":
+        target_text = tokens[1] if len(tokens) > 1 else "."
+        target_path = Path(target_text)
+        if target_path.exists() and target_path.suffix.lower() not in {".tar", ".oci"}:
+            result = ScanPipeline().run(target_path)
+            rendered = _render_aibom_result(args, result, target_path, fmt)
+            _write_aibom_output(args, rendered)
+            return 0
+        result = scan_container_image(
+            target_text,
+            extraction_tier=getattr(args, "container_extraction_tier", "auto"),
+        )
+        rendered = _render_aibom_result(args, result, target_text, fmt)
+        _write_aibom_output(args, rendered)
+        return 0
+
+    if tokens and tokens[0] == "watch":
+        target = Path(tokens[1] if len(tokens) > 1 else ".")
+        if not target.exists():
+            _fail(f"target not found: {target}")
+            return 2
+        result = ScanPipeline().run(target)
+        result.metadata["watch_mode"] = True
+        result.metadata["watch_once"] = bool(getattr(args, "once", False))
+        rendered = _render_aibom_result(args, result, target, fmt)
+        _write_aibom_output(args, rendered)
+        return 0
+
+    if getattr(args, "discover_repos", None):
+        root = Path(args.discover_repos)
+        if not root.exists() or not root.is_dir():
+            _fail(f"discover root not found: {root}")
+            return 2
+        repos = [path for path in sorted(root.iterdir()) if path.is_dir() and not path.name.startswith(".")]
+        config = MultiRepoConfig()
+        results = {}
+        for repo in repos:
+            config.add(repo)
+            results[repo.name] = ScanPipeline().run(repo)
+        merged = merge_results(results, config)
+        merged.metadata["discover_repos_root"] = str(root)
+        merged.metadata["parallel_repos"] = getattr(args, "parallel_repos", 1)
+        merged.metadata["skip_unchanged"] = bool(getattr(args, "skip_unchanged", False))
+        rendered = _render_aibom_result(args, merged, root, fmt)
+        _write_aibom_output(args, rendered)
+        return 0
+
+    target = Path(tokens[0] if tokens else ".")
     if not target.exists():
         _fail(f"target not found: {target}")
         return 2
@@ -104,26 +192,101 @@ def cmd_aibom(args):
             _warn(f"directory has {file_count:,} files (limit {_AIBOM_MAX_FILES:,}). Use a subdirectory or --path.")
             return 2
 
-    _header(f"aibom → {target}", args=args)
     result = ScanPipeline().run(target)
-    rendered = _REPORTERS[args.aibom_format]().render(result)
-
-    if args.output:
-        Path(args.output).write_text(rendered, encoding="utf-8")
-        _ok(f"wrote AIBOM report → {args.output}")
-    else:
-        console.print(rendered)
+    rendered = _render_aibom_result(args, result, target, fmt)
+    _write_aibom_output(args, rendered)
     return 0
 
 
+def _render_aibom_result(args, result, target, fmt: str) -> str:
+    from sentinel.aibom.cli import _REPORTERS
+
+    if fmt == "json":
+        data = result.as_dict()
+        data.update({
+            "command": "aibom",
+            "cli_summary": {
+                "command": "aibom",
+                "target": str(target),
+                "status": "clean",
+                "component_count": len(result.components),
+                "relationship_count": len(result.relationships),
+            },
+            "totals": {
+                "components": len(result.components),
+                "relationships": len(result.relationships),
+                "errors": len(result.metadata.get("errors", [])),
+            },
+            "findings": [],
+            "errors": result.metadata.get("errors", []),
+        })
+        return json.dumps(data, indent=2, default=str)
+
+    if fmt == "table":
+        import io
+        from rich.console import Console as RichConsole
+        buf = io.StringIO()
+        rc = RichConsole(file=buf, highlight=False, markup=False)
+        rc.print(f"[bold]AIBOM[/bold] — {target}  "
+                 f"({len(result.components)} components, {len(result.relationships)} relationships)",
+                 markup=True)
+        if not result.components:
+            rc.print("  (no AI components detected)")
+            return buf.getvalue()
+        tbl = Table(box=box.SIMPLE_HEAVY, show_header=True, header_style="bold cyan")
+        tbl.add_column("Type", style="cyan", no_wrap=True, max_width=26)
+        tbl.add_column("Name", style="white", max_width=40)
+        tbl.add_column("Version", style="dim", max_width=16, no_wrap=True)
+        tbl.add_column("Path", style="dim", max_width=38)
+        tbl.add_column("Risks", style="yellow", max_width=30)
+        by_type = result.group_by_type()
+        for type_name in sorted(by_type):
+            for comp in by_type[type_name]:
+                risks = ", ".join(comp.risks[:3]) if comp.risks else ""
+                tbl.add_row(
+                    type_name,
+                    comp.name or "",
+                    comp.version or "",
+                    comp.path or "",
+                    risks,
+                )
+        rc.print(tbl)
+        errors = result.metadata.get("errors", [])
+        if errors:
+            rc.print(f"[yellow]  {len(errors)} scanner error(s)[/yellow]", markup=True)
+        return buf.getvalue()
+
+    return _REPORTERS[fmt]().render(result)
+
+
+def _write_aibom_output(args, rendered: str) -> None:
+    if getattr(args, "output", None):
+        Path(args.output).write_text(rendered, encoding="utf-8")
+        _ok(f"wrote AIBOM report → {args.output}")
+    else:
+        out_stream = machine_stdout()
+        out_stream.write(rendered)
+        if not rendered.endswith("\n"):
+            out_stream.write("\n")
+        out_stream.flush()
+
+
 def cmd_refs(args):
-    """Inspect cloned `.refs` repositories and parity plan."""
-    from sentinel.parity import manifest_to_json, manifest_to_markdown
+    """Inspect cloned reference repositories and parity gaps."""
+    from sentinel.parity import (
+        build_parity_manifest,
+        gap_features,
+        manifest_to_json,
+        manifest_to_markdown,
+        summarize_manifest,
+        summarize_manifest_by_tool,
+    )
     from sentinel.refs import (
         refs_inventory_json,
         refs_inventory_markdown,
         refs_plan_json,
         refs_plan_markdown,
+        refs_summary,
     )
 
     action = getattr(args, "refs_action", None) or "inventory"
@@ -132,6 +295,52 @@ def cmd_refs(args):
 
     if action == "parity":
         content = manifest_to_json() if output_format == "json" else manifest_to_markdown()
+    elif action == "gap":
+        manifest = build_parity_manifest()
+        gaps = gap_features(manifest)
+        if output_format == "json":
+            payload = {
+                "schema_version": "refs.gap-ledger.v1",
+                "summary": {
+                    "refs": refs_summary(refs_dir),
+                    "parity": summarize_manifest(manifest),
+                    "gap_count": len(gaps),
+                },
+                "by_tool": summarize_manifest_by_tool(manifest),
+                "inventory": json.loads(refs_inventory_json(refs_dir))["inventory"],
+                "fix_queue": [feature.to_dict() for feature in gaps],
+            }
+            content = json.dumps(payload, indent=2, sort_keys=True)
+        else:
+            refs = refs_summary(refs_dir)
+            lines = [
+                "# Reference Gap Ledger",
+                "",
+                f"- Expected repos: `{refs['expected']}`",
+                f"- Present repos: `{refs['present']}`",
+                f"- Missing repos: `{', '.join(refs['missing']) or '-'}`",
+                f"- Gap count: `{len(gaps)}`",
+                "",
+                "## Fix Queue",
+                "",
+                "| Tool | Priority | Status | Feature | Next Step |",
+                "|---|---|---|---|---|",
+            ]
+            for feature in gaps:
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            feature.tool,
+                            feature.priority,
+                            feature.status,
+                            feature.feature.replace("|", "/"),
+                            feature.next_step.replace("|", "/"),
+                        ]
+                    )
+                    + " |"
+                )
+            content = "\n".join(lines) + "\n"
     elif action == "plan":
         content = refs_plan_json(refs_dir) if output_format == "json" else refs_plan_markdown(refs_dir)
     else:
@@ -145,7 +354,9 @@ def cmd_refs(args):
         Path(args.output).write_text(content, encoding="utf-8")
         _ok(f"wrote refs {action} report → {args.output}")
     elif output_format == "json":
-        sys.stdout.write(content + "\n")
+        out_stream = machine_stdout()
+        out_stream.write(content + "\n")
+        out_stream.flush()
     else:
         console.print(content, markup=False)
     return 0
@@ -367,15 +578,36 @@ def cmd_stats(args):
 
 
 def cmd_doctor(args):
-    """Health check — validate environment, dependencies, and scanners."""
+    """Health check: validate environment, dependencies, and scanners."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
     fmt = getattr(args, "format", "table")
-    _doctor_checks = []
+    show_failed = bool(getattr(args, "show_failed", False))
 
-    _header("doctor · system health check", args=args)
+    checks: list[dict] = []
+
+    def _record(status: str, label: str, *, passed: bool, detail: str | None = None) -> int:
+        check = {"status": status, "label": label, "passed": passed}
+        if detail:
+            check["detail"] = detail
+        checks.append(check)
+        if fmt == "table" and (not show_failed or status in {"warn", "fail"}):
+            message = f"{label} — {detail}" if detail else label
+            if status == "pass":
+                _ok(message)
+            elif status == "warn":
+                _warn(message)
+            else:
+                _fail(message)
+        return 1 if passed else 0
+
+    if fmt == "table":
+        _header("doctor · system health check", args=args)
+
     checks_passed = 0
     checks_total = 0
 
-    # 1. Python version + GIL info
     checks_total += 1
     py_ver = sys.version.split()[0]
     major, minor = sys.version_info[:2]
@@ -383,22 +615,20 @@ def cmd_doctor(args):
     if major >= 3 and minor >= 13:
         try:
             gil_status = sys._is_gil_enabled()  # type: ignore[attr-defined]
-            gil_info = f" · GIL={'on' if gil_status else '[green]free-threaded[/green]'}"
+            gil_info = f"GIL={'on' if gil_status else 'free-threaded'}"
         except AttributeError:
-            gil_info = " · GIL=on"
+            gil_info = "GIL=on"
     if major >= 3 and minor >= 10:
-        _ok(f"Python {py_ver}{gil_info}")
-        checks_passed += 1
+        checks_passed += _record("pass", f"Python {py_ver}", passed=True, detail=gil_info or None)
     else:
-        _warn(f"Python {py_ver} — 3.10+ recommended{gil_info}")
+        checks_passed += _record("warn", f"Python {py_ver}", passed=False, detail="3.10+ recommended")
 
-    # 2. CPU/Platform
     import platform
     cpu = platform.machine()
     plat = platform.system()
-    console.print(f"  [dim]  {plat}/{cpu} · {os.cpu_count()} cores[/dim]")
+    if fmt == "table" and not show_failed:
+        console.print(f"  [dim]  {plat}/{cpu} · {os.cpu_count()} cores[/dim]")
 
-    # 3. Core imports
     core_modules = [
         ("sentinel.finding", "Finding model"),
         ("sentinel.artifact", "Artifact scanners"),
@@ -413,12 +643,10 @@ def cmd_doctor(args):
         checks_total += 1
         try:
             __import__(mod_name)
-            _ok(f"{label} ({mod_name})")
-            checks_passed += 1
-        except ImportError as e:
-            _fail(f"{label} — import failed: {e}")
+            checks_passed += _record("pass", f"{label} ({mod_name})", passed=True)
+        except ImportError as exc:
+            checks_passed += _record("fail", label, passed=False, detail=f"import failed: {exc}")
 
-    # 3. Optional dependencies
     opt_deps = [
         ("rich", "Rich terminal UI"),
         ("yaml", "YAML rule loader"),
@@ -426,19 +654,18 @@ def cmd_doctor(args):
         ("uvicorn", "ASGI runner"),
         ("huggingface_hub", "HuggingFace Hub"),
     ]
-    console.print("\n  [bold]Optional Dependencies[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Optional Dependencies[/bold]")
     for mod_name, label in opt_deps:
         checks_total += 1
         try:
             __import__(mod_name)
-            _ok(f"{label} ({mod_name})")
-            checks_passed += 1
+            checks_passed += _record("pass", f"{label} ({mod_name})", passed=True)
         except ImportError:
-            _warn(f"{label} ({mod_name}) — not installed")
-            checks_passed += 1  # optional, don't fail
+            checks_passed += _record("warn", f"{label} ({mod_name})", passed=True, detail="not installed")
 
-    # 4. YAML rules validation
-    console.print("\n  [bold]Rule Databases[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Rule Databases[/bold]")
     try:
         from sentinel.data_loader import load_data
         yaml_files = [
@@ -450,65 +677,312 @@ def cmd_doctor(args):
             checks_total += 1
             try:
                 load_data(yf)
-                _ok(f"{yf}")
-                checks_passed += 1
-            except Exception as e:
-                _fail(f"{yf} — {e}")
+                checks_passed += _record("pass", yf, passed=True)
+            except Exception as exc:
+                checks_passed += _record("fail", yf, passed=False, detail=str(exc))
     except ImportError:
-        _warn("data_loader unavailable")
+        _record("warn", "data_loader unavailable", passed=True)
 
-    # 5. Scanner count
-    console.print("\n  [bold]Scanner Registry[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Scanner Registry[/bold]")
     checks_total += 1
     try:
         from sentinel.policy import PolicyEngine
         engine = PolicyEngine.default()
-        s = engine.list_scanners()
-        inp = len(s["input"])
-        out = len(s["output"])
-        _ok(f"{inp} input + {out} output = {inp + out} firewall scanners")
-        checks_passed += 1
-    except Exception as e:
-        _fail(f"scanner registry — {e}")
+        scanners = engine.list_scanners()
+        inp = len(scanners["input"])
+        out = len(scanners["output"])
+        checks_passed += _record("pass", f"{inp} input + {out} output = {inp + out} firewall scanners", passed=True)
+    except Exception as exc:
+        checks_passed += _record("fail", "scanner registry", passed=False, detail=str(exc))
 
     checks_total += 1
     try:
         from sentinel._plugins import list_all_plugins
         artifact_scanners = list_all_plugins().get("artifact", [])
-        _ok(f"{len(artifact_scanners)} artifact scanners")
-        checks_passed += 1
-    except Exception as e:
-        _fail(f"artifact scanners — {e}")
+        checks_passed += _record("pass", f"{len(artifact_scanners)} artifact scanners", passed=True)
+    except Exception as exc:
+        checks_passed += _record("fail", "artifact scanners", passed=False, detail=str(exc))
 
-    # Web Dashboard
-    console.print("\n  [bold]Web Dashboard[/bold]")
+    if fmt == "table" and not show_failed:
+        console.print("\n  [bold]Web Dashboard[/bold]")
     checks_total += 1
     try:
-        from sentinel.web.app import create_dashboard_app
+        from sentinel.web.app import create_dashboard_app  # noqa: F401
         dist_dir = Path(__file__).parent.parent / "web" / "dist"
         if dist_dir.is_dir() and (dist_dir / "index.html").is_file():
-            _ok(f"React SPA built ({sum(1 for _ in dist_dir.rglob('*') if _.is_file())} files)")
+            detail = f"{sum(1 for _ in dist_dir.rglob('*') if _.is_file())} files"
+            checks_passed += _record("pass", "React SPA built", passed=True, detail=detail)
         else:
-            _warn("React SPA not built — run: cd frontend && npm run build")
-        checks_passed += 1
-    except ImportError as e:
-        _warn(f"Web dashboard unavailable — {e}")
-        checks_passed += 1  # optional
+            checks_passed += _record("warn", "React SPA not built", passed=True, detail="run: cd frontend && npm run build")
+    except ImportError as exc:
+        checks_passed += _record("warn", "Web dashboard unavailable", passed=True, detail=str(exc))
 
-    # Summary
-    color = "green" if checks_passed == checks_total else "yellow"
-    console.print(f"\n  [{color}]{checks_passed}/{checks_total}[/{color}] checks passed")
+    status = "ok" if checks_passed >= checks_total - 2 else "degraded"
+    if fmt == "table":
+        color = "green" if checks_passed == checks_total else "yellow"
+        console.print(f"\n  [{color}]{checks_passed}/{checks_total}[/{color}] checks passed")
 
-    import platform as _plat
     data = {
-        "checks_passed": checks_passed, "checks_total": checks_total,
+        "schema_version": "doctor.v1",
+        "checks_passed": checks_passed,
+        "checks_total": checks_total,
         "python": sys.version.split()[0],
-        "platform": _plat.system(), "machine": _plat.machine(),
-        "status": "ok" if checks_passed >= checks_total - 2 else "degraded",
+        "platform": plat,
+        "machine": cpu,
+        "status": status,
+        "checks": checks,
+        "failed_checks": [check for check in checks if check["status"] == "fail"],
+        "degraded_checks": [check for check in checks if check["status"] == "warn"],
     }
-    if fmt in ("json", "sarif") or getattr(args, "output", None):
+    if fmt in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
         _emit_info(args, data)
-    return 0 if checks_passed >= checks_total - 2 else 1
+    return 0 if status == "ok" else 1
+
+
+def cmd_debug(args):
+    """Emit environment and configuration diagnostics."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    import importlib.util
+    import platform
+    import shutil
+
+    from sentinel import __version__
+    from sentinel.artifact import _scanner_catalog
+
+    payload = {
+        "schema_version": "debug.v1",
+        "summary": {"status": "ok", "version": __version__},
+        "python": {
+            "version": sys.version.split()[0],
+            "executable": sys.executable,
+            "prefix": sys.prefix,
+        },
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+        },
+        "paths": {
+            "cwd": os.getcwd(),
+            "sentinel_home": str(Path.home() / ".sentinel"),
+            "git": shutil.which("git"),
+            "docker": shutil.which("docker"),
+        },
+        "features": {
+            "artifact_scanners": len(_scanner_catalog()),
+            "rust_pickle_module": importlib.util.find_spec("sentinel_pickle") is not None,
+            "huggingface_hub": importlib.util.find_spec("huggingface_hub") is not None,
+        },
+        "env": {
+            "SENTINEL_PICKLE_BACKEND": os.environ.get("SENTINEL_PICKLE_BACKEND", ""),
+            "SENTINEL_CONFIG": os.environ.get("SENTINEL_CONFIG", ""),
+            "values_redacted": True,
+        },
+    }
+
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+        return 0
+
+    _header("debug diagnostics", args=args)
+    table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+    table.add_column("field", style="bold")
+    table.add_column("value")
+    table.add_row("version", __version__)
+    table.add_row("python", payload["python"]["version"])
+    table.add_row("platform", f"{payload['platform']['system']}/{payload['platform']['machine']}")
+    table.add_row("artifact scanners", str(payload["features"]["artifact_scanners"]))
+    table.add_row("rust pickle module", str(payload["features"]["rust_pickle_module"]))
+    console.print(table)
+    return 0
+
+
+def cmd_cache(args):
+    """Manage lightweight scan caches."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    action = getattr(args, "cache_action", "stats") or "stats"
+    from sentinel.artifact import _SCAN_CACHE
+
+    cache_dir = Path(os.environ.get("SENTINEL_CACHE_DIR", Path.home() / ".cache" / "eresus-sentinel"))
+    disk_files = list(cache_dir.rglob("*")) if cache_dir.is_dir() else []
+    removed = 0
+    if action in {"clear", "cleanup"}:
+        removed += len(_SCAN_CACHE)
+        _SCAN_CACHE.clear()
+        if action == "clear" and cache_dir.is_dir():
+            for path in disk_files:
+                if path.is_file() and path.suffix in {".json", ".cache", ".tmp"}:
+                    try:
+                        path.unlink()
+                        removed += 1
+                    except OSError:
+                        pass
+        elif action == "cleanup" and cache_dir.is_dir():
+            now = time.time()
+            for path in disk_files:
+                if path.is_file() and now - path.stat().st_mtime > 7 * 24 * 60 * 60:
+                    try:
+                        path.unlink()
+                        removed += 1
+                    except OSError:
+                        pass
+
+    payload = {
+        "schema_version": "cache.v1",
+        "summary": {"action": action, "removed": removed, "status": "ok"},
+        "memory": {"artifact_entries": len(_SCAN_CACHE)},
+        "disk": {
+            "path": str(cache_dir),
+            "exists": cache_dir.is_dir(),
+            "files": sum(1 for path in disk_files if path.is_file()),
+        },
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+        return 0
+
+    _header(f"cache {action}", args=args)
+    console.print(f"  memory artifact entries: {payload['memory']['artifact_entries']}")
+    console.print(f"  disk path: {payload['disk']['path']}")
+    if action in {"clear", "cleanup"}:
+        _ok(f"removed {removed} cache entr{'y' if removed == 1 else 'ies'}")
+    return 0
+
+
+def cmd_audit(args):
+    """Query or export the SQLite audit store."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    from sentinel.audit_store import AuditStore
+
+    store = AuditStore(getattr(args, "db", None))
+    action = getattr(args, "audit_action", "query") or "query"
+    if action == "query":
+        events = store.query(
+            since=getattr(args, "since", None),
+            event_type=getattr(args, "type", None),
+            verdict=getattr(args, "verdict", None),
+            limit=getattr(args, "limit", 100),
+        )
+        payload = {
+            "schema_version": "audit.query.v1",
+            "summary": {"event_count": len(events), "db": str(store.path)},
+            "events": events,
+            "stats": store.stats(),
+        }
+        if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None) or getattr(args, "json_output", False):
+            _emit_info(args, payload)
+            return 0
+        _header("audit query", args=args)
+        table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+        table.add_column("timestamp")
+        table.add_column("type")
+        table.add_column("verdict")
+        table.add_column("target")
+        for event in events:
+            table.add_row(event["timestamp"], event["event_type"], event["verdict"], event["target"][:80])
+        console.print(table)
+        return 0
+
+    if action == "export":
+        output = getattr(args, "output_path", None)
+        if not output:
+            _fail("audit export requires --output-path")
+            return 2
+        count = store.export_jsonl(output, since=getattr(args, "since", None))
+        payload = {
+            "schema_version": "audit.export.v1",
+            "summary": {"event_count": count, "output": output},
+            "event_count": count,
+            "output": output,
+        }
+        if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "json_output", False):
+            _emit_info(args, payload)
+        else:
+            _ok(f"exported {count} audit events to {output}")
+        return 0
+
+    _fail(f"unknown audit action: {action}")
+    return 2
+
+
+def cmd_setup(args):
+    """Persist local integration setup knobs."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    action = getattr(args, "setup_action", "")
+    config_path = Path.home() / ".sentinel" / "setup.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
+    except json.JSONDecodeError:
+        config = {}
+
+    if action == "webhook":
+        config["webhook"] = {
+            "url": args.url,
+            "events": [item.strip() for item in getattr(args, "events", "block,critical").split(",") if item.strip()],
+        }
+    elif action == "splunk":
+        config["splunk"] = {"url": args.url, "token_configured": bool(args.token)}
+    elif action == "guardrail":
+        config["guardrail"] = {"mode": args.mode}
+    else:
+        _fail(f"unknown setup action: {action}")
+        return 2
+
+    config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+    payload = {
+        "schema_version": "setup.v1",
+        "summary": {"action": action, "path": str(config_path), "status": "ok"},
+        "config": config,
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+    else:
+        _ok(f"updated {action} setup at {config_path}")
+    return 0
+
+
+def cmd_tui(args):
+    """Lightweight operator dashboard for terminal environments."""
+    if getattr(args, "json_output", False):
+        args.format = "json"
+        console.file = sys.stderr
+    from sentinel.audit_store import AuditStore
+    from sentinel.aibom.scanners import scanner_registry
+
+    store = AuditStore(getattr(args, "db", None))
+    stats = store.stats()
+    payload = {
+        "schema_version": "tui.status.v1",
+        "panels": {
+            "alerts": {"recent_events": stats["total_events"], "by_verdict": stats["by_verdict"]},
+            "health": {"audit_db": stats["path"], "scanner_count": len(scanner_registry())},
+            "policy": {"mode": os.environ.get("SENTINEL_PROXY_MODE", "action")},
+        },
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "json_output", False):
+        _emit_info(args, payload)
+        return 0
+
+    _header("sentinel tui", args=args)
+    table = Table(box=box.SIMPLE_HEAVY, border_style="dim")
+    table.add_column("panel", style="bold")
+    table.add_column("status")
+    table.add_row("alerts", f"{stats['total_events']} recent audit events")
+    table.add_row("health", f"{len(scanner_registry())} scanners, audit db {stats['path']}")
+    table.add_row("policy", payload["panels"]["policy"]["mode"])
+    console.print(table)
+    return 0
 
 
 def cmd_shell(args):
@@ -661,7 +1135,7 @@ def cmd_watch(args):
 
     try:
         while True:
-            h = hashlib.md5()
+            h = hashlib.sha256()
             for f in sorted(path.rglob("*.py")):
                 h.update(f"{f}:{f.stat().st_mtime}".encode())
             cur = h.hexdigest()
@@ -680,14 +1154,352 @@ def cmd_watch(args):
 
 
 def cmd_config(args):
+    """Show or explain effective configuration inputs."""
     from sentinel.policy import PolicyEngine
+
     engine = PolicyEngine.default()
     s = engine.list_scanners()
-    data = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
+    action = getattr(args, "config_action", "show") or "show"
+
+    if action == "explain" or getattr(args, "explain", False):
+        data = _config_explain_payload(s)
+        fmt = getattr(args, "format", "table")
+        if fmt in ("json", "sarif") or getattr(args, "output", None):
+            _emit_info(args, data)
+            return 0
+
+        _header("config explain", args=args)
+        table = Table(box=box.SIMPLE, border_style="dim", show_header=True, pad_edge=False)
+        table.add_column("Layer", style="cyan", no_wrap=True)
+        table.add_column("Status")
+        table.add_column("Details")
+        for row in data["precedence"]:
+            table.add_row(row["layer"], row["status"], row["details"])
+        console.print(table)
+        console.print(
+            f"\n  [dim]{data['scanner_registry']['input']} input + "
+            f"{data['scanner_registry']['output']} output scanners[/dim]"
+        )
+        return 0
+
+    data: dict = {"input": s["input"], "output": s["output"], "total": len(s["input"]) + len(s["output"])}
     _emit_info(args, data)
     fmt = getattr(args, "format", "table")
     if fmt not in ("json", "sarif") and not getattr(args, "output", None):
         console.print_json(json.dumps(data))
+    return 0
+
+
+def _config_explain_payload(scanner_registry: dict) -> dict:
+    cwd = Path.cwd()
+    candidate_files = [
+        cwd / "sentinel.yaml",
+        cwd / "sentinel.yml",
+        cwd / ".sentinel.yaml",
+        cwd / "pyproject.toml",
+        cwd / "config" / "policy.yaml",
+        cwd / "config" / "scanners.yml",
+        cwd / "config" / "proxy_rules.yaml",
+    ]
+    config_files = [{"path": str(path), "exists": path.exists()} for path in candidate_files]
+    env_names = sorted(name for name in os.environ if name.startswith("SENTINEL_"))
+    rule_roots = [{"path": str(path), "exists": path.exists()} for path in _rule_roots()]
+    precedence = [
+        {"layer": "cli", "status": "highest", "details": "Command-line flags override config files."},
+        {
+            "layer": "env",
+            "status": "active" if env_names else "not-set",
+            "details": ", ".join(env_names) if env_names else "No SENTINEL_* environment overrides detected.",
+        },
+        {
+            "layer": "project",
+            "status": "active" if any(item["exists"] for item in config_files) else "not-found",
+            "details": ", ".join(item["path"] for item in config_files if item["exists"]) or "No project config files found.",
+        },
+        {
+            "layer": "rules",
+            "status": "active" if any(item["exists"] for item in rule_roots) else "not-found",
+            "details": ", ".join(item["path"] for item in rule_roots if item["exists"]) or "No rule roots found.",
+        },
+        {"layer": "package", "status": "default", "details": "Built-in scanner/rule defaults are used last."},
+    ]
+    return {
+        "schema_version": "0.1",
+        "cwd": str(cwd),
+        "precedence": precedence,
+        "config_files": config_files,
+        "rule_roots": rule_roots,
+        "env": {"sentinel_keys": env_names, "values_redacted": True},
+        "scanner_registry": {
+            "input": len(scanner_registry.get("input", [])),
+            "output": len(scanner_registry.get("output", [])),
+            "total": len(scanner_registry.get("input", [])) + len(scanner_registry.get("output", [])),
+        },
+    }
+
+
+def cmd_rules(args):
+    """List, test, or show details for scanner rules."""
+    action = getattr(args, "rules_action", "list") or "list"
+
+    if action == "list":
+        return _rules_list(args)
+    if action == "test":
+        return _rules_test(args)
+    if action == "explain":
+        return _rules_explain(args)
+    if action == "audit":
+        return _rules_audit(args)
+    return _rules_list(args)
+
+
+def _rules_list(args):
+    fmt = getattr(args, "format", "table")
+    filter_domain = getattr(args, "domain", None)
+    rule_entries = _rule_inventory()
+    if filter_domain:
+        needle = filter_domain.lower()
+        rule_entries = [r for r in rule_entries if needle in r["domain"].lower()]
+
+    if fmt in ("json", "sarif") or getattr(args, "output", None):
+        from sentinel.rule_inventory import (
+            RULE_INVENTORY_SCHEMA_VERSION,
+            RULE_RECORD_SCHEMA_VERSION,
+            audit_rule_inventory,
+            public_rule_record,
+        )
+
+        audit = audit_rule_inventory(rule_entries)
+        public_entries = [public_rule_record(r) for r in rule_entries]
+        _emit_info(args, {
+            "schema_version": RULE_INVENTORY_SCHEMA_VERSION,
+            "rule_schema_version": RULE_RECORD_SCHEMA_VERSION,
+            "rules": public_entries,
+            "total": len(public_entries),
+            "summary": {
+                "total": len(public_entries),
+                "unique_rule_ids": audit["unique_rule_ids"],
+                "duplicate_rule_id_count": audit["duplicate_rule_id_count"],
+                "invalid_regex_count": audit["invalid_regex_count"],
+                "schema_warning_count": audit["schema_warning_count"],
+                "status": audit["status"],
+            },
+        })
+        return 0
+
+    table = Table(title=f"Rules · {len(rule_entries)} loaded", box=box.SIMPLE)
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Domain", style="dim")
+    table.add_column("Severity")
+    table.add_column("Description")
+    for r in rule_entries[:200]:
+        sev = str(r["severity"]).lower()
+        sev_color = {"critical": "red", "high": "red", "medium": "yellow", "low": "green"}.get(sev, "white")
+        table.add_row(r["id"], r["domain"], f"[{sev_color}]{sev}[/{sev_color}]", r["description"])
+    console.print(table)
+    if not rule_entries:
+        console.print("  [dim]No rule files found. Run from repo root.[/dim]")
+    return 0
+
+
+def _rules_test(args):
+    rule_id = getattr(args, "rule_id", "") or ""
+    if not rule_id:
+        console.print("[red]Error:[/red] provide a rule_id to test")
+        return 2
+
+    matches = [r for r in _rule_inventory() if r["id"].lower() == rule_id.lower()]
+    if not matches:
+        data = {"rule_id": rule_id, "status": "missing", "errors": [f"rule not found: {rule_id}"]}
+        if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+            _emit_info(args, data)
+        else:
+            console.print(f"  [red]MISSING[/red] — rule not found: {rule_id}")
+        return 1
+
+    failures = []
+    checked = 0
+    for record in matches:
+        for pattern in _regex_candidates(record.get("raw", {})):
+            checked += 1
+            try:
+                import re
+                re.compile(pattern)
+            except re.error as exc:
+                failures.append({"source": record["source"], "pattern": pattern, "error": str(exc)})
+
+    data = {
+        "rule_id": rule_id,
+        "status": "failed" if failures else "passed",
+        "matches": len(matches),
+        "regex_checked": checked,
+        "errors": failures,
+    }
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, data)
+        return 1 if failures else 0
+
+    console.print(f"  [dim]Testing rule [cyan]{rule_id}[/cyan]...[/dim]")
+    if failures:
+        console.print(f"  [red]FAIL[/red] — {len(failures)} regex compile error(s)")
+        for failure in failures[:10]:
+            console.print(f"    [red]·[/red] {failure['source']}: {failure['error']}")
+        return 1
+    console.print(f"  [green]PASS[/green] — {len(matches)} rule record(s), {checked} regex pattern(s) checked")
+    return 0
+
+
+def _rules_audit(args):
+    from sentinel.rule_inventory import RULE_INVENTORY_SCHEMA_VERSION, audit_rule_inventory
+
+    rule_entries = _rule_inventory()
+    audit = audit_rule_inventory(rule_entries)
+    payload = {
+        "schema_version": RULE_INVENTORY_SCHEMA_VERSION,
+        "command": "rules audit",
+        **audit,
+    }
+
+    if getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None):
+        _emit_info(args, payload)
+        return 1 if audit["invalid_regex_count"] else 0
+
+    table = Table(title="Rules Audit", box=box.SIMPLE)
+    table.add_column("Check", style="cyan")
+    table.add_column("Value")
+    table.add_row("Total records", str(audit["total"]))
+    table.add_row("Unique rule IDs", str(audit["unique_rule_ids"]))
+    table.add_row("Duplicate rule IDs", str(audit["duplicate_rule_id_count"]))
+    table.add_row("Invalid regexes", str(audit["invalid_regex_count"]))
+    table.add_row("Schema warnings", str(audit["schema_warning_count"]))
+    table.add_row("Status", audit["status"])
+    console.print(table)
+    return 1 if audit["invalid_regex_count"] else 0
+
+
+def _rules_explain(args):
+    rule_id = getattr(args, "rule_id", "") or ""
+    return _findings_explain_detail(rule_id, args=args)
+
+
+def cmd_findings_explain(args):
+    """Explain a finding rule: what it means, why it's flagged, how to fix it."""
+    rule_id = getattr(args, "rule_id", "") or ""
+    return _findings_explain_detail(rule_id, args=args)
+
+
+def _findings_explain_detail(rule_id: str, args=None) -> int:
+    if not rule_id:
+        console.print("[red]Error:[/red] provide a rule_id  (e.g. sentinel finding explain ARTIFACT-031)")
+        return 2
+
+    _EXPLANATIONS: dict[str, dict] = {
+        "ARTIFACT-031": {
+            "title": "Dangerous global (pickle GLOBAL opcode)",
+            "what": "A pickle file uses the GLOBAL opcode to reference a Python class/function that can execute arbitrary code.",
+            "why": "Loading this file with pickle.loads() will call the referenced callable.",
+            "remediation": "Use safetensors or ONNX instead of pickle. If pickle is required, use a RestrictedUnpickler allowlist.",
+            "cwe": "CWE-502",
+            "owasp": "LLM04",
+        },
+        "ARTIFACT-038": {
+            "title": "Overtly bad call (exec/eval/compile/open)",
+            "what": "The artifact contains pickle opcodes that call exec, eval, compile, or open.",
+            "why": "These calls allow arbitrary code execution or file system access on load.",
+            "remediation": "Reject this artifact. Do not load it in any production environment.",
+            "cwe": "CWE-94",
+            "owasp": "LLM04",
+        },
+    }
+
+    info = _EXPLANATIONS.get(rule_id)
+    if info:
+        payload = {"rule_id": rule_id, **info}
+        if args and (getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None)):
+            _emit_info(args, payload)
+            return 0
+        console.print(f"\n[bold cyan]{rule_id}[/bold cyan] — {info['title']}\n")
+        console.print(f"[bold]What:[/bold] {info['what']}")
+        console.print(f"[bold]Why:[/bold]  {info['why']}")
+        console.print(f"\n[bold]Remediation:[/bold] {info['remediation']}")
+        console.print(f"\n[dim]CWE: {info['cwe']}  |  OWASP: {info['owasp']}[/dim]")
+        return 0
+
+    matches = [r for r in _rule_inventory() if r["id"].lower() == rule_id.lower()]
+    if matches:
+        record = matches[0]
+        payload = {k: v for k, v in record.items() if k != "raw"}
+        if args and (getattr(args, "format", "table") in ("json", "sarif") or getattr(args, "output", None)):
+            _emit_info(args, payload)
+            return 0
+        console.print(f"\n[bold cyan]{record['id']}[/bold cyan] — {record.get('title') or record.get('description')}\n")
+        console.print(f"[bold]Severity:[/bold] {record['severity']}")
+        console.print(f"[bold]Domain:[/bold]   {record['domain']}")
+        if record.get("description"):
+            console.print(f"[bold]What:[/bold]     {record['description']}")
+        if record.get("remediation"):
+            console.print(f"\n[bold]Remediation:[/bold] {record['remediation']}")
+        console.print(f"\n[dim]Source: {record['source']}[/dim]")
+        return 0
+
+    console.print(f"\n[bold cyan]{rule_id}[/bold cyan]\n")
+    console.print("  No built-in explanation found for this rule ID.")
+    console.print("  Try: sentinel rules list   to see available rules.")
+    console.print("  Or search the docs: https://github.com/EresusSecurity/Eresus-sentinel#rules")
+    return 1
+
+
+def _rule_roots() -> list[Path]:
+    from sentinel.rule_inventory import rule_roots
+    return [root.path for root in rule_roots()]
+
+
+def _rule_inventory() -> list[dict]:
+    from sentinel.rule_inventory import rule_inventory
+    return rule_inventory()
+
+
+def _extract_rule_records(data, source: Path, group: str | None = None) -> list[dict]:
+    records: list[dict] = []
+    if isinstance(data, list):
+        for item in data:
+            records.extend(_extract_rule_records(item, source, group=group))
+        return records
+
+    if not isinstance(data, dict):
+        return records
+
+    rule_id = data.get("id") or data.get("rule_id")
+    if rule_id:
+        description = str(data.get("description") or data.get("name") or data.get("title") or "")
+        title = str(data.get("title") or data.get("name") or description[:80])
+        records.append({
+            "id": str(rule_id),
+            "domain": str(data.get("domain") or data.get("category") or group or source.stem),
+            "severity": str(data.get("severity") or "unknown"),
+            "title": title[:120],
+            "description": description[:400],
+            "remediation": str(data.get("remediation") or data.get("fix") or data.get("fix_hint") or ""),
+            "source": _display_path(source),
+            "raw": data,
+        })
+
+    for key, value in data.items():
+        if isinstance(value, (dict, list)):
+            records.extend(_extract_rule_records(value, source, group=str(key)))
+    return records
+
+
+def _regex_candidates(rule: dict) -> list[str]:
+    from sentinel.rule_inventory import regex_candidates
+    return regex_candidates(rule)
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
 
 
 def cmd_version(args):

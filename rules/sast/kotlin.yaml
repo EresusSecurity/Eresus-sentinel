@@ -1,0 +1,45 @@
+# Sentinel Multi-Language SAST — Kotlin rules
+version: "1"
+file_context_pattern: '(?:dev\.langchain4j|com\.azure\.ai|openai|anthropic|ChatModel|AiServices|OllamaModel|BedrockModel|VertexAI|GeminiModel|KotlinAI)'
+
+rules:
+  - id: MLSAST-120
+    title: "Unvalidated Ktor/Spring request param passed to LLM (Kotlin)"
+    description: "HTTP request parameter used directly in LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.65
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Use Ktor receive<T>() with data class validation or Spring @Valid annotation."
+    pattern: '(?:call\.receive|call\.parameters|@RequestParam|@RequestBody|@PathVariable)\s*[^\n]{0,200}(?:UserMessage|SystemMessage|ChatMessage|generate|invoke|ask)\s*\('
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-121
+    title: "LLM output passed to Runtime.exec() (Kotlin)"
+    description: "LLM response used as shell command — command injection risk."
+    severity: CRITICAL
+    confidence: 0.77
+    owasp_llm: LLM02
+    tags: [command-injection, llm-output]
+    remediation: "Never pass LLM output to Runtime.exec(). Use a strict command allowlist."
+    pattern: 'Runtime\.getRuntime\(\)\.exec\s*\([^\n]{0,200}(?:response|output|llm\w*|ai\w*|completion|generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-122
+    title: "Hardcoded API key in Kotlin LLM client constructor"
+    description: "LLM provider client instantiated with hardcoded key string literal."
+    severity: CRITICAL
+    confidence: 0.87
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use System.getenv(\"OPENAI_API_KEY\") or Kotlin dotenv library."
+    pattern: '(?:OpenAiChatModel|AnthropicChatModel|BedrockChatModel|OllamaChatModel)\.builder\(\)[^\n]{0,300}\.apiKey\s*\(\s*"[A-Za-z0-9_\-]{20,80}"\s*\)'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

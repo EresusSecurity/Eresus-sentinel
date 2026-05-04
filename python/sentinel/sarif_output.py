@@ -78,7 +78,7 @@ def _build_rule(finding: Finding) -> dict:
         rule["properties"]["cwe"] = finding.cwe_ids
         rule["relationships"] = [
             {
-                "target": {"id": cwe, "guid": hashlib.md5(cwe.encode()).hexdigest()[:8] + "-0000-0000-0000-000000000000",
+                "target": {"id": cwe, "guid": hashlib.sha256(cwe.encode()).hexdigest()[:8] + "-0000-0000-0000-000000000000",
                            "toolComponent": {"name": "CWE", "guid": "a0a0a0a0-0000-0000-0000-000000000cwe"}},
                 "kinds": ["superset"],
             }

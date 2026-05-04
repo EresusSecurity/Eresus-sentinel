@@ -80,6 +80,8 @@ class NotebookScanner:
                     result.findings.extend(secrets_plugin.scan_output_secrets(cell, path))
                 if self._scan_pii:
                     result.findings.extend(pii_plugin.scan_output_pii(cell, path))
+                if self._scan_dangerous:
+                    result.findings.extend(dangerous_code_plugin.scan_dangerous_code_outputs(cell, path))
 
         result.scanned = True
         return result

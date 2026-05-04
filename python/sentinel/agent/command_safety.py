@@ -37,6 +37,29 @@ _SAFE_PATTERNS = frozenset({
     "python --version", "node --version", "npm --version",
 })
 
+_EXFIL_COMMAND_PATTERNS = (
+    re.compile(
+        r"\b(?:cat|tar|zip|env|printenv)\b[^|;\n]*"
+        r"(?:/etc/(?:passwd|shadow)|\.ssh|\.env|AWS_|TOKEN|SECRET)?"
+        r"[^|;\n]*\|\s*(?:curl|wget|nc|ncat)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bcurl\b[^;\n]*(?:-d|--data|--data-binary|-F|--form|--upload-file|-T)\s+"
+        r"@?(?:/etc/(?:passwd|shadow)|~?/\.ssh|\.env|-)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bwget\b[^;\n]*(?:--post-file|--post-data)\s*=?\s*"
+        r"(?:/etc/(?:passwd|shadow)|~?/\.ssh|\.env|-)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:nc|ncat|socat)\b[^;\n]*(?:/etc/(?:passwd|shadow)|~?/\.ssh|\.env)\b",
+        re.IGNORECASE,
+    ),
+)
+
 
 @dataclass
 class CommandClassification:
@@ -49,6 +72,15 @@ class CommandClassification:
 def classify_command(command: str) -> CommandClassification:
     """Classify a shell command by risk level."""
     cmd_lower = command.strip().lower()
+
+    for pattern in _EXFIL_COMMAND_PATTERNS:
+        if pattern.search(command):
+            return CommandClassification(
+                command,
+                CommandRisk.DANGEROUS,
+                "Matches shell data-exfiltration pattern",
+                {"category": "data_exfiltration"},
+            )
 
     for pattern in _DANGEROUS_COMMANDS:
         if pattern in cmd_lower:

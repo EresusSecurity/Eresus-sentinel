@@ -5,6 +5,22 @@ All notable changes to Eresus Sentinel will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Community issue templates for bugs, feature requests, and false positives.
+- GitHub label manifest for roadmap, scanner, severity, and triage workflows.
+- Community notes and good-first-issue documentation.
+- Plaintext and summary scan export formats for concise human-readable reporting.
+- MCP YARA findings in the API analyzer, mocked VirusTotal/OSV parity coverage, container layer tar AIBOM extraction, provenance DB shard manifests, and HTML report extension sections.
+- OTLP and Splunk HEC export formats for findings and runtime audit events.
+
+### Changed
+
+- Documentation now links operator, authoring, CI, troubleshooting, and community guides from the README and MkDocs nav.
+- `sentinel artifact scan --strict` now emits unsupported-format findings during real scans.
+
 ## [0.1.0] — 2026-04-16
 
 ### Initial Release

@@ -15,6 +15,8 @@ def test_dashboard_api_fails_closed_before_login(monkeypatch):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Authentication required"
+    assert response.json()["schema_version"] == "api.error.v1"
+    assert response.json()["error"]["code"] == "auth_required"
     assert "content-security-policy" in response.headers
 
 
@@ -47,6 +49,21 @@ def test_dashboard_public_health_does_not_expose_instance_id(monkeypatch):
     assert response.status_code == 200
     assert "instance_id" not in response.json()
     assert response.json()["web_ui"] in {"ready", "missing"}
+    assert response.json()["web_ui_build"]["status"] in {"ready", "missing"}
+    assert response.json()["web_ui_build"]["ready"] in {True, False}
+
+
+def test_dashboard_openapi_smoke_snapshot(monkeypatch):
+    monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
+    client = TestClient(create_dashboard_app())
+
+    response = client.get("/api/openapi.json")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["info"]["title"] == "Eresus Sentinel API"
+    assert "/api/health" in payload["paths"]
+    assert "/api/firewall/scan" in payload["paths"]
 
 
 def test_dashboard_missing_dist_returns_build_hint(monkeypatch, tmp_path):
@@ -60,6 +77,58 @@ def test_dashboard_missing_dist_returns_build_hint(monkeypatch, tmp_path):
     assert response.status_code == 503
     assert "Dashboard frontend is not built" in response.text
     assert "/api/docs" in response.text
+
+
+def test_dashboard_missing_api_route_uses_error_envelope(monkeypatch):
+    monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
+    client = TestClient(create_dashboard_app())
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "Test-Pass1"},
+    )
+
+    response = client.get(
+        "/api/nope",
+        headers={"Authorization": f"Bearer {login.json()['token']}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["schema_version"] == "api.error.v1"
+    assert response.json()["error"]["status"] == 404
+
+
+def test_dashboard_production_cors_does_not_allow_random_origin(monkeypatch):
+    monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
+    monkeypatch.setenv("SENTINEL_ENV", "production")
+    monkeypatch.delenv("SENTINEL_CORS_ORIGINS", raising=False)
+    client = TestClient(create_dashboard_app())
+
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://evil.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.headers.get("access-control-allow-origin") is None
+
+
+def test_dashboard_local_cors_allows_localhost(monkeypatch):
+    monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
+    monkeypatch.setenv("SENTINEL_ENV", "local")
+    monkeypatch.delenv("SENTINEL_CORS_ORIGINS", raising=False)
+    client = TestClient(create_dashboard_app())
+
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": "http://localhost:8080",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8080"
 
 
 def test_dashboard_http_demo_does_not_upgrade_assets(monkeypatch):

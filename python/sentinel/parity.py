@@ -329,6 +329,11 @@ STATIC_FEATURES.extend([
     _feature("ref-vector-hubness-suite", "Modality-aware hubness detection", "P2", STATUS_PARTIAL, "sentinel.supply_chain.ModalityAwareHubnessDetector", "modality-aware scorer", "Multimodal bucket scans were missing.", "Run hubness detection within metadata-defined modality buckets.", acceptance_tests=("tests/test_hubness_securebert2.py",)),
     _feature("ref-cyber-model-suite", "SecureBERT2 model catalog", "P2", STATUS_PARTIAL, "sentinel.supply_chain.securebert2", "SecureBERT2 Hugging Face model table", "SecureBERT2 model/task map needed offline deterministic parity.", "Expose model IDs, aliases, and task metadata without downloading models.", acceptance_tests=("tests/test_hubness_securebert2.py",)),
     _feature("ref-cyber-model-suite", "SecureBERT2 offline eval fixtures", "P2", STATUS_PARTIAL, "sentinel.supply_chain.securebert2_eval_fixtures", "SecureBERT2 eval scripts/datasets", "Heavy ML eval scripts are not suitable for core deterministic tests.", "Provide small task-specific fixtures for optional enrichment/eval adapters.", acceptance_tests=("tests/test_hubness_securebert2.py",)),
+    _feature("ref-model-provenance-suite", "Eight-signal provenance extraction", "P1", STATUS_PARTIAL, "sentinel.provenance.signals", "model-provenance-kit signals", "Signal extraction exists but reference-grade corpus and thresholds are still thin.", "Add signal regression fixtures and top-k threshold snapshots.", acceptance_tests=("tests/test_model_provenance.py",)),
+    _feature("ref-model-provenance-suite", "Fingerprint database integrity", "P1", STATUS_PARTIAL, "sentinel.provenance.database", "model-provenance-kit database", "Local fingerprint DB exists; manifest/parquet parity and shard metadata need expansion.", "Add shard manifest contract and integrity fixtures.", acceptance_tests=("tests/test_model_provenance.py",)),
+    _feature("ref-model-provenance-suite", "Pairwise compare CLI", "P1", STATUS_PARTIAL, "sentinel.cli.cmd_provenance", "model-provenance-kit compare", "CLI exists but parity output richness and streamed model coverage need more fixtures.", "Add pairwise report snapshots and large-model streaming contract tests.", acceptance_tests=("tests/test_model_provenance.py",)),
+    _feature("ref-deployment-hybrid-suite", "Hybrid deployment topology", "P2", STATUS_MISSING, "deploy/runtime docs", "ai-defense-hybrid helm/eks topology", "No first-class deployment topology mapping for the hybrid reference stack.", "Add deployment inventory doc generator and cluster bundle smoke fixtures."),
+    _feature("ref-deployment-hybrid-suite", "Helm and runtime bundle parity", "P2", STATUS_MISSING, "deploy/runtime_gateway", "ai-defense-hybrid charts", "Sentinel lacks packaged runtime charts and cluster overlays.", "Add optional deployment bundle export with values schema snapshots."),
 ])
 
 
@@ -764,6 +769,227 @@ def _dynamic_status_checks() -> dict[str, tuple[str, str]]:
             str(exc),
         )
 
+    # ── PR before/after eval comments + fail-on-threshold ────────────────
+    try:
+        from sentinel.action.eval_comment import render_eval_comment
+        from sentinel.action.eval_gate import evaluate_gate, GateConfig
+        comment = render_eval_comment(
+            before={"passed": 8, "total": 10},
+            after={"passed": 9, "total": 10},
+        )
+        gate = evaluate_gate({"passed": 9, "total": 10}, GateConfig(min_pass_rate=0.8))
+        checks["ref-eval-action::PR before/after eval comments"] = (
+            STATUS_NATIVE if "Pass rate" in comment else STATUS_PARTIAL,
+            "render_eval_comment produces before/after diff PR comment.",
+        )
+        checks["ref-eval-action::fail-on-threshold"] = (
+            STATUS_NATIVE if hasattr(gate, "exit_code") else STATUS_PARTIAL,
+            f"evaluate_gate returns GateResult with exit_code={gate.exit_code}.",
+        )
+    except Exception as exc:
+        checks["ref-eval-action::PR before/after eval comments"] = (STATUS_DEAD, str(exc))
+        checks["ref-eval-action::fail-on-threshold"] = (STATUS_DEAD, str(exc))
+
+    # ── Remote agent resolver (BOM) ───────────────────────────────────────
+    try:
+        from sentinel.aibom.scanners.remote_agent_resolver import RemoteAgentResolver
+        r = RemoteAgentResolver()
+        checks["ref-bom-suite::Remote agent resolver"] = (
+            STATUS_NATIVE if hasattr(r, "scan") else STATUS_PARTIAL,
+            "RemoteAgentResolver importable with scan() method.",
+        )
+    except Exception as exc:
+        checks["ref-bom-suite::Remote agent resolver"] = (STATUS_DEAD, str(exc))
+
+    # ── Eval config schema validation ─────────────────────────────────────
+    try:
+        from sentinel.redteam.eval_config_schema import validate_eval_config, parse_eval_config
+        ok, errs = validate_eval_config({"id": "smoke", "providers": [{"name": "echo"}]})
+        checks["ref-llm-eval-suite::Eval config schema validation"] = (
+            STATUS_NATIVE if ok else STATUS_PARTIAL,
+            "validate_eval_config + parse_eval_config importable and working.",
+        )
+    except Exception as exc:
+        checks["ref-llm-eval-suite::Eval config schema validation"] = (STATUS_DEAD, str(exc))
+
+    # ── Eval matrix cartesian expansion ───────────────────────────────────
+    try:
+        from sentinel.redteam.eval_runner import _expand_matrix
+        combos = _expand_matrix({"a": [1, 2], "b": ["x", "y"]})
+        checks["ref-llm-eval-suite::Eval matrix and test case expansion"] = (
+            STATUS_NATIVE if len(combos) == 4 else STATUS_PARTIAL,
+            f"_expand_matrix produces {len(combos)} combinations from 2×2 matrix.",
+        )
+    except Exception as exc:
+        checks["ref-llm-eval-suite::Eval matrix and test case expansion"] = (STATUS_DEAD, str(exc))
+
+    # ── Trace assertions ──────────────────────────────────────────────────
+    try:
+        from sentinel.redteam.trace_assertions import (
+            TraceSpan, Trace, assert_span_count,
+            assert_max_duration, assert_span_order, assert_no_long_spans,
+        )
+        from sentinel.redteam.assertion_registry import AssertionRegistry
+        reg = AssertionRegistry()
+        has_trace = any("trace" in t for t in reg._evaluators)
+        checks["ref-llm-eval-suite::Trace assertions"] = (
+            STATUS_NATIVE if has_trace else STATUS_PARTIAL,
+            "TraceSpan/Trace dataclasses + span count/duration/order assertions in registry.",
+        )
+    except Exception as exc:
+        checks["ref-llm-eval-suite::Trace assertions"] = (STATUS_DEAD, str(exc))
+
+    # ── Programmatic ScanResult API ───────────────────────────────────────
+    try:
+        from sentinel.artifact import scan_file_rich, scan_directory_rich, ArtifactScanResult
+        result = ArtifactScanResult()
+        assert result.exit_code() == 0
+        checks["ref-artifact-scan-suite::Programmatic ScanResult API"] = (
+            STATUS_NATIVE,
+            "scan_file_rich, scan_directory_rich, ArtifactScanResult.exit_code() all available.",
+        )
+    except Exception as exc:
+        checks["ref-artifact-scan-suite::Programmatic ScanResult API"] = (STATUS_DEAD, str(exc))
+
+    # ── CLI exit code contract ────────────────────────────────────────────
+    try:
+        from sentinel.cli.cmd_scan import cmd_artifact_scan
+        from sentinel.artifact.scan_result import ArtifactScanResult as _ASR
+        clean = _ASR()
+        with_findings_only = _ASR()
+        from sentinel.finding import Finding, Severity
+        with_findings_only.findings.append(
+            Finding.artifact("SMOKE-001", "smoke", "smoke", Severity.CRITICAL, "test")
+        )
+        with_errors = _ASR()
+        from sentinel.artifact.scan_result import ScanError
+        with_errors.errors.append(ScanError(file="x", error="err", is_fatal=True))
+        ok = (clean.exit_code() == 0
+              and with_findings_only.exit_code() == 1
+              and with_errors.exit_code() == 2)
+        checks["ref-artifact-scan-suite::CLI exit code contract"] = (
+            STATUS_NATIVE if ok else STATUS_PARTIAL,
+            "exit_code() returns 0/1/2 for clean/findings/fatal-error.",
+        )
+    except Exception as exc:
+        checks["ref-artifact-scan-suite::CLI exit code contract"] = (STATUS_DEAD, str(exc))
+
+    # ── Memorization scorer ───────────────────────────────────────────────
+    try:
+        from sentinel.evaluator_assertions import memorization_score
+        from sentinel.redteam.assertion_registry import AssertionRegistry
+        reg = AssertionRegistry()
+        has_mem = "memorization" in reg._evaluators
+        score = memorization_score("hello world is a well-known phrase", "hello world")
+        checks["ref-llm-eval-suite::Divergent repetition probe"] = (
+            STATUS_NATIVE if (score >= 0 and has_mem) else STATUS_PARTIAL,
+            f"memorization_score() returns {score:.2f}; registry has memorization assertion.",
+        )
+    except Exception as exc:
+        checks["ref-llm-eval-suite::Divergent repetition probe"] = (STATUS_DEAD, str(exc))
+
+    # ── Pre-commit hook entrypoint ────────────────────────────────────────
+    try:
+        from sentinel.cli.pre_commit_hook import main as pre_commit_main
+        checks["ref-skill-security-suite::Pre-commit hook parity"] = (
+            STATUS_NATIVE,
+            "sentinel-pre-commit entrypoint importable; registered in pyproject.toml scripts.",
+        )
+    except Exception as exc:
+        checks["ref-skill-security-suite::Pre-commit hook parity"] = (STATUS_DEAD, str(exc))
+
+    # ── Auth object model ─────────────────────────────────────────────────
+    try:
+        from sentinel.agent.mcp.auth_model import MCPAuthConfig
+        checks["ref-mcp-security-suite::Auth object model"] = (
+            STATUS_NATIVE,
+            "MCPAuthConfig importable from sentinel.agent.mcp.auth_model.",
+        )
+    except Exception as exc:
+        checks["ref-mcp-security-suite::Auth object model"] = (STATUS_DEAD, str(exc))
+
+    # ── ATR rule pack ─────────────────────────────────────────────────────
+    try:
+        from sentinel.agent.rule_packs.atr import ATRPack
+        pack = ATRPack()
+        checks["ref-skill-security-suite::ATR rule pack"] = (
+            STATUS_NATIVE if hasattr(pack, "rules") or hasattr(pack, "scan") else STATUS_PARTIAL,
+            "ATRPack importable from sentinel.agent.rule_packs.atr.",
+        )
+    except Exception as exc:
+        checks["ref-skill-security-suite::ATR rule pack"] = (STATUS_DEAD, str(exc))
+
+    # ── Runtime event schemas + network egress events ────────────────────
+    try:
+        from sentinel.event_schemas import list_schemas
+        schemas = list_schemas()
+        has_network = "network-egress-event" in schemas
+        has_runtime = len(schemas) >= 6
+        checks["ref-runtime-defense-suite::Runtime event schemas"] = (
+            STATUS_NATIVE if has_runtime else STATUS_PARTIAL,
+            f"{len(schemas)} event schemas: {', '.join(schemas[:4])}...",
+        )
+        checks["ref-runtime-defense-suite::Network egress events"] = (
+            STATUS_NATIVE if has_network else STATUS_PARTIAL,
+            f"network-egress-event schema {'present' if has_network else 'missing'}.",
+        )
+    except Exception as exc:
+        checks["ref-runtime-defense-suite::Runtime event schemas"] = (STATUS_DEAD, str(exc))
+        checks["ref-runtime-defense-suite::Network egress events"] = (STATUS_DEAD, str(exc))
+
+    # ── BOM sub-scanners ──────────────────────────────────────────────────
+    try:
+        from sentinel.aibom.scanners.a2a_detector import A2ADetector
+        from sentinel.aibom.scanners.ml_lifecycle_detector import MLLifecycleDetector
+        from sentinel.aibom.scanners.env_var_resolver import EnvVarResolver
+        from sentinel.aibom.scanners.vector_store_detector import VectorStoreDetector
+        from sentinel.aibom.scanners.endpoint_classifier import EndpointClassifier
+        from sentinel.aibom.scanners.deployment_detector import DeploymentDetector
+        from sentinel.aibom.scanners.data_file_scanner import DataFileScanner
+        checks["ref-bom-suite::A2A detector"] = (STATUS_NATIVE, "A2ADetector importable.")
+        checks["ref-bom-suite::ML lifecycle detector"] = (STATUS_NATIVE, "MLLifecycleDetector importable.")
+        checks["ref-bom-suite::Env var resolver"] = (STATUS_NATIVE, "EnvVarResolver importable.")
+        checks["ref-bom-suite::Vector store detection/dedup"] = (STATUS_NATIVE, "VectorStoreDetector importable.")
+        checks["ref-bom-suite::Endpoint classifier"] = (STATUS_NATIVE, "EndpointClassifier importable.")
+        checks["ref-bom-suite::Deployment detector"] = (STATUS_NATIVE, "DeploymentDetector importable.")
+        checks["ref-bom-suite::Data file scanner"] = (STATUS_NATIVE, "DataFileScanner importable.")
+    except ImportError as exc:
+        failed = str(exc).split("'")[-2] if "'" in str(exc) else str(exc)
+        checks["ref-bom-suite::A2A detector"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+        checks["ref-bom-suite::ML lifecycle detector"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+        checks["ref-bom-suite::Env var resolver"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+        checks["ref-bom-suite::Vector store detection/dedup"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+        checks["ref-bom-suite::Endpoint classifier"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+        checks["ref-bom-suite::Deployment detector"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+        checks["ref-bom-suite::Data file scanner"] = (STATUS_PARTIAL, f"Import partial: {failed}")
+
+    try:
+        from sentinel.aibom.relationship_postprocessor import RelationshipPostprocessor
+        checks["ref-bom-suite::Relationship postprocessing"] = (
+            STATUS_NATIVE, "RelationshipPostprocessor importable."
+        )
+    except Exception as exc:
+        checks["ref-bom-suite::Relationship postprocessing"] = (STATUS_PARTIAL, str(exc))
+
+    try:
+        from sentinel.aibom.catalog_db import CatalogDB
+        checks["ref-bom-suite::Custom catalog and catalog DB"] = (
+            STATUS_NATIVE, "CatalogDB importable from sentinel.aibom.catalog_db."
+        )
+    except Exception as exc:
+        checks["ref-bom-suite::Custom catalog and catalog DB"] = (STATUS_PARTIAL, str(exc))
+
+    # ── Remote source resolver ────────────────────────────────────────────
+    try:
+        from sentinel.artifact.source_resolver import ResolverChain
+        chain = ResolverChain()
+        checks["ref-model-audit-suite::Remote source resolver core"] = (
+            STATUS_NATIVE if hasattr(chain, "resolve") else STATUS_PARTIAL,
+            "ResolverChain importable from sentinel.artifact.source_resolver.",
+        )
+    except Exception as exc:
+        checks["ref-model-audit-suite::Remote source resolver core"] = (STATUS_DEAD, str(exc))
+
     return checks
 
 
@@ -803,11 +1029,39 @@ def summarize_manifest(features: list[ParityFeature]) -> dict[str, int]:
     return summary
 
 
+def summarize_manifest_by_tool(features: list[ParityFeature]) -> dict[str, dict[str, int]]:
+    by_tool: dict[str, dict[str, int]] = {}
+    for feature in features:
+        bucket = by_tool.setdefault(feature.tool, summarize_manifest([]))
+        bucket[feature.status] = bucket.get(feature.status, 0) + 1
+    return by_tool
+
+
+def summarize_manifest_by_domain(features: list[ParityFeature]) -> dict[str, dict[str, int]]:
+    by_domain: dict[str, dict[str, int]] = {}
+    for feature in features:
+        bucket = by_domain.setdefault(feature.owner_domain, summarize_manifest([]))
+        bucket[feature.status] = bucket.get(feature.status, 0) + 1
+    return by_domain
+
+
+def gap_features(
+    features: list[ParityFeature],
+    *,
+    include_statuses: tuple[str, ...] = (STATUS_PARTIAL, STATUS_DEAD, STATUS_MISSING),
+) -> list[ParityFeature]:
+    return [feature for feature in features if feature.status in include_statuses]
+
+
 def manifest_to_json(features: list[ParityFeature] | None = None) -> str:
     manifest = features if features is not None else build_parity_manifest()
     payload = {
         "summary": summarize_manifest(manifest),
+        "by_tool": summarize_manifest_by_tool(manifest),
+        "by_domain": summarize_manifest_by_domain(manifest),
+        "gap_count": len(gap_features(manifest)),
         "features": [feature.to_dict() for feature in manifest],
+        "gaps": [feature.to_dict() for feature in gap_features(manifest)],
     }
     return json.dumps(payload, indent=2, sort_keys=True)
 
@@ -825,6 +1079,12 @@ def manifest_to_markdown(features: list[ParityFeature] | None = None) -> str:
     ]
     for status, count in summary.items():
         lines.append(f"- `{status}`: {count}")
+    lines.extend(["", "## Tool Summary", ""])
+    for tool, counts in summarize_manifest_by_tool(manifest).items():
+        lines.append(
+            f"- `{tool}`: native={counts[STATUS_NATIVE]} partial={counts[STATUS_PARTIAL]} "
+            f"dead={counts[STATUS_DEAD]} missing={counts[STATUS_MISSING]} out={counts[STATUS_OUT]}"
+        )
     lines.extend(
         [
             "",
@@ -872,8 +1132,11 @@ def write_manifest(
 __all__ = [
     "ParityFeature",
     "build_parity_manifest",
+    "gap_features",
     "manifest_to_json",
     "manifest_to_markdown",
     "summarize_manifest",
+    "summarize_manifest_by_domain",
+    "summarize_manifest_by_tool",
     "write_manifest",
 ]

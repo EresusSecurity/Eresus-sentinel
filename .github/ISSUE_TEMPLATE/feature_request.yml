@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a new scanner, workflow, integration, or product improvement.
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What security workflow is hard or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful version of the feature.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - blocks safe use
+        - P1 - important hardening
+        - P2 - useful workflow
+        - P3 - future idea
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example commands or output
+      render: shell

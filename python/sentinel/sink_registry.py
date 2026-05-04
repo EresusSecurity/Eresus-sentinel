@@ -1,4 +1,5 @@
 """Audit sink registry — JSONL, Splunk, and OTLP sink stubs."""
+
 from __future__ import annotations
 
 import json
@@ -51,30 +52,41 @@ class LogSink(AuditSink):
 
 
 class SplunkSink(AuditSink):
-    """Stub Splunk HEC sink — requires external configuration."""
+    """Splunk HEC sink for runtime audit events."""
 
     def __init__(self, hec_url: str = "", token: str = "") -> None:
-        self._hec_url = hec_url
-        self._token = token
+        from sentinel.export.splunk import SplunkHECExporter
+
+        self._exporter = SplunkHECExporter(
+            url=hec_url,
+            token=token,
+            sourcetype="sentinel:event",
+        )
 
     def emit(self, event: dict[str, Any]) -> None:
-        if not self._hec_url:
+        if not self._exporter.configured:
             logger.debug("Splunk HEC URL not configured — skipping emit")
             return
-        logger.debug("Would send to Splunk HEC: %s", self._hec_url)
+        result = self._exporter.export_events([event])
+        if result.error:
+            logger.warning("Splunk HEC sink failed: %s", result.error)
 
 
 class OTLPSink(AuditSink):
-    """Stub OTLP exporter sink."""
+    """OTLP/HTTP JSON sink for runtime audit events."""
 
     def __init__(self, endpoint: str = "") -> None:
-        self._endpoint = endpoint
+        from sentinel.export.otlp import OTLPExporter
+
+        self._exporter = OTLPExporter(endpoint=endpoint)
 
     def emit(self, event: dict[str, Any]) -> None:
-        if not self._endpoint:
+        if not self._exporter.configured:
             logger.debug("OTLP endpoint not configured — skipping emit")
             return
-        logger.debug("Would send to OTLP: %s", self._endpoint)
+        result = self._exporter.export_events([event])
+        if result.error:
+            logger.warning("OTLP sink failed: %s", result.error)
 
 
 class SinkRegistry:

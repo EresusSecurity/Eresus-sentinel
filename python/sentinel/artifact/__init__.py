@@ -35,8 +35,15 @@ from ._pickle_ops import DangerousImport, PickleAnalysis
 from .archive_slip import ArchiveSlipDetector
 from .binary_tail_scanner import BinaryTailScanner
 from .catboost_scanner import CatBoostScanner
+from .compressed_scanner import CompressedWrapperScanner
 from .coreml_scanner import CoreMLScanner
 from .cve_detector import CVEDetector
+from .cntk_scanner import CNTKScanner
+from .jax_scanner import JAXCheckpointScanner
+from .jinja2_scanner import Jinja2InjectionScanner
+from .manifest_scanner import MLManifestScanner
+from .rknn_scanner import RKNNScanner
+from .tf_metagraph_scanner import TFMetaGraphScanner
 from .flax_scanner import FlaxScanner
 from .gguf_analyzer import GGUFAnalyzer
 from .huggingface_scanner import HuggingFaceScanner
@@ -61,6 +68,7 @@ from .paddle_scanner import PaddleScanner
 from .pickle_scanner import PickleScanner
 from .pmml_scanner import PMMLScanner
 from .r_serialized_scanner import RSerializedScanner
+from .rar_scanner import RARScanner
 from .safetensors_validator import SafetensorsValidator
 from .sevenz_scanner import SevenZipScanner
 from .skops_scanner import SkopsScanner
@@ -73,6 +81,7 @@ from .torchserve_scanner import ExecuTorchScanner, TensorRTScanner, Torch7Scanne
 from .trojan_detector import TrojanDetector
 from .xgboost_scanner import XGBoostScanner
 from .yaml_scanner import YamlScanner
+from .scan_result import ArtifactScanResult, ScanError
 
 
 @dataclass(frozen=True)
@@ -105,35 +114,42 @@ def _scanner_catalog() -> tuple[ArtifactScannerSpec, ...]:
         ArtifactScannerSpec("pickle", (".pkl", ".pickle", ".p", ".dill", ".dat", ".data", ".joblib"), PickleScanner, True),
         ArtifactScannerSpec("torch", (".pt", ".pth", ".bin", ".ckpt"), TorchScanner, True),
         ArtifactScannerSpec("safetensors", (".safetensors",), SafetensorsValidator),
-        ArtifactScannerSpec("gguf", (".gguf",), GGUFAnalyzer),
+        ArtifactScannerSpec("gguf", (".gguf", ".ggml", ".ggmf", ".ggjt", ".ggla", ".ggsa"), GGUFAnalyzer),
         ArtifactScannerSpec("tensorflow", (".pb",), TensorFlowScanner),
+        ArtifactScannerSpec("tf_metagraph", (".meta",), TFMetaGraphScanner),
         ArtifactScannerSpec("torchscript", (".torchscript", ".ptc"), TorchScriptScanner, True),
         ArtifactScannerSpec("tflite", (".tflite",), TFLiteScanner),
         ArtifactScannerSpec("torchmobile", (".ptl",), TorchMobileScanner, True),
-        ArtifactScannerSpec("llamafile", (".llamafile",), LlamaFileScanner),
+        ArtifactScannerSpec("llamafile", (".llamafile", ".exe"), LlamaFileScanner),
         ArtifactScannerSpec("onnx", (".onnx",), ONNXScanner),
         ArtifactScannerSpec("keras", (".keras", ".h5", ".hdf5"), KerasScanner, True),
-        ArtifactScannerSpec("xgboost", (".xgb", ".ubj", ".model"), XGBoostScanner),
+        ArtifactScannerSpec("xgboost", (".xgb", ".bst", ".ubj", ".model"), XGBoostScanner),
         ArtifactScannerSpec("numpy", (".npy", ".npz"), NumpyScanner, True),
-        ArtifactScannerSpec("archive", (".zip", ".tar", ".tar.gz", ".tgz"), ArchiveSlipDetector),
+        ArtifactScannerSpec("archive", (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"), ArchiveSlipDetector),
         ArtifactScannerSpec("7z", (".7z",), SevenZipScanner),
         ArtifactScannerSpec("yaml", (".yaml", ".yml"), YamlScanner),
         ArtifactScannerSpec("catboost", (".cbm",), CatBoostScanner),
         ArtifactScannerSpec("coreml", (".mlmodel", ".mlpackage"), CoreMLScanner),
-        ArtifactScannerSpec("flax", (".msgpack", ".orbax", ".flax"), FlaxScanner),
+        ArtifactScannerSpec("flax", (".msgpack", ".orbax", ".flax", ".jax", ".checkpoint", ".orbax-checkpoint"), FlaxScanner),
         ArtifactScannerSpec("lightgbm", (".lgb", ".lightgbm"), LightGBMScanner),
-        ArtifactScannerSpec("mxnet", (".params",), MXNetScanner),
+        ArtifactScannerSpec("mxnet", ("-symbol.json", ".params"), MXNetScanner),
         ArtifactScannerSpec("nemo", (".nemo",), NeMoScanner, True),
         ArtifactScannerSpec("openvino", (".xml",), OpenVINOScanner),
         ArtifactScannerSpec("paddle", (".pdmodel", ".pdiparams", ".pdparams"), PaddleScanner),
         ArtifactScannerSpec("pmml", (".pmml",), PMMLScanner),
+        ArtifactScannerSpec("rknn", (".rknn",), RKNNScanner),
+        ArtifactScannerSpec("cntk", (".dnn", ".cmf"), CNTKScanner),
         ArtifactScannerSpec("r-serialized", (".rds", ".rda", ".rdata"), RSerializedScanner, True),
         ArtifactScannerSpec("skops", (".skops",), SkopsScanner),
         ArtifactScannerSpec("torchserve", (".mar",), TorchServeScanner, True),
-        ArtifactScannerSpec("torch7", (".t7", ".th"), Torch7Scanner, True),
+        ArtifactScannerSpec("torch7", (".t7", ".th", ".net"), Torch7Scanner, True),
+        ArtifactScannerSpec("rar", (".rar",), RARScanner, True),
+        ArtifactScannerSpec("compressed", (".gz", ".bz2", ".xz", ".lz4", ".zlib"), CompressedWrapperScanner, True),
         ArtifactScannerSpec("executorch", (".pte",), ExecuTorchScanner),
         ArtifactScannerSpec("tensorrt", (".engine", ".plan", ".trt"), TensorRTScanner),
-        ArtifactScannerSpec("oci", (".oci",), OCIScanner),
+        ArtifactScannerSpec("oci", (".oci", ".manifest"), OCIScanner),
+        ArtifactScannerSpec("jinja2", (".jinja", ".jinja2", ".j2", ".template"), Jinja2InjectionScanner),
+        ArtifactScannerSpec("mlmanifest", (".json",), MLManifestScanner),
     )
 
 
@@ -409,10 +425,101 @@ def scan_directory(
     return findings
 
 
+def scan_file_rich(
+    filepath: str | Path,
+    options: ArtifactScanOptions | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    exclude: str | Iterable[str] | None = None,
+    strict: bool | None = None,
+    fail_closed: bool | None = None,
+    expected_sha256: str | None = None,
+) -> "ArtifactScanResult":
+    """Scan a model artifact file and return a rich ArtifactScanResult.
+
+    Unlike scan_file(), this returns an ArtifactScanResult with structured
+    error tracking, summary metadata, and a ref-compatible exit_code() method.
+    """
+    import time
+
+    from sentinel.artifact.scan_result import ArtifactScanResult, ScanError
+
+    start = time.monotonic()
+    errors: list[ScanError] = []
+    path = Path(filepath)
+
+    if not path.exists() or not path.is_file():
+        return ArtifactScanResult(
+            errors=[ScanError(file=str(filepath), error="File not found", is_fatal=True)],
+        )
+
+    try:
+        findings = scan_file(
+            filepath,
+            options,
+            include=include,
+            exclude=exclude,
+            strict=strict,
+            fail_closed=fail_closed,
+            expected_sha256=expected_sha256,
+        )
+    except Exception as exc:
+        findings = []
+        errors.append(ScanError(file=str(filepath), error=str(exc), is_fatal=True))
+
+    elapsed_ms = (time.monotonic() - start) * 1000
+    return ArtifactScanResult(
+        findings=findings,
+        errors=errors,
+        files_scanned=1,
+        scan_duration_ms=elapsed_ms,
+    )
+
+
+def scan_directory_rich(
+    directory: str | Path,
+    options: ArtifactScanOptions | None = None,
+    *,
+    include: str | Iterable[str] | None = None,
+    exclude: str | Iterable[str] | None = None,
+    strict: bool | None = None,
+    fail_closed: bool | None = None,
+) -> "ArtifactScanResult":
+    """Scan a directory of model artifacts and return a rich ArtifactScanResult."""
+    import time
+
+    from sentinel.artifact.scan_result import ArtifactScanResult, ScanError
+
+    start = time.monotonic()
+    errors: list[ScanError] = []
+    scanned = 0
+
+    try:
+        findings = scan_directory(directory, options, include=include, exclude=exclude,
+                                   strict=strict, fail_closed=fail_closed)
+        root = Path(directory)
+        scanned = sum(1 for _ in root.rglob("*") if _.is_file()) if root.is_dir() else 0
+    except Exception as exc:
+        findings = []
+        errors.append(ScanError(file=str(directory), error=str(exc), is_fatal=True))
+
+    elapsed_ms = (time.monotonic() - start) * 1000
+    return ArtifactScanResult(
+        findings=findings,
+        errors=errors,
+        files_scanned=scanned,
+        scan_duration_ms=elapsed_ms,
+    )
+
+
 __all__ = [
     "scan_file",
+    "scan_file_rich",
     "scan_directory",
+    "scan_directory_rich",
     "ArtifactScanOptions",
+    "ArtifactScanResult",
+    "ScanError",
     "ArtifactScannerSpec",
     "PickleAnalysis",
     "DangerousImport",
@@ -441,7 +548,9 @@ __all__ = [
     "BinaryTailScanner",
     "CVEDetector",
     "CatBoostScanner",
+    "CompressedWrapperScanner",
     "CoreMLScanner",
+    "CNTKScanner",
     "FlaxScanner",
     "LightGBMScanner",
     "MXNetScanner",
@@ -450,6 +559,8 @@ __all__ = [
     "PaddleScanner",
     "PMMLScanner",
     "RSerializedScanner",
+    "RARScanner",
+    "RKNNScanner",
     "SkopsScanner",
     "TorchServeScanner",
     "Torch7Scanner",

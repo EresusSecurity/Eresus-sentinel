@@ -25,9 +25,11 @@ def cmd_fuzz(args):
         return _cmd_fuzz_selftest(args)
     elif action == "payloads":
         return _cmd_fuzz_payloads(args)
+    elif action == "minimize":
+        return _cmd_fuzz_minimize(args)
     else:
         _header("fuzz — AI offensive security testing")
-        console.print("  [dim]subcommands: generate, mutate, validate, selftest, payloads[/dim]")
+        console.print("  [dim]subcommands: generate, mutate, validate, selftest, payloads, minimize[/dim]")
         console.print("  [dim]try: sentinel fuzz selftest --samples 200[/dim]")
         return 2
 
@@ -140,6 +142,8 @@ def _cmd_fuzz_selftest(args):
     seed = getattr(args, "seed", None)
     output_dir = getattr(args, "dir", None)
     allow_bypass = getattr(args, "allow_bypass", False)
+    min_tpr = float(getattr(args, "min_tpr", 0.95))
+    max_fpr = float(getattr(args, "max_fpr", 0.03))
 
     _header(f"fuzz selftest · {samples} samples")
 
@@ -180,6 +184,8 @@ def _cmd_fuzz_selftest(args):
     table.add_row("───", "───")
     table.add_row("Wall Time", f"{wall:.1f}s")
     table.add_row("Avg Scan Time", f"{score.avg_scan_time_ms:.2f}ms")
+    table.add_row("TPR Gate", f">= {min_tpr:.1%}")
+    table.add_row("FPR Gate", f"<= {max_fpr:.1%}")
 
     console.print(table)
 
@@ -203,6 +209,12 @@ def _cmd_fuzz_selftest(args):
     if score.bypassed_payloads and not allow_bypass:
         _fail(f"selftest failed: {len(score.bypassed_payloads)} bypassed payload(s)")
         console.print("  [dim]Use --allow-bypass for exploratory runs that should exit 0.[/dim]")
+        return 1
+    if score.tpr < min_tpr:
+        _fail(f"selftest failed: TPR {score.tpr:.1%} below required {min_tpr:.1%}")
+        return 1
+    if score.fpr > max_fpr:
+        _fail(f"selftest failed: FPR {score.fpr:.1%} above allowed {max_fpr:.1%}")
         return 1
     return 0
 
@@ -239,4 +251,72 @@ def _cmd_fuzz_payloads(args):
     mal = sum(1 for p in payloads if p.is_malicious)
     ben = sum(1 for p in payloads if not p.is_malicious)
     console.print(f"\n  [bold]{len(payloads)}[/bold] payloads · [red]{mal} malicious[/red] · [green]{ben} benign[/green]")
+    return 0
+
+
+def _cmd_fuzz_minimize(args):
+    """Minimize fuzz corpus by removing redundant samples (same scan verdict)."""
+    from sentinel.artifact.pickle_scanner import PickleScanner
+
+    corpus_dir = args.corpus_dir
+    output_dir = getattr(args, "output", None)
+    dry_run = getattr(args, "dry_run", False)
+
+    _header(f"fuzz minimize · {corpus_dir}")
+
+    corpus_path = Path(corpus_dir)
+    if not corpus_path.is_dir():
+        _fail(f"{corpus_dir} is not a directory")
+        return 1
+
+    files = sorted(corpus_path.glob("*.pkl"))
+    if not files:
+        _warn("no .pkl files found in corpus")
+        return 0
+
+    scanner = PickleScanner()
+    # Group files by their scan signature (set of finding titles)
+    signature_groups: dict[frozenset[str], list[Path]] = {}
+    t0 = time.perf_counter()
+
+    for f in files:
+        try:
+            data = f.read_bytes()
+            findings = scanner.scan_bytes(data, source=f.name)
+            sig = frozenset(f.title for f in findings) if findings else frozenset(["CLEAN"])
+        except Exception:
+            sig = frozenset(["ERROR"])
+        signature_groups.setdefault(sig, []).append(f)
+
+    wall = time.perf_counter() - t0
+
+    # For each signature group, keep the smallest file (most minimized)
+    kept: list[Path] = []
+    removed: list[Path] = []
+
+    for sig, group in signature_groups.items():
+        # Keep the smallest sample per unique signature
+        group_sorted = sorted(group, key=lambda p: p.stat().st_size)
+        kept.append(group_sorted[0])
+        removed.extend(group_sorted[1:])
+
+    console.print(f"  [dim]Scanned {len(files)} files in {wall:.1f}s[/dim]")
+    console.print(f"  [green]{len(kept)}[/green] unique signatures · [yellow]{len(removed)}[/yellow] redundant")
+
+    if dry_run:
+        console.print("\n  [dim]--dry-run: would remove:[/dim]")
+        for f in removed[:20]:
+            console.print(f"    [yellow]•[/yellow] {f.name}")
+        if len(removed) > 20:
+            console.print(f"    [dim]... and {len(removed) - 20} more[/dim]")
+        return 0
+
+    out_path = Path(output_dir) if output_dir else corpus_path / "minimized"
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    for f in kept:
+        import shutil
+        shutil.copy2(f, out_path / f.name)
+
+    _ok(f"minimized corpus: {len(files)} → {len(kept)} files → {out_path}")
     return 0

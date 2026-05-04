@@ -754,6 +754,17 @@ def _parse_providers(raw_providers: Any) -> list[EvalProviderSpec]:
     return providers
 
 
+def _expand_matrix(matrix: dict[str, Any]) -> list[dict[str, Any]]:
+    """Cartesian-expand a matrix mapping of {key: [v1, v2, ...]} into variable dicts."""
+    import itertools
+
+    if not matrix:
+        return [{}]
+    keys = list(matrix.keys())
+    value_lists = [_ensure_list(matrix[k]) for k in keys]
+    return [dict(zip(keys, combo)) for combo in itertools.product(*value_lists)]
+
+
 def _parse_cases(
     raw: dict[str, Any],
     global_vars: dict[str, Any],
@@ -764,21 +775,43 @@ def _parse_cases(
     tests = _ensure_list(raw.get("tests") or raw.get("cases") or [])
     cases: list[EvalCase] = []
 
-    if tests:
-        cases.extend(_cases_from_tests(prompts, tests, global_vars, global_assertions))
-    elif prompts:
-        for prompt in prompts:
-            variables = {**global_vars, **prompt["vars"]}
-            cases.append(
-                EvalCase(
-                    id=prompt["id"],
-                    prompt=_render_template(prompt["prompt"], variables),
-                    variables=variables,
-                    assertions=[*global_assertions, *prompt["assertions"]],
-                    source=prompt["source"],
-                    metadata=prompt["metadata"],
+    # Matrix expansion: cartesian product of variable axes
+    matrix_raw = raw.get("matrix") or {}
+    matrix_combos = _expand_matrix(matrix_raw) if matrix_raw else [{}]
+
+    for matrix_vars in matrix_combos:
+        combo_global = {**global_vars, **matrix_vars}
+        combo_suffix = (
+            "::" + ":".join(f"{k}={v}" for k, v in matrix_vars.items())
+            if matrix_vars else ""
+        )
+
+        if tests:
+            combo_cases = _cases_from_tests(prompts, tests, combo_global, global_assertions)
+            for case in combo_cases:
+                if combo_suffix:
+                    case = EvalCase(
+                        id=case.id + combo_suffix,
+                        prompt=case.prompt,
+                        variables={**case.variables, **matrix_vars},
+                        assertions=case.assertions,
+                        source=case.source,
+                        metadata=case.metadata,
+                    )
+                cases.append(case)
+        elif prompts:
+            for prompt in prompts:
+                variables = {**combo_global, **prompt["vars"]}
+                cases.append(
+                    EvalCase(
+                        id=prompt["id"] + combo_suffix,
+                        prompt=_render_template(prompt["prompt"], variables),
+                        variables=variables,
+                        assertions=[*global_assertions, *prompt["assertions"]],
+                        source=prompt["source"],
+                        metadata=prompt["metadata"],
+                    )
                 )
-            )
 
     for dataset in _ensure_list(raw.get("datasets") or []):
         cases.extend(_cases_from_dataset(dataset, global_vars, global_assertions, config_path))

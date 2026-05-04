@@ -1,0 +1,264 @@
+# ML Manifest / Configuration File Security Rules
+# Sentinel artifact scanner — JSON/YAML/TOML model config files
+# Based on modelaudit/modelaudit/scanners/manifest_scanner.py
+
+metadata:
+  version: "1.0.0"
+  format: "ml_manifest"
+  description: >
+    Detection rules for ML model manifest and configuration files.
+    Covers unsafe URLs, weak hash algorithms, suspicious script keys,
+    credential leakage, and dangerous dependency references.
+
+limits:
+  max_file_size_bytes: 10485760   # 10 MB
+  max_url_findings: 20
+  max_key_findings: 30
+  max_depth: 32
+
+exact_filenames:
+  - manifest.json
+  - model.json
+  - params.json
+  - hyperparams.yaml
+  - training_args.json
+  - dataset_info.json
+  - environment.yml
+  - conda.yaml
+  - metadata.json
+  - index.json
+  - config.json
+  - tokenizer_config.json
+  - generation_config.json
+  - adapter_config.json
+  - model_config.yaml
+
+exact_extensions:
+  - .manifest
+  - .metadata
+
+model_name_keys:
+  - name
+  - model_name
+  - model
+  - model_id
+  - id
+  - title
+  - artifact_name
+  - artifact_id
+  - package_name
+
+hash_integrity_keys:
+  - hash
+  - checksum
+  - digest
+  - md5
+  - sha1
+  - sha256
+  - sha512
+  - file_hash
+  - model_hash
+  - weight_hash
+  - integrity
+
+weak_hash_patterns:
+  - id: MANIFEST-HASH-001
+    rule_id: "MANIFEST-HASH-001"
+    title: "Weak hash algorithm (MD5) used for model integrity verification"
+    description: >
+      An MD5 hash value was found in the manifest. MD5 is cryptographically broken
+      and trivially collisible. An attacker can substitute a malicious model artifact
+      that matches the MD5 checksum of the legitimate file.
+    severity: HIGH
+    cwe_ids: ["CWE-327", "CWE-328"]
+    key_pattern: '^md5$|_md5$|^md5_'
+    value_hex_length: 32
+
+  - id: MANIFEST-HASH-002
+    rule_id: "MANIFEST-HASH-002"
+    title: "Weak hash algorithm (SHA-1) used for model integrity verification"
+    description: >
+      A SHA-1 hash value was found in the manifest. SHA-1 is deprecated and
+      theoretically collisible. Use SHA-256 or SHA-512 for model integrity.
+    severity: MEDIUM
+    cwe_ids: ["CWE-327", "CWE-328"]
+    key_pattern: '^sha1$|_sha1$|^sha1_'
+    value_hex_length: 40
+
+trusted_url_domains:
+  - huggingface.co
+  - hf.co
+  - github.com
+  - raw.githubusercontent.com
+  - gist.githubusercontent.com
+  - objects.githubusercontent.com
+  - github.io
+  - gitlab.com
+  - gitlab.io
+  - bitbucket.org
+  - codeberg.org
+  - sourceforge.net
+  - modelscope.cn
+  - civitai.com
+  - tfhub.dev
+  - pytorch.org
+  - download.pytorch.org
+  - tensorflow.org
+  - keras.io
+  - onnx.ai
+  - onnxruntime.ai
+  - scikit-learn.org
+  - spacy.io
+  - mlflow.org
+  - wandb.ai
+  - neptune.ai
+  - comet.ml
+  - dvc.org
+  - openai.com
+  - anthropic.com
+  - google.com
+  - ai.google
+  - deepmind.com
+  - meta.com
+  - ai.meta.com
+  - llama.meta.com
+  - microsoft.com
+  - nvidia.com
+  - developer.nvidia.com
+  - stability.ai
+  - mistral.ai
+  - cohere.com
+  - cohere.ai
+  - replicate.com
+  - together.ai
+  - together.xyz
+  - fireworks.ai
+  - perplexity.ai
+  - ai21.com
+  - aleph-alpha.com
+  - runwayml.com
+  - databricks.com
+  - snowflake.com
+  - datarobot.com
+  - h2o.ai
+  - clarifai.com
+  - scale.com
+  - labelbox.com
+  - sagemaker.aws
+  - s3.amazonaws.com
+  - cloudfront.net
+  - storage.googleapis.com
+  - storage.cloud.google.com
+  - googleusercontent.com
+  - gcr.io
+  - blob.core.windows.net
+  - azureedge.net
+  - azure.com
+  - cdn.jsdelivr.net
+  - unpkg.com
+  - arxiv.org
+  - paperswithcode.com
+  - eleuther.ai
+  - laion.ai
+  - allenai.org
+  - kaggle.com
+  - zenodo.org
+  - commoncrawl.org
+  - image-net.org
+  - cocodataset.org
+
+url_rules:
+  - id: MANIFEST-URL-001
+    rule_id: "MANIFEST-URL-001"
+    title: "Untrusted external URL in model manifest"
+    description: >
+      The manifest references a URL from a domain not in the trusted ML
+      infrastructure allowlist. This may indicate supply-chain tampering,
+      a malicious model weight source, or a C2 callback endpoint.
+    severity: HIGH
+    cwe_ids: ["CWE-494", "CWE-829"]
+    url_pattern: 'https?://[a-zA-Z0-9.\-_]+(?:/[^\s"<>]*)?'
+
+  - id: MANIFEST-URL-002
+    rule_id: "MANIFEST-URL-002"
+    title: "Cloud storage reference in model manifest"
+    description: >
+      The manifest contains a cloud storage URI (S3/GCS/Azure). These references
+      indicate external model weight dependencies that bypass local integrity checks.
+    severity: MEDIUM
+    cwe_ids: ["CWE-829"]
+    patterns:
+      - 's3://[a-zA-Z0-9.\-_]+(?:/[^\s"<>]*)?'
+      - 'gs://[a-zA-Z0-9.\-_]+(?:/[^\s"<>]*)?'
+      - 'az://[a-zA-Z0-9.\-_]+(?:/[^\s"<>]*)?'
+      - 'wasbs?://[^\s"<>@]+@[a-zA-Z0-9.\-_]+\.blob\.core\.windows\.net(?:/[^\s"<>]*)?'
+      - 'abfss?://[^\s"<>@]+@[a-zA-Z0-9.\-_]+\.dfs\.core\.windows\.net(?:/[^\s"<>]*)?'
+
+suspicious_key_rules:
+  - id: MANIFEST-KEY-001
+    rule_id: "MANIFEST-KEY-001"
+    title: "Script/command execution key in model manifest"
+    description: >
+      A key associated with script or command execution was found in the manifest.
+      ML loaders may invoke the value of these keys at model load or training time.
+    severity: HIGH
+    cwe_ids: ["CWE-78", "CWE-94"]
+    key_patterns:
+      - '^(pre_|post_)?script$'
+      - '^(pre_|post_)?command$'
+      - '^(pre_|post_)?cmd$'
+      - '^entrypoint$'
+      - '^run$'
+      - '^exec$'
+      - '^hook$'
+      - '^on_load$'
+      - '^on_init$'
+      - '^on_start$'
+      - '^startup$'
+      - '^init_command$'
+      - '^setup_command$'
+      - '^install_command$'
+
+  - id: MANIFEST-KEY-002
+    rule_id: "MANIFEST-KEY-002"
+    title: "Credential or secret key in model manifest"
+    description: >
+      A key name typically associated with credentials or secrets was found
+      in the model manifest. Credentials in manifest files expose them to
+      any party that can read the model artifact.
+    severity: CRITICAL
+    cwe_ids: ["CWE-312", "CWE-522"]
+    key_patterns:
+      - 'password'
+      - 'passwd'
+      - 'secret'
+      - 'api_key'
+      - 'apikey'
+      - 'access_key'
+      - 'private_key'
+      - 'auth_token'
+      - 'bearer_token'
+      - 'oauth_token'
+      - 'jwt'
+      - 'credential'
+      - 'aws_secret'
+      - 'aws_access'
+
+  - id: MANIFEST-KEY-003
+    rule_id: "MANIFEST-KEY-003"
+    title: "Jinja2 template field in model manifest"
+    description: >
+      A Jinja2 template field (chat_template, prompt_template, etc.) was found
+      in the manifest. Template fields may contain SSTI payloads executed when
+      the template is rendered by the ML framework.
+    severity: HIGH
+    cwe_ids: ["CWE-94"]
+    key_patterns:
+      - '^chat_template$'
+      - '^prompt_template$'
+      - '^system_template$'
+      - '^instruction_template$'
+      - '^template_string$'
+      - '^format_string$'
+      - '^jinja_template$'
+      - '^custom_template$'

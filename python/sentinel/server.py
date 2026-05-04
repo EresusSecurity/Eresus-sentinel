@@ -161,8 +161,8 @@ def create_app(
         # Content-Security-Policy for the API (docs/health pages served here)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "style-src 'self'; "
             "img-src 'self' data:; "
             "object-src 'none'; "
             "base-uri 'self'; "
@@ -206,12 +206,19 @@ def create_app(
     # Authorization: Bearer <token>.  Without it the API runs open (dev mode).
 
     _auth_token = os.environ.get("SENTINEL_AUTH_TOKEN", "")
-    _auth_public = {"/health", "/ready", "/docs", "/redoc", "/openapi.json"}
+    _auth_public = {"/health", "/ready"}
+    if not _is_production:
+        _auth_public |= {"/docs", "/redoc", "/openapi.json"}
 
     if not _auth_token:
         logger.warning(
             "SENTINEL_AUTH_TOKEN is not set — API server running WITHOUT "
             "authentication.  Set SENTINEL_AUTH_TOKEN for production use."
+        )
+    elif len(_auth_token) < 32:
+        raise RuntimeError(
+            "SENTINEL_AUTH_TOKEN must be at least 32 characters long. "
+            "Use: python -c 'import secrets; print(secrets.token_hex(32))'"
         )
 
     @app.middleware("http")
@@ -277,26 +284,29 @@ def create_app(
 
     # ── Models ────────────────────────────────────────────────────
 
+    _SESSION_ID_FIELD = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$", description="Session identifier for audit trail")
+    _USER_ID_FIELD = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$", description="User identifier for audit trail")
+
     class InputScanRequest(BaseModel):
         prompt: str = Field(..., min_length=1, max_length=100_000, description="User prompt to scan")
-        session_id: str = Field("", description="Session identifier for audit trail")
-        user_id: str = Field("", description="User identifier for audit trail")
+        session_id: str = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$", description="Session identifier for audit trail")
+        user_id: str = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$", description="User identifier for audit trail")
         vault_enabled: bool = Field(False, description="Enable PII redaction via Vault")
 
     class OutputScanRequest(BaseModel):
         prompt: str = Field(..., min_length=1, max_length=100_000)
         output: str = Field(..., min_length=1, max_length=500_000, description="LLM output to scan")
-        session_id: str = ""
-        user_id: str = ""
-        model: str = Field("", description="Model identifier for cost tracking")
+        session_id: str = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$")
+        user_id: str = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$")
+        model: str = Field("", max_length=128, description="Model identifier for cost tracking")
         vault_restore: bool = Field(False, description="Restore vault placeholders in output")
 
     class ConversationScanRequest(BaseModel):
         prompt: str = Field(..., min_length=1, max_length=100_000)
         output: str = Field(..., min_length=1, max_length=500_000)
-        session_id: str = ""
-        user_id: str = ""
-        model: str = ""
+        session_id: str = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$")
+        user_id: str = Field("", max_length=128, pattern=r"^[A-Za-z0-9_\-\.]{0,128}$")
+        model: str = Field("", max_length=128)
 
     class BatchScanRequest(BaseModel):
         items: list[ConversationScanRequest] = Field(..., min_length=1, max_length=100)
@@ -309,7 +319,7 @@ def create_app(
             pattern=r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$",
             description="HuggingFace repo (e.g. 'org/model')",
         )
-        revision: str = Field("main", description="Branch or commit hash")
+        revision: str = Field("main", max_length=80, pattern=r"^[A-Za-z0-9_./\-]{1,80}$", description="Branch or commit hash")
         block_pickle: bool = False
         require_safetensors: bool = False
 

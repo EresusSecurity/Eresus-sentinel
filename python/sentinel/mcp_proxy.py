@@ -32,8 +32,10 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Optional
@@ -44,6 +46,14 @@ logger = logging.getLogger(__name__)
 async def _strip_server_header(_: Any, response: Any) -> None:
     """Avoid leaking the Python/aiohttp version from the proxy surface."""
     response.headers.pop("Server", None)
+
+
+def _jsonrpc_error(message_id: Any, code: int, message: str) -> bytes:
+    return json.dumps({
+        "jsonrpc": "2.0",
+        "id": message_id,
+        "error": {"code": code, "message": message},
+    }).encode()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -103,7 +113,7 @@ class SessionState:
     blocked_count: int = 0
     total_findings: int = 0
     last_activity: float = 0.0
-    tools_called: list[str] = field(default_factory=list)
+    tools_called: deque = field(default_factory=lambda: deque(maxlen=500))
     anomaly_score: float = 0.0
     rate_tokens: float = 0.0
     rate_last_refill: float = 0.0
@@ -131,9 +141,36 @@ class ProxyConfig:
     circuit_breaker_timeout: float = 30.0
     sanitize_responses: bool = True
     strip_sensitive_params: list[str] = field(default_factory=lambda: [
-        "password", "secret", "token", "api_key", "apikey",
-        "access_token", "private_key", "credentials",
+        "password", "passwd", "pass", "secret", "token", "api_key", "apikey",
+        "access_token", "private_key", "credentials", "credential",
+        "bearer", "auth", "authorization", "x-api-key", "x_api_key",
+        "jwt", "id_token", "refresh_token", "client_secret", "client_id",
+        "session", "session_token", "session_key", "cookie", "cookies",
+        "sig", "signature", "nonce", "hmac", "signing_key",
+        "aws_secret", "aws_access_key", "gcp_key", "azure_key",
     ])
+
+    @classmethod
+    def from_file(cls, path: str | os.PathLike[str]) -> "ProxyConfig":
+        """Load proxy policy from a JSON/YAML config file."""
+        from dataclasses import fields
+        from pathlib import Path
+
+        config_path = Path(path)
+        text = config_path.read_text(encoding="utf-8")
+        if config_path.suffix.lower() in {".yaml", ".yml"}:
+            import yaml
+            raw = yaml.safe_load(text) or {}
+        else:
+            raw = json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError("proxy config must be a mapping")
+
+        allowed = {field.name for field in fields(cls)}
+        data = {key: value for key, value in raw.items() if key in allowed}
+        if "mode" in data and not isinstance(data["mode"], ProxyMode):
+            data["mode"] = ProxyMode(str(data["mode"]).lower())
+        return cls(**data)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -146,20 +183,22 @@ class TokenBucketLimiter:
     def __init__(self, rate: float, burst: int):
         self._rate = rate
         self._burst = burst
+        self._lock = threading.Lock()
 
     def check(self, session: SessionState) -> bool:
-        now = time.monotonic()
-        elapsed = now - session.rate_last_refill
-        session.rate_tokens = min(
-            self._burst,
-            session.rate_tokens + elapsed * self._rate,
-        )
-        session.rate_last_refill = now
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - session.rate_last_refill
+            session.rate_tokens = min(
+                self._burst,
+                session.rate_tokens + elapsed * self._rate,
+            )
+            session.rate_last_refill = now
 
-        if session.rate_tokens >= 1.0:
-            session.rate_tokens -= 1.0
-            return True
-        return False
+            if session.rate_tokens >= 1.0:
+                session.rate_tokens -= 1.0
+                return True
+            return False
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -214,6 +253,7 @@ class MessageInspector:
         self._static = None
         self._opa = None
         self._telemetry = None
+        self._prompt_defense = None
         self._init_analyzers()
 
     def _init_analyzers(self) -> None:
@@ -226,8 +266,9 @@ class MessageInspector:
 
         if self._config.enable_taint:
             try:
-                from sentinel.agent.static_analysis import StaticAnalyzer
+                from sentinel.agent.static_analysis import PromptDefenseAnalyzer, StaticAnalyzer
                 self._static = StaticAnalyzer()
+                self._prompt_defense = PromptDefenseAnalyzer()
             except Exception as e:
                 logger.warning("StaticAnalyzer unavailable: %s", e)
 
@@ -297,13 +338,34 @@ class MessageInspector:
             param_findings = self._inspect_params(tool_name, tool_args, msg_id, session)
             findings.extend(param_findings)
             risk += sum(self._severity_score(f.severity) for f in param_findings)
+            oversized_param = any(f.category == "oversized_param" for f in param_findings)
+
+            try:
+                from sentinel.tool_inspection import inspect_tool_arguments
+                for tool_finding in inspect_tool_arguments(tool_name, tool_args):
+                    severity = str(getattr(tool_finding.severity, "value", tool_finding.severity)).upper()
+                    proxy_finding = ProxyFinding(
+                        finding_id=f"proxy-{uuid.uuid4().hex[:8]}",
+                        category="tool_inspection",
+                        severity=severity,
+                        description=tool_finding.title,
+                        evidence=tool_finding.evidence,
+                        message_id=msg_id,
+                        session_id=session.session_id,
+                        timestamp=time.time(),
+                        cwe=(tool_finding.cwe_ids[0] if tool_finding.cwe_ids else ""),
+                    )
+                    findings.append(proxy_finding)
+                    risk += self._severity_score(proxy_finding.severity)
+            except Exception as e:
+                logger.debug("Tool argument inspection error: %s", e)
 
             # Track tool call
             session.tool_call_count += 1
             session.tools_called.append(tool_name)
 
             # ── Behavioral analysis
-            if self._behavioral:
+            if self._behavioral and not oversized_param:
                 try:
                     from sentinel.agent.behavioral_analyzer import ToolCallEvent
                     event = ToolCallEvent(
@@ -327,7 +389,7 @@ class MessageInspector:
                     logger.debug("Behavioral analysis error: %s", e)
 
             # ── OPA policy check
-            if self._opa:
+            if self._opa and not oversized_param:
                 try:
                     opa_input = {
                         "tool": tool_name,
@@ -410,7 +472,80 @@ class MessageInspector:
             except Exception:
                 pass
 
+        # ── Structured audit event
+        if action in (ProxyAction.BLOCK, ProxyAction.AUDIT) and findings:
+            self._emit_gateway_event(
+                event_type="mcp.proxy.request",
+                action=action.value,
+                session=session,
+                method=method,
+                msg_id=msg_id,
+                risk=risk,
+                findings=findings,
+            )
+
         return result
+
+    def _emit_gateway_event(
+        self,
+        *,
+        event_type: str,
+        action: str,
+        session: SessionState,
+        method: str,
+        msg_id: str,
+        risk: float,
+        findings: list[ProxyFinding],
+    ) -> None:
+        """Emit a structured gateway-event-envelope audit record."""
+        import uuid
+        from datetime import datetime, timezone
+
+        try:
+            from sentinel.sink_registry import SinkRegistry
+            payload = {
+                "action": action,
+                "method": method,
+                "msg_id": msg_id,
+                "session_id": session.session_id,
+                "risk_score": round(risk, 3),
+                "finding_count": len(findings),
+                "findings": [
+                    {
+                        "category": f.category,
+                        "severity": f.severity,
+                        "description": f.description[:120],
+                    }
+                    for f in findings[:10]
+                ],
+            }
+            envelope = {
+                "envelope_id": str(uuid.uuid4()),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event_type": event_type,
+                "version": "1.0",
+                "source": "sentinel.mcp_proxy",
+                "correlation_id": session.session_id,
+                "payload": payload,
+                "routing": {
+                    "destination": "audit",
+                    "priority": "high" if action == "block" else "normal",
+                },
+            }
+            SinkRegistry().emit(envelope)
+            try:
+                from sentinel.audit_store import AuditStore
+                AuditStore().record(
+                    event_type=event_type,
+                    target=method,
+                    verdict=action,
+                    session_id=session.session_id,
+                    payload=payload,
+                )
+            except Exception as audit_exc:
+                logger.debug("Failed to persist gateway audit event: %s", audit_exc)
+        except Exception as exc:
+            logger.debug("Failed to emit gateway event: %s", exc)
 
     def inspect_response(self, msg: dict, session: SessionState) -> InspectionResult:
         """Inspect an incoming server→client response."""
@@ -460,6 +595,18 @@ class MessageInspector:
         elapsed_ms = (time.perf_counter() - start) * 1000
         action = self._decide_action(risk, findings)
 
+        # ── Structured audit event for response blocks
+        if action in (ProxyAction.BLOCK, ProxyAction.AUDIT) and findings:
+            self._emit_gateway_event(
+                event_type="mcp.proxy.response",
+                action=action.value,
+                session=session,
+                method="response",
+                msg_id=msg_id,
+                risk=risk,
+                findings=findings,
+            )
+
         return InspectionResult(
             action=action, findings=findings,
             risk_score=risk, latency_ms=elapsed_ms,
@@ -478,6 +625,7 @@ class MessageInspector:
             (r"(?i)<script|javascript:|on\w+\s*=", "xss_injection", "HIGH", "CWE-79"),
             (r"\$\{.*?\}|\{\{.*?\}\}", "template_injection", "HIGH", "CWE-1336"),
             (r"(?i)(?:file|gopher|dict|ftp|ldap|tftp)://", "ssrf_scheme", "CRITICAL", "CWE-918"),
+            (r"(?i)https?://(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|localhost|\[?::1\]?)(?::\d+)?(?:/|$)", "ssrf_internal", "CRITICAL", "CWE-918"),
             (r"(?i)169\.254\.169\.254|metadata\.google|metadata\.azure|0xa9fea9fe|2852039166", "ssrf_metadata", "CRITICAL", "CWE-918"),
             (r"\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|%(?:2[ef]|0[0-9a-f])", "encoding_evasion", "MEDIUM", "CWE-116"),
             (r"(?i)__proto__|constructor\.prototype|Object\.assign", "prototype_pollution", "HIGH", "CWE-1321"),
@@ -497,13 +645,19 @@ class MessageInspector:
 
             if isinstance(value, str):
                 if len(value) > self._config.max_param_size:
+                    factor = len(value) / max(self._config.max_param_size, 1)
+                    severity = "CRITICAL" if factor >= 4 else "HIGH"
                     findings.append(ProxyFinding(
                         finding_id=f"proxy-{uuid.uuid4().hex[:8]}",
-                        category="oversized_param", severity="MEDIUM",
+                        category="oversized_param", severity=severity,
                         description=f"Parameter '{path}' exceeds size limit: {len(value)}",
                         message_id=msg_id, session_id=session.session_id,
                         timestamp=time.time(),
                     ))
+                    # Oversized inputs should be handled as size violations first
+                    # instead of paying regex/prompt-analysis cost on attacker-sized
+                    # payloads that we already know should not proceed.
+                    return
 
                 for pat, cat, sev, cwe in injection_patterns:
                     if re.search(pat, value, re.IGNORECASE):
@@ -515,6 +669,8 @@ class MessageInspector:
                             session_id=session.session_id,
                             timestamp=time.time(), cwe=cwe,
                         ))
+
+                findings.extend(self._inspect_prompt_content(value, msg_id, session))
 
                 # Sensitive param stripping
                 param_name = path.split(".")[-1].lower()
@@ -542,10 +698,10 @@ class MessageInspector:
     def _inspect_prompt_content(self, text: str, msg_id: str, session: SessionState) -> list[ProxyFinding]:
         """Inspect prompt/completion text for prompt injection."""
         findings: list[ProxyFinding] = []
+        if not self._prompt_defense:
+            return findings
         try:
-            from sentinel.agent.static_analysis import PromptDefenseAnalyzer
-            pda = PromptDefenseAnalyzer()
-            pf = pda.detect_indirect_injection(text)
+            pf = self._prompt_defense.detect_indirect_injection(text)
             for p in pf:
                 findings.append(ProxyFinding(
                     finding_id=f"proxy-{uuid.uuid4().hex[:8]}",
@@ -750,6 +906,20 @@ class MCPProxy:
             )
         return self._sessions[sid]
 
+    @staticmethod
+    def _stdio_client_response(
+        forwarded: bytes | None,
+        result: InspectionResult,
+    ) -> tuple[bytes | None, bytes | None]:
+        """Split a stdio inspection result into upstream and client payloads."""
+        if result.action == ProxyAction.BLOCK:
+            if forwarded is not None:
+                return None, forwarded
+            return None, _jsonrpc_error(None, -32600, result.blocked_reason or "Blocked by Sentinel")
+        if result.action == ProxyAction.RATE_LIMIT:
+            return None, _jsonrpc_error(None, -32600, "Rate limited")
+        return forwarded, None
+
     async def handle_client_message(self, raw: bytes, session_id: str | None = None) -> tuple[bytes | None, InspectionResult]:
         """
         Process a client→server message.
@@ -794,7 +964,7 @@ class MCPProxy:
                     session_id=session.session_id, timestamp=time.time(),
                 )],
             )
-            return None, result
+            return _jsonrpc_error(None, -32700, "Malformed JSON-RPC message"), result
 
         # Pre-hooks
         for hook in self._hooks_pre:
@@ -814,15 +984,11 @@ class MCPProxy:
             session.blocked_count += 1
 
             # Return JSON-RPC error
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": msg.get("id"),
-                "error": {
-                    "code": -32600,
-                    "message": f"Blocked by Sentinel: {result.blocked_reason}",
-                },
-            }
-            return json.dumps(error_response).encode(), result
+            return _jsonrpc_error(
+                msg.get("id"),
+                -32600,
+                f"Blocked by Sentinel: {result.blocked_reason}",
+            ), result
 
         # Post-hooks
         for hook in self._hooks_post:
@@ -903,16 +1069,28 @@ class MCPProxy:
                     break
 
                 forwarded, result = await self.handle_client_message(line.strip(), session_id)
+                to_server, to_client = self._stdio_client_response(forwarded, result)
 
-                if forwarded and proc.stdin:
-                    proc.stdin.write(forwarded + b"\n")
+                if to_client:
+                    import sys
+                    sys.stdout.buffer.write(to_client + b"\n")
+                    sys.stdout.buffer.flush()
+
+                if to_server and proc.stdin:
+                    proc.stdin.write(to_server + b"\n")
                     await proc.stdin.drain()
 
                     if result.action == ProxyAction.BLOCK:
                         logger.warning("[BLOCKED] %s", result.blocked_reason)
+                    elif result.action == ProxyAction.RATE_LIMIT:
+                        logger.warning("[RATE LIMITED] %s", result.blocked_reason)
                     elif result.findings:
                         logger.info("[AUDIT] %d findings, risk=%.1f",
                                     len(result.findings), result.risk_score)
+                elif result.action == ProxyAction.BLOCK:
+                    logger.warning("[BLOCKED] %s", result.blocked_reason)
+                elif result.action == ProxyAction.RATE_LIMIT:
+                    logger.warning("[RATE LIMITED] %s", result.blocked_reason)
 
         async def _server_to_client():
             """Read from server stdout, inspect, forward to our stdout."""

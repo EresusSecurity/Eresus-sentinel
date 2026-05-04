@@ -3,13 +3,13 @@ Eresus Sentinel — XGBoost / LightGBM / Sklearn Model Scanner.
 
 Scans tree-based ML model files for:
   - Pickle deserialization risks (XGBoost .pkl, Sklearn .pkl/.joblib)
-  - XGBoost native format tampering (.xgb, .ubj, .json, .model)
+  - XGBoost native format tampering (.xgb, .bst, .ubj, .json, .model)
   - LightGBM text format injection (.lgb, .txt model files)
   - Joblib serialization risks (.joblib)
   - Suspicious metadata and feature name injection
 
 Supported formats:
-  - XGBoost: .xgb, .ubj (Universal Binary JSON), .json, .model
+  - XGBoost: .xgb, .bst, .ubj (Universal Binary JSON), .json, .model
   - LightGBM: .lgb, .txt (text model format)
   - Sklearn: .joblib (via joblib serialization)
   - All: .pkl/.pickle fallback (deferred to PickleScanner)
@@ -71,7 +71,7 @@ class XGBoostScanner:
         suffix = p.suffix.lower()
         stem = p.stem.lower()
 
-        if suffix in (".xgb", ".model"):
+        if suffix in (".xgb", ".bst", ".model"):
             return self._scan_xgboost_binary(p)
         elif suffix == ".ubj":
             return self._scan_xgboost_ubj(p)

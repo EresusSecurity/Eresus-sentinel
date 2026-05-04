@@ -85,6 +85,10 @@ SUSPICIOUS_OP_TYPES = {
     "StringConcat",      # Building strings at runtime
 }
 
+# Op names detectable in raw binary when onnx lib is unavailable
+_BINARY_CONTROL_FLOW_OPS = [b"Loop", b"Scan", b"If"]
+_BINARY_MEMORY_BOMB_OPS  = [b"ConstantOfShape"]
+
 
 class ONNXScanner:
     """
@@ -642,6 +646,40 @@ class ONNXScanner:
                         severity=Severity.HIGH,
                         target=source,
                     ))
+
+            # Control-flow operators (can hide payloads in subgraphs)
+            found_cf = [op.decode() for op in _BINARY_CONTROL_FLOW_OPS if op in data]
+            if found_cf:
+                findings.append(Finding.artifact(
+                    rule_id="ONNX-012",
+                    title=f"Control-flow operators in ONNX binary: {found_cf}",
+                    description=(
+                        f"Raw ONNX binary contains control-flow operators {found_cf}. "
+                        f"Loop/Scan/If nodes can hide malicious subgraphs and are a "
+                        f"known payload concealment technique."
+                    ),
+                    severity=Severity.HIGH,
+                    target=source,
+                    evidence=f"Ops found: {found_cf}",
+                    cwe_ids=["CWE-94"],
+                ))
+
+            # Memory-bomb operators (CVE-2024-5187 class)
+            found_mb = [op.decode() for op in _BINARY_MEMORY_BOMB_OPS if op in data]
+            if found_mb:
+                findings.append(Finding.artifact(
+                    rule_id="ONNX-013",
+                    title=f"Memory-bomb operator in ONNX binary: {found_mb}",
+                    description=(
+                        f"Raw ONNX binary contains {found_mb}. "
+                        f"ConstantOfShape with a large shape vector can allocate "
+                        f"gigabytes of memory at inference time (DoS / CVE-2024-5187 class)."
+                    ),
+                    severity=Severity.HIGH,
+                    target=source,
+                    evidence=f"Ops found: {found_mb}",
+                    cwe_ids=["CWE-400"],
+                ))
 
             # Short patterns need context: must be preceded by alnum/path char
             for short_pat, _variant in _CONTEXT_NATIVE_PATTERNS:

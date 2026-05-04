@@ -66,6 +66,24 @@ _RULE_IDS = {
     "file_system_ops": ("NOTEBOOK-007", "file-system", "CWE-73"),
 }
 
+_SHELL_MAGIC_PREFIXES = (
+    "!",
+    "%sh",
+    "%bash",
+    "%%sh",
+    "%%bash",
+    "%%script sh",
+    "%%script bash",
+)
+_NETWORK_TO_SHELL_RE = re.compile(
+    r"\b(?:curl|wget)\b[^\n|;&]*(?:\||;|&&)\s*(?:bash|sh|zsh|python)\b",
+    re.IGNORECASE,
+)
+_SENSITIVE_SHELL_RE = re.compile(
+    r"\b(?:cat\s+/etc/(?:passwd|shadow)|rm\s+-rf|chmod\s+777|sudo\s+|nc\s+-e)\b",
+    re.IGNORECASE,
+)
+
 
 
 def _load_patterns(path: Optional[Path] = None) -> dict[str, list[tuple[re.Pattern, str, str, Severity]]]:
@@ -136,6 +154,21 @@ def scan_dangerous_code(cell: NotebookCell, path: str) -> list[Finding]:
     patterns = _get_patterns()
     is_data_science = bool(_NOTEBOOK_SAFE_IMPORTS.search(cell.source))
 
+    shell_magic = _detect_shell_magic(cell.source)
+    if shell_magic:
+        title, reason, severity, confidence = shell_magic
+        findings.append(_make_finding(
+            rule_id="NOTEBOOK-003",
+            title=title,
+            reason=reason,
+            cell=cell,
+            path=path,
+            sev=severity,
+            cwe="CWE-78",
+            tag="system-call",
+            confidence=confidence,
+        ))
+
     for category, entries in patterns.items():
         rule_id, tag, default_cwe = _RULE_IDS.get(
             category, ("NOTEBOOK-099", "unknown", "CWE-94")
@@ -166,6 +199,84 @@ def scan_dangerous_code(cell: NotebookCell, path: str) -> list[Finding]:
                 ))
 
     return findings
+
+
+def scan_dangerous_code_outputs(cell: NotebookCell, path: str) -> list[Finding]:
+    """Scan code cell *output* text (stream, display_data, execute_result) for dangerous patterns.
+
+    Malicious notebooks may hide exploits in pre-computed outputs to evade
+    source-only scanners.
+    """
+    if not cell.is_code or not cell.outputs:
+        return []
+
+    from sentinel.notebook_scanner.parser import NotebookParser
+
+    findings = []
+    patterns = _get_patterns()
+
+    # Concatenate all output text into a single searchable block
+    output_text = "\n".join(
+        NotebookParser.extract_output_text(o) for o in cell.outputs
+    )
+    if not output_text.strip():
+        return []
+
+    # Re-use the same pattern matching as source cells, but tag as output-origin
+    for category, entries in patterns.items():
+        rule_id, tag, default_cwe = _RULE_IDS.get(
+            category, ("NOTEBOOK-099", "unknown", "CWE-94")
+        )
+        for regex, name, risk, severity in entries:
+            if regex.search(output_text):
+                findings.append(_make_finding(
+                    rule_id=rule_id,
+                    title=f"{name} in cell output",
+                    reason=f"{risk} (detected in pre-computed cell output, not source)",
+                    cell=cell,
+                    path=path,
+                    sev=severity,
+                    cwe=default_cwe,
+                    tag=f"{tag}-output",
+                    confidence=0.9,
+                ))
+
+    return findings
+
+
+def _detect_shell_magic(source: str) -> Optional[tuple[str, str, Severity, float]]:
+    """Detect notebook shell escapes and cell magics before YAML pattern matching."""
+    stripped_lines = [line.strip() for line in source.splitlines() if line.strip()]
+    if not stripped_lines:
+        return None
+
+    first_line = stripped_lines[0].lower()
+    has_shell_magic = any(
+        first_line.startswith(prefix) for prefix in _SHELL_MAGIC_PREFIXES
+    )
+    if not has_shell_magic:
+        return None
+
+    if _NETWORK_TO_SHELL_RE.search(source):
+        return (
+            "System call: notebook shell magic network-to-shell",
+            "Notebook shell magic downloads remote content and pipes it into an interpreter",
+            Severity.HIGH,
+            0.9,
+        )
+    if _SENSITIVE_SHELL_RE.search(source):
+        return (
+            "System call: notebook shell magic sensitive command",
+            "Notebook shell magic executes a sensitive system command",
+            Severity.HIGH,
+            0.86,
+        )
+    return (
+        "System call: notebook shell magic",
+        "Notebook shell escape or shell cell magic executes host commands outside the Python kernel",
+        Severity.MEDIUM,
+        0.72,
+    )
 
 
 def _downgrade_severity(sev: Severity) -> Severity:

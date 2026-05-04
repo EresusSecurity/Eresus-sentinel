@@ -28,6 +28,7 @@ from typing import Any
 from urllib import request
 
 from sentinel.finding import Finding, Severity
+from sentinel.offline import offline_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -82,17 +83,29 @@ class OSVClient:
     BATCH_URL = f"{API_URL}/querybatch"
     QUERY_URL = f"{API_URL}/query"
 
-    def __init__(self, timeout: int = 15):
+    def __init__(
+        self,
+        timeout: int = 15,
+        *,
+        offline: bool | None = None,
+        max_retries: int = 2,
+        retry_backoff: float = 0.25,
+    ):
         self._timeout = timeout
         self._cache: dict[str, list[VulnEntry]] = {}
         self._cache_ttl: dict[str, float] = {}
         self._ttl = 3600  # 1 hour cache
+        self._offline = offline_enabled(offline)
+        self._max_retries = max(0, max_retries)
+        self._retry_backoff = max(0.0, retry_backoff)
 
     def query_package(self, name: str, version: str, ecosystem: str = "PyPI") -> list[VulnEntry]:
         """Query vulnerabilities for a single package."""
         cache_key = f"{ecosystem}:{name}:{version}"
         if cache_key in self._cache and time.time() - self._cache_ttl.get(cache_key, 0) < self._ttl:
             return self._cache[cache_key]
+        if self._offline:
+            return []
 
         body = {
             "package": {
@@ -104,13 +117,7 @@ class OSVClient:
             body["version"] = version
 
         try:
-            req = request.Request(
-                self.QUERY_URL,
-                data=json.dumps(body).encode(),
-                headers={"Content-Type": "application/json"},
-            )
-            with request.urlopen(req, timeout=self._timeout) as resp:
-                data = json.loads(resp.read())
+            data = self._post_json(self.QUERY_URL, body)
 
             entries = []
             for vuln in data.get("vulns", []):
@@ -146,16 +153,12 @@ class OSVClient:
 
         if not queries:
             return {}
+        if self._offline:
+            return {}
 
         try:
             body = {"queries": queries}
-            req = request.Request(
-                self.BATCH_URL,
-                data=json.dumps(body).encode(),
-                headers={"Content-Type": "application/json"},
-            )
-            with request.urlopen(req, timeout=self._timeout * 2) as resp:
-                data = json.loads(resp.read())
+            data = self._post_json(self.BATCH_URL, body, timeout_multiplier=2)
 
             results: dict[str, list[VulnEntry]] = {}
             for i, pkg_result in enumerate(data.get("results", [])):
@@ -181,6 +184,26 @@ class OSVClient:
         except Exception as e:
             logger.warning("OSV batch query failed: %s", e)
             return {}
+
+    def _post_json(self, url: str, body: dict[str, Any], timeout_multiplier: int = 1) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                req = request.Request(
+                    url,
+                    data=json.dumps(body).encode(),
+                    headers={"Content-Type": "application/json"},
+                )
+                with request.urlopen(req, timeout=self._timeout * timeout_multiplier) as resp:
+                    return json.loads(resp.read())
+            except Exception as exc:  # noqa: BLE001 - urllib and HTTP clients raise varied errors
+                last_error = exc
+                if attempt >= self._max_retries:
+                    break
+                if self._retry_backoff:
+                    time.sleep(self._retry_backoff * (2 ** attempt))
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _extract_severity(vuln: dict) -> str:
@@ -653,14 +676,22 @@ class LiveDependencyScanner:
         findings = scanner.full_audit("/path/to/project")
     """
 
-    def __init__(self, ecosystem: str = "pypi", enable_osv: bool = True, enable_pip_audit: bool = True):
+    def __init__(
+        self,
+        ecosystem: str = "pypi",
+        enable_osv: bool = True,
+        enable_pip_audit: bool = True,
+        *,
+        offline: bool | None = None,
+    ):
         self._ecosystem = ecosystem
-        self._osv = OSVClient() if enable_osv else None
+        self._offline = offline_enabled(offline)
+        self._osv = OSVClient(offline=self._offline) if enable_osv and not self._offline else None
         self._typosquat = TyposquatDetector(ecosystem)
         self._malicious = MaliciousPackageDetector()
         self._lockfile = LockfileChecker()
         self._confusion = ConfusionDetector()
-        self._pip_audit = PipAuditRunner() if enable_pip_audit else None
+        self._pip_audit = PipAuditRunner() if enable_pip_audit and not self._offline else None
 
     def scan_requirements(self, filepath: str) -> list[Finding]:
         """Scan a requirements.txt with live OSV queries."""

@@ -1,8 +1,97 @@
 // report.rs — Finding generation exposed to Python via PyO3
 
-use pyo3::prelude::*;
 use crate::opcode::Severity;
 use crate::policy::PolicyVerdict;
+use pyo3::prelude::*;
+
+/// Indicates whether the scanner consumed the entire pickle stream.
+#[pyclass(eq, eq_int)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScanStatus {
+    /// All opcodes were processed within the budget.
+    Complete,
+    /// The opcode budget or recursion limit was hit; analysis is partial.
+    Inconclusive,
+    /// A hard error prevented scanning (I/O failure, malformed framing).
+    Error,
+}
+
+#[pymethods]
+impl ScanStatus {
+    pub fn __str__(&self) -> &'static str {
+        match self {
+            ScanStatus::Complete => "complete",
+            ScanStatus::Inconclusive => "inconclusive",
+            ScanStatus::Error => "error",
+        }
+    }
+}
+
+/// The safety verdict produced by policy evaluation.
+///
+/// **Invariant**: if `ScanStatus` is `Inconclusive` or `Error`,
+/// the verdict MUST be `Unknown` — never `Clean`.
+#[pyclass(eq, eq_int)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SafetyVerdict {
+    /// No dangerous or suspicious globals found in a complete scan.
+    Clean,
+    /// One or more suspicious (but not definitively dangerous) globals found.
+    Suspicious,
+    /// One or more definitively dangerous globals (e.g. os.system) found.
+    Malicious,
+    /// Scan was incomplete (budget/error); cleanliness cannot be asserted.
+    Unknown,
+}
+
+#[pymethods]
+impl SafetyVerdict {
+    pub fn __str__(&self) -> &'static str {
+        match self {
+            SafetyVerdict::Clean => "clean",
+            SafetyVerdict::Suspicious => "suspicious",
+            SafetyVerdict::Malicious => "malicious",
+            SafetyVerdict::Unknown => "unknown",
+        }
+    }
+}
+
+/// Top-level result returned by the scanner to Python callers.
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct PickleReport {
+    #[pyo3(get)]
+    pub status: ScanStatus,
+    #[pyo3(get)]
+    pub verdict: SafetyVerdict,
+    #[pyo3(get)]
+    pub findings: Vec<Finding>,
+    #[pyo3(get)]
+    pub opcode_count: usize,
+    #[pyo3(get)]
+    pub aborted: bool,
+    #[pyo3(get)]
+    pub errors: Vec<String>,
+}
+
+#[pymethods]
+impl PickleReport {
+    pub fn to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("status", self.status.__str__())?;
+        dict.set_item("verdict", self.verdict.__str__())?;
+        dict.set_item("aborted", self.aborted)?;
+        dict.set_item("opcode_count", self.opcode_count)?;
+        dict.set_item("errors", &self.errors)?;
+        let findings_list: Vec<PyObject> = self
+            .findings
+            .iter()
+            .map(|f| f.to_dict(py))
+            .collect::<PyResult<Vec<_>>>()?;
+        dict.set_item("findings", findings_list)?;
+        Ok(dict.into())
+    }
+}
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -46,9 +135,16 @@ impl Finding {
         confidence: f64,
     ) -> Self {
         Self {
-            rule_id, title, description, severity,
-            module_name, import_name, offset, opcode,
-            evidence, confidence,
+            rule_id,
+            title,
+            description,
+            severity,
+            module_name,
+            import_name,
+            offset,
+            opcode,
+            evidence,
+            confidence,
         }
     }
 
@@ -103,7 +199,10 @@ impl Finding {
     pub fn from_url(url: &str, offset: usize) -> Self {
         Self {
             rule_id: "PICKLE-URL".to_string(),
-            title: format!("URL embedded in pickle stream: {}", &url[..url.len().min(60)]),
+            title: format!(
+                "URL embedded in pickle stream: {}",
+                &url[..url.len().min(60)]
+            ),
             description: format!("Embedded URL found in pickle data: {}", url),
             severity: Severity::High.to_string(),
             module_name: String::new(),
@@ -119,7 +218,10 @@ impl Finding {
         Self {
             rule_id: "PICKLE-SUS-STR".to_string(),
             title: format!("Suspicious string in pickle: {}", &s[..s.len().min(40)]),
-            description: format!("Potentially malicious string literal found: {}", &s[..s.len().min(120)]),
+            description: format!(
+                "Potentially malicious string literal found: {}",
+                &s[..s.len().min(120)]
+            ),
             severity: Severity::Medium.to_string(),
             module_name: String::new(),
             import_name: String::new(),

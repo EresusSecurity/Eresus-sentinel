@@ -1,0 +1,77 @@
+# Sentinel Multi-Language SAST — Java rules
+version: "1"
+file_context_pattern: '(?:openai|anthropic|langchain4j|dev\.langchain4j|com\.azure\.ai|VertexAI|GenAI|ChatModel|AiServices|OllamaModel|BedrockModel|OpenAiChatModel|AnthropicChatModel|EmbeddingModel|VectorStore)'
+
+rules:
+  - id: MLSAST-002
+    title: "Unvalidated HTTP parameter passed to LLM prompt (Java)"
+    description: "HTTP request parameter used directly in LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.68
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Validate @RequestBody/@RequestParam with Bean Validation (@NotNull, @Pattern) before LLM calls."
+    # Same-line: @RequestParam variable directly used in ChatMessage/UserMessage constructor
+    # Require LLM context (file_context_pattern) to skip plain Spring MVC controllers
+    pattern: '(?:getParameter|@RequestParam|@RequestBody|@PathVariable)\s+[A-Za-z]+\s+(\w+)[^\n]{0,200}(?:UserMessage|SystemMessage|ChatMessage|AiMessage|PromptTemplate|\.prompt\(|\.generate\()'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-022
+    title: "LLM output passed to Runtime.exec() (Java)"
+    description: "LLM response string used as shell command — command injection risk."
+    severity: CRITICAL
+    confidence: 0.78
+    owasp_llm: LLM02
+    tags: [code-injection, command-injection, llm-output]
+    remediation: "Never pass LLM output to Runtime.exec(). Use a strict command allowlist."
+    pattern: 'Runtime\.getRuntime\(\)\.exec\s*\([^\n]{0,200}(?:response|output|llm\w*|ai\w*|completion|generated)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-031
+    title: "Unsafe Java ObjectInputStream deserialization"
+    description: "ObjectInputStream can execute arbitrary code during deserialization — use only with trusted sources."
+    severity: HIGH
+    confidence: 0.72
+    owasp_llm: LLM05
+    tags: [deserialization, supply-chain]
+    remediation: "Use a FilterInputStream (ObjectInputFilter) or switch to JSON/Protobuf serialization."
+    # ObjectInputStream without a validating filter — fire when NOT accompanied by setObjectInputFilter
+    pattern: 'new\s+ObjectInputStream\s*\([^\n]{0,200}\)'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - same_block_contains: "setObjectInputFilter|ObjectInputFilter.Config"
+
+  - id: MLSAST-080
+    title: "LangChain4j chain invoked with unsanitized user input (Java)"
+    description: "LangChain4j AI service called with raw user-controlled string — prompt injection risk."
+    severity: HIGH
+    confidence: 0.65
+    owasp_llm: LLM01
+    tags: [prompt-injection, langchain4j]
+    remediation: "Validate and sanitize user input before passing to AI service methods."
+    pattern: '(?:AiServices|chat|generate|sendUserMessage)\s*\([^\n]{0,200}(?:request\.getParameter|requestBody|userInput|message\s*=)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-081
+    title: "ML model loaded without integrity verification (Java)"
+    description: "ONNX/TFLite model loaded from path without checksum verification."
+    severity: MEDIUM
+    confidence: 0.58
+    owasp_llm: LLM05
+    tags: [supply-chain, model-loading]
+    remediation: "Verify model file SHA-256 checksum before loading. Use signed model artifacts."
+    pattern: '(?:OrtSession|OrtEnvironment|TfLiteModel\.createFromFile|SavedModelBundle\.load)\s*\([^\n]{0,200}\)'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - same_block_contains: "checksum|sha256|MessageDigest|verify"

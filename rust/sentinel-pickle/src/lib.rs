@@ -7,14 +7,14 @@
 // to Python via PyO3 so Eresus Sentinel can fall back to this engine
 // for 10-100× faster scanning of large .pkl / .pt files.
 
-pub mod opcode;
-pub mod state;
-pub mod policy;
-pub mod scanner;
-pub mod strings;
-pub mod report;
-pub mod mutators;
 pub mod generator;
+pub mod mutators;
+pub mod opcode;
+pub mod policy;
+pub mod report;
+pub mod scanner;
+pub mod state;
+pub mod strings;
 
 use pyo3::prelude::*;
 
@@ -24,12 +24,36 @@ fn sentinel_pickle(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<scanner::PickleScanner>()?;
     m.add_class::<policy::ScanPolicy>()?;
     m.add_class::<report::Finding>()?;
+    m.add_class::<report::PickleReport>()?;
+    m.add_class::<report::ScanStatus>()?;
+    m.add_class::<report::SafetyVerdict>()?;
     m.add_class::<PyGenerator>()?;
     m.add_function(wrap_pyfunction!(scanner::scan_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(scanner::scan_file, m)?)?;
+    m.add_function(wrap_pyfunction!(scan_to_report_py, m)?)?;
+    m.add_function(wrap_pyfunction!(scan_file_to_report_py, m)?)?;
     m.add_function(wrap_pyfunction!(py_generate_pickle, m)?)?;
     m.add("__version__", "0.1.0")?;
     Ok(())
+}
+
+/// Convenience function: scan bytes and return a `PickleReport` (fail-closed).
+#[pyfunction]
+#[pyo3(name = "scan_bytes_report")]
+fn scan_to_report_py(data: &[u8], strict: bool) -> report::PickleReport {
+    let policy = policy::ScanPolicy::new(strict);
+    scanner::scan_to_report(data, &policy)
+}
+
+/// Convenience function: scan file and return a `PickleReport` (fail-closed).
+#[pyfunction]
+#[pyo3(name = "scan_file_report")]
+fn scan_file_to_report_py(path: &str, strict: bool) -> PyResult<report::PickleReport> {
+    let data = std::fs::read(path).map_err(|e| {
+        pyo3::exceptions::PyIOError::new_err(format!("Failed to read {}: {}", path, e))
+    })?;
+    let policy = policy::ScanPolicy::new(strict);
+    Ok(scanner::scan_to_report(&data, &policy))
 }
 
 /// Python-callable: generate a pickle stream with given version and seed.
@@ -39,7 +63,8 @@ fn py_generate_pickle(version: u8, seed: u64, min_ops: usize, max_ops: usize) ->
     let mut gen = generator::Generator::new(version)
         .min_opcodes(min_ops)
         .max_opcodes(max_ops);
-    gen.generate(seed).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+    gen.generate(seed)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
 }
 
 /// Full-featured Python generator class with builder-pattern configuration.
@@ -57,11 +82,17 @@ struct PyGenerator {
 impl PyGenerator {
     #[new]
     #[pyo3(signature = (protocol=4, seed=None, min_opcodes=8, max_opcodes=64))]
-    fn new(protocol: u8, seed: Option<u64>, min_opcodes: usize, max_opcodes: usize) -> PyResult<Self> {
+    fn new(
+        protocol: u8,
+        seed: Option<u64>,
+        min_opcodes: usize,
+        max_opcodes: usize,
+    ) -> PyResult<Self> {
         if protocol > 5 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                format!("Invalid protocol: {}. Must be 0-5.", protocol),
-            ));
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid protocol: {}. Must be 0-5.",
+                protocol
+            )));
         }
         Ok(PyGenerator {
             version: protocol,
@@ -84,7 +115,8 @@ impl PyGenerator {
         if let Some(bs) = self.bufsize {
             gen = gen.with_buffer_size(bs);
         }
-        gen.generate(s).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+        gen.generate(s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
     }
 
     /// Generate pickle bytes from fuzzer-provided arbitrary bytes.
@@ -118,13 +150,19 @@ impl PyGenerator {
 
     /// Get protocol version.
     #[getter]
-    fn protocol(&self) -> u8 { self.version }
+    fn protocol(&self) -> u8 {
+        self.version
+    }
 
     /// Get min opcodes.
     #[getter]
-    fn min_opcodes(&self) -> usize { self.min_opcodes }
+    fn min_opcodes(&self) -> usize {
+        self.min_opcodes
+    }
 
     /// Get max opcodes.
     #[getter]
-    fn max_opcodes(&self) -> usize { self.max_opcodes }
+    fn max_opcodes(&self) -> usize {
+        self.max_opcodes
+    }
 }

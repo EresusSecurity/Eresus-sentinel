@@ -67,10 +67,23 @@ nav:
   - Home: index.md
   - Getting Started:
       - Quick Start: QUICKSTART.md
+      - Turkish Quick Start: TR_QUICKSTART.md
+      - CLI Reference: CLI_REFERENCE.md
       - Architecture: ARCHITECTURE.md
   - Reference:
+      - CLI Contract: CLI_CONTRACT.md
       - YAML Rules: RULES.md
+      - Rule Authoring: RULE_AUTHORING.md
+      - Scanner Authoring: SCANNER_AUTHORING.md
+      - False Positive Handling: FALSE_POSITIVES.md
+  - Operations:
+      - MCP Proxy Deployment: MCP_PROXY_DEPLOYMENT.md
+      - CI and Pre-Commit: CI_PRECOMMIT.md
+      - Troubleshooting: TROUBLESHOOTING.md
+      - FAQ: FAQ.md
   - Development:
+      - Community Notes: COMMUNITY.md
+      - Good First Issues: GOOD_FIRST_ISSUES.md
       - Contributing: ../CONTRIBUTING.md
       - Security Policy: ../SECURITY.md
       - Changelog: ../CHANGELOG.md

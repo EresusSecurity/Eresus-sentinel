@@ -6,6 +6,7 @@ import io
 import logging
 import pickletools
 from contextlib import suppress
+from difflib import SequenceMatcher
 
 from ...finding import Severity
 from .._pickle_ops import (
@@ -32,7 +33,7 @@ from .formats import (
     detect_yaml_markers,
     parse_global_arg,
 )
-from .raw_scan import raw_byte_scan
+from .raw_scan import dangerous_string_scan, raw_byte_scan
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,15 @@ def deep_analyze(
 
     # ── Opcode walk ──────────────────────────────────────────
     _walk_opcodes(ops, analysis, source, blocklist, allowlist)
+
+    # Even well-formed mutated pickles can smuggle dangerous module/name
+    # strings past opcode-level matching. Run the raw string sweep on every
+    # stream to catch those near-miss globals without relying on parser
+    # failure as a prerequisite.
+    def _check_fn(mod, name, op, pos, pending, anal):
+        _check_import(mod, name, op, pos, pending, anal, blocklist, allowlist)
+
+    dangerous_string_scan(data, analysis, _check_fn)
 
     # ── Post-walk analysis passes ────────────────────────────
     _expansion_attack_analysis(ops, analysis)
@@ -228,7 +238,17 @@ def _walk_opcodes(
                 raw_module = _value_stack.pop() if _value_stack else ""
                 name = str(raw_name) if not isinstance(raw_name, str) else raw_name
                 module = str(raw_module) if not isinstance(raw_module, str) else raw_module
-                if module and name:
+                # modelscan parity: "unknown" in module/name = critical RCE assumption
+                if "unknown" in module.lower() or "unknown" in name.lower():
+                    analysis.dangerous_imports.append(
+                        DangerousImport(
+                            module=module, name=name, opcode=op_name,
+                            position=pos, severity=Severity.CRITICAL,
+                            confidence=1.0,
+                        )
+                    )
+                    last_global = analysis.dangerous_imports[-1]
+                elif module and name:
                     _check_import(
                         module, name, op_name, pos,
                         pending_globals, analysis,
@@ -415,6 +435,33 @@ def _check_import(
     if module == "marshal" and name == "loads":
         analysis.has_codetype_construction = True
 
+    # When a risky module is imported with a name that contains non-identifier
+    # bytes (control chars, null bytes, etc.) the name was most likely
+    # corrupted by a mutator from a dangerous function like "call" or "Popen".
+    # Also covers cases where the module name itself is mutated but still
+    # contains the known module token as a substring.
+    _RISKY_MODULE_TOKENS = ("subprocess", "builtins", "__builtin__", "os", "posix", "nt")
+    _module_norm = "".join(ch for ch in module if ch.isalnum() or ch in "._")
+    _is_risky_module = (
+        module in _RISKY_MODULE_TOKENS
+        or any(tok in _module_norm for tok in _RISKY_MODULE_TOKENS if len(tok) >= 4)
+        or any(_close_identifier(module, tok) for tok in _RISKY_MODULE_TOKENS)
+    )
+    if not dangerous and _is_risky_module and name:
+        has_control = any(ord(ch) < 0x20 or ord(ch) > 0x7E for ch in name)
+        if has_control:
+            pending.append(DangerousImport(
+                module=module,
+                name=name,
+                opcode=f"{op_name}(mutated_name)",
+                position=pos,
+                severity=classify_severity(
+                    "subprocess" if "subprocess" in _module_norm else module,
+                    "system",
+                ),
+                confidence=0.6,
+            ))
+
 
 def _suspicious_global_mutation(
     module: str,
@@ -464,6 +511,7 @@ def _nearest_dangerous_global(
             continue
         candidate_module = rule_module[:-2] if rule_module.endswith(".*") else rule_module
         module_close = _close_identifier(module, candidate_module)
+        module_norm = _normalize_identifier(module)
 
         for pattern in names:
             if not isinstance(pattern, str):
@@ -488,14 +536,44 @@ def _nearest_dangerous_global(
             ):
                 return candidate_module, pattern
 
+            # Short module names such as "os" can absorb the dangerous
+            # attribute inside the mutated module token itself (e.g.
+            # "os\x00popen", "ospopen"). In that case the attribute may
+            # disappear from the parsed name field, so allow a tighter
+            # prefix+embedded-name recovery path.
+            #
+            # Guard: skip when the original module contains a '.' separator
+            # after the candidate prefix — that means it's a legitimate
+            # sub-module path (e.g. "os.path"), not a concatenated mutation.
+            if (
+                len(candidate_module_norm) <= 3
+                and module_norm.startswith(candidate_module_norm)
+                and "." not in module[len(candidate_module):]
+            ):
+                if len(candidate_name_norm) >= 4:
+                    # Exact embed (e.g. "ospopen" contains "popen")
+                    embedded = module_norm[len(candidate_module_norm):]
+                    if candidate_name_norm in embedded or candidate_name_norm in module_norm:
+                        return candidate_module, pattern
+                    # Near-miss embed: allow 1-char edit distance on the
+                    # embedded suffix (e.g. "ospope" → "popen" with 1 missing)
+                    if (
+                        len(embedded) >= len(candidate_name_norm) - 2
+                        and len(embedded) >= 3
+                        and _edit_distance_at_most(embedded, candidate_name_norm, 2)
+                    ):
+                        return candidate_module, pattern
+
             # Name close + partial module match — catches heavily mutated
             # module strings where the function name survived (near-)intact.
-            module_norm = _normalize_identifier(module)
             if (
                 name_close
                 and len(candidate_module_norm) >= 4
                 and len(module_norm) >= 3
-                and _partial_module_match(module_norm, candidate_module_norm)
+                and (
+                    _partial_module_match(module_norm, candidate_module_norm)
+                    or _fuzzy_module_match(module, candidate_module)
+                )
             ):
                 return candidate_module, pattern
 
@@ -507,6 +585,35 @@ def _nearest_dangerous_global(
                 and _close_identifier(name, candidate_name)
             ):
                 return candidate_module, pattern
+
+            # Module close + name ends-with candidate — catches cases where
+            # garbage bytes were prepended to the function name.
+            if (
+                module_close
+                and len(candidate_name_norm) >= 4
+            ):
+                name_norm_val = _normalize_identifier(name)
+                if (
+                    len(name_norm_val) >= len(candidate_name_norm)
+                    and name_norm_val.endswith(candidate_name_norm)
+                ):
+                    return candidate_module, pattern
+
+            # Module close + scrambled name — catches mutations that reorder
+            # or insert characters in the function name token while keeping
+            # all (or almost all) original characters.  Uses a sorted-char
+            # overlap: if ≥80% of candidate chars appear in the name token
+            # and the name is at most 2× longer than the candidate, flag it.
+            if (
+                module_close
+                and len(candidate_name_norm) >= 4
+            ):
+                name_norm_val = _normalize_identifier(name)
+                if (
+                    2 <= len(name_norm_val) <= len(candidate_name_norm) * 2
+                    and _char_overlap_ratio(name_norm_val, candidate_name_norm) >= 0.80
+                ):
+                    return candidate_module, pattern
 
     return None
 
@@ -531,6 +638,21 @@ def _partial_module_match(value: str, candidate: str) -> bool:
     if len(value) >= prefix_len and len(candidate) >= prefix_len:
         return value[:prefix_len] == candidate[:prefix_len]
     return False
+
+
+def _fuzzy_module_match(value: str, candidate: str) -> bool:
+    """Catch insert-heavy mutations in module names without broad FPs."""
+    value_alpha = _alpha_identifier(value)
+    candidate_alpha = _alpha_identifier(candidate)
+    if len(candidate_alpha) < 5 or len(value_alpha) < 5:
+        return False
+    if candidate_alpha in value_alpha or value_alpha in candidate_alpha:
+        return True
+    return SequenceMatcher(None, value_alpha, candidate_alpha).ratio() >= 0.78
+
+
+def _alpha_identifier(value: str) -> str:
+    return "".join(ch.lower() for ch in value if ch.isalpha())
 
 
 def _normalize_identifier(value: str) -> str:
@@ -590,6 +712,17 @@ def _edit_distance_at_most(left: str, right: str, limit: int) -> bool:
             return False
         previous = current
     return previous[-1] <= limit
+
+
+def _char_overlap_ratio(value: str, candidate: str) -> float:
+    """Fraction of candidate chars that appear in value (multiset overlap)."""
+    if not candidate:
+        return 0.0
+    from collections import Counter
+    v_counts = Counter(value)
+    c_counts = Counter(candidate)
+    overlap = sum(min(v_counts[ch], c_counts[ch]) for ch in c_counts)
+    return overlap / len(candidate)
 
 
 def _expansion_attack_analysis(ops: list[tuple], analysis: PickleAnalysis) -> None:

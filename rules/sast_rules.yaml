@@ -170,6 +170,33 @@ rules:
     fp_risk: MEDIUM
     exclude_pattern: '(?:def \w*eval|def \w*exec|\.\w*eval\s*\(|\.\w*exec\s*\(|subprocess_exec|create_subprocess_exec|_assert_geval|\.eval\(\))'
 
+  - id: SAST-020c
+    name: getattr_exec_obfuscation
+    description: "getattr() used to indirectly call exec/eval — obfuscated code execution"
+    pattern: 'getattr\s*\([^,]+,\s*[''"](\w*)(?:exec|eval|system|popen|__import__|compile)[''"](\w*)'
+    severity: CRITICAL
+    cwe_ids: [CWE-94, CWE-95]
+    fix_hint: "getattr-based exec/eval is an obfuscation technique; never call exec/eval indirectly on untrusted data"
+    fp_risk: LOW
+
+  - id: SAST-020d
+    name: base64_exec_chain
+    description: "base64.b64decode() result passed to exec/eval — obfuscated payload execution"
+    pattern: '(?i)b64decode\s*\([^)]*\)[^\n#]*(?:exec|eval|system)\s*\(|getattr[^\n]*b64decode|b64decode[^\n]*getattr'
+    severity: CRITICAL
+    cwe_ids: [CWE-94, CWE-506]
+    fix_hint: "Executing base64-decoded content is a malware obfuscation technique; inspect and remove"
+    fp_risk: LOW
+
+  - id: SAST-020e
+    name: getattr_dangerous_module
+    description: "getattr() on os/subprocess/sys/builtins module — indirect dangerous function call, possibly with string obfuscation"
+    pattern: 'getattr\s*\(\s*(?:os|subprocess|sys|builtins|importlib|shutil|ctypes|socket)\s*,'
+    severity: HIGH
+    cwe_ids: [CWE-94, CWE-78]
+    fix_hint: "Calling getattr on system modules is a common obfuscation technique to hide exec/system/popen calls; use direct, explicit calls instead"
+    fp_risk: MEDIUM
+
   - id: SAST-021
     name: compile_exec
     description: "compile() + exec() pattern — dynamic code execution"
@@ -195,6 +222,60 @@ rules:
     severity: HIGH
     cwe_ids: [CWE-78]
     fix_hint: "Use subprocess.run() with shell=False"
+    fp_risk: LOW
+
+  - id: SAST-023b
+    name: os_popen_call
+    description: "os.popen() — command execution via shell pipe, equivalent to os.system()"
+    pattern: '(?i)\bos\.popen\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-78]
+    fix_hint: "Replace os.popen() with subprocess.run(shell=False) and capture stdout via PIPE"
+    fp_risk: LOW
+
+  - id: SAST-096
+    name: vars_dict_exec
+    description: "vars() used to access dangerous function by string key — obfuscated dynamic dispatch"
+    pattern: '(?i)\bvars\s*\([^)]*\)\s*\[\s*["\x27](?:system|exec|popen|call|run|spawn|execve|execfile|compile)["\x27]'
+    severity: CRITICAL
+    cwe_ids: [CWE-94, CWE-78]
+    fix_hint: "vars()[\"system\"] is an obfuscation pattern; use direct function calls from an explicit allowlist"
+    fp_risk: LOW
+
+  - id: SAST-097
+    name: globals_builtins_exec
+    description: "globals()/__builtins__ used to indirectly call exec/eval — runtime globals injection"
+    pattern: '(?i)globals\s*\(\s*\)\s*\[|__builtins__\s*\[|\bgetattr\s*\(\s*globals\s*\(\s*\)'
+    severity: CRITICAL
+    cwe_ids: [CWE-94, CWE-95]
+    fix_hint: "Accessing builtins via globals() or __builtins__ dict is a sandbox-escape pattern; avoid dynamic dispatch through runtime globals"
+    fp_risk: LOW
+
+  - id: SAST-098
+    name: ctypes_system_call
+    description: "ctypes used to directly call libc system() — native code execution bypass"
+    pattern: '(?i)ctypes\.(?:CDLL|cdll|LibraryLoader|WinDLL|OleDLL|PyDLL)\s*\(|ctypes\.c_char_p\b.*(?:system|exec|popen)|(?:libc|libm|ntdll)\.system\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-78, CWE-676]
+    fix_hint: "Direct ctypes calls to libc.system() bypass all Python-level security; avoid ctypes for shell execution"
+    fp_risk: MEDIUM
+
+  - id: SAST-099
+    name: pty_spawn
+    description: "pty.spawn() — spawns an interactive shell, common in reverse-shell payloads"
+    pattern: '(?i)\bpty\.spawn\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-78]
+    fix_hint: "pty.spawn is used in interactive shell and reverse-shell exploits; remove this call"
+    fp_risk: LOW
+
+  - id: SAST-100
+    name: subprocess_getoutput
+    description: "subprocess.getoutput()/getstatusoutput() — executes shell command, bypasses shell=False check"
+    pattern: '(?i)\bsubprocess\.(?:getoutput|getstatusoutput)\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-78]
+    fix_hint: "subprocess.getoutput() uses shell=True internally; use subprocess.run(shell=False, capture_output=True) instead"
     fp_risk: LOW
 
   - id: SAST-024
@@ -257,6 +338,8 @@ rules:
       - 'placeholder'
       - 'changeme'
       - 'xxxxxxx'
+      - '<[|｜][^>]{1,40}[|｜]>'
+      - '=\s*["\u0027]<[|｜]'
 
   # ─── Unsafe Network / Download ───────────────────────────────────────
   - id: SAST-040
@@ -292,7 +375,7 @@ rules:
   - id: SAST-051
     name: unsafe_tarfile_extract
     description: "tarfile extract without member filtering — symlink and path traversal"
-    pattern: '(?i)tarfile\.open\s*\([^)]*\).*\.extractall\s*\('
+    pattern: '(?i)\.extractall\s*\(\s*(?!.*filter\s*=)'
     severity: HIGH
     cwe_ids: [CWE-22, CWE-59]
     fix_hint: "Use tarfile.extractall(filter='data') (Python 3.12+) or validate members"
@@ -332,11 +415,11 @@ rules:
   - id: SAST-071
     name: llm_output_sql
     description: "LLM output used in SQL query construction"
-    pattern: '(?i)(?:execute|cursor\.execute|query)\s*\(.*(?:response|output|completion|generated|result)'
+    pattern: '(?i)(?:cursor|conn(?:ection)?|db|engine|session|connection)\s*\.(?:execute|executemany|query)\s*\(.*(?:response|output|completion|generated|result)'
     severity: CRITICAL
     cwe_ids: [CWE-89]
     fix_hint: "Never use LLM output in raw SQL; use parameterized queries"
-    fp_risk: MEDIUM
+    fp_risk: LOW
 
   # ─── Weak Cryptography (CodeGuard / defenseclaw) ─────────────────────────────
   - id: SAST-080
@@ -400,8 +483,17 @@ rules:
     pattern: '(?i)(?:open\s*\(|Path\s*\(|pathlib\.Path\s*\().{0,60}(?:request\.|args\.|params\.|environ\.|getenv\(|user_input|untrusted|unvalidated)'
     severity: HIGH
     cwe_ids: [CWE-22]
-    fix_hint: "Resolve and validate paths against an allowlist before opening; reject '..' sequences"
+    fix_hint: "Resolve and validate paths against an allowlist before opening; reject '...' sequences"
     fp_risk: HIGH
+
+  - id: SAST-090b
+    name: path_traversal_string_concat
+    description: "File open() path built via string concatenation with a variable — path traversal risk"
+    pattern: '(?i)(?:open|Path|pathlib\.Path)\s*\(\s*(?:["\x27][^"\x27]{1,60}["\x27]\s*\+|\w+\s*\+\s*["\x27])'
+    severity: HIGH
+    cwe_ids: [CWE-22]
+    fix_hint: "Validate that the resolved path stays within the intended directory; use Path.resolve() and check against a base directory"
+    fp_risk: MEDIUM
 
   - id: SAST-091
     name: arbitrary_file_write
@@ -833,6 +925,105 @@ rules:
     severity: CRITICAL
     cwe_ids: [CWE-311, CWE-522]
     fix_hint: "Never curl secrets to external URLs; this is a supply-chain attack"
+    fp_risk: LOW
+
+  - id: SAST-092
+    name: sql_injection_format_string
+    description: "SQL query constructed with %-format, f-string, or .format() — SQL injection risk"
+    pattern: '(?i)["\x27]\s*(?:SELECT|INSERT\s+INTO|UPDATE\s+\w|DELETE\s+FROM|UNION\s+(?:ALL\s+)?SELECT)\b.{0,200}(?:%[sdf]\b|%\s*(?:\w+)|["\x27]\s*%\s*\w|\{[^}]{1,40}\}|["\x27]\s*\+\s*\w|\bf["\x27][^"\x27]*\{)'
+    severity: CRITICAL
+    cwe_ids: [CWE-89]
+    fix_hint: "Use parameterized queries (cursor.execute(sql, params)) instead of string interpolation"
+    fp_risk: MEDIUM
+
+  - id: SAST-093
+    name: pickle_aliased_import_loads
+    description: "pickle.loads() called via aliased import (e.g. import pickle as p; p.loads()) — unsafe deserialization"
+    pattern: '(?i)import\s+(?:pickle|cPickle|_pickle)\s+as\s+(\w+)'
+    severity: HIGH
+    cwe_ids: [CWE-502]
+    fix_hint: "Aliased pickle imports are used to obfuscate deserialization; avoid pickle.loads() on untrusted data regardless of the alias used"
+    fp_risk: LOW
+
+  - id: SAST-094
+    name: dunder_import_exec
+    description: "__import__() used to dynamically import dangerous module at runtime — obfuscated import"
+    pattern: '(?i)__import__\s*\(\s*["\x27](?:subprocess|os|sys|socket|ctypes|importlib|shutil|pty|commands)["\x27]'
+    severity: HIGH
+    cwe_ids: [CWE-94, CWE-78]
+    fix_hint: "Dynamic __import__() of system modules is an obfuscation pattern; use explicit import statements"
+    fp_risk: LOW
+
+  - id: SAST-102
+    name: breakpoint_shell
+    description: "breakpoint() — launches interactive debugger, gives attacker REPL access in production"
+    pattern: '(?i)\bbreakpoint\s*\(\s*\)'
+    severity: HIGH
+    cwe_ids: [CWE-489]
+    fix_hint: "Remove breakpoint() calls from production code; use a conditional guarded by DEBUG flag at most"
+    fp_risk: LOW
+
+  - id: SAST-103
+    name: code_interact_shell
+    description: "code.interact() — launches interactive Python REPL, equivalent to interactive shell"
+    pattern: '(?i)\bcode\.interact\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-489]
+    fix_hint: "Remove code.interact() from production code; it gives an attacker a full Python REPL"
+    fp_risk: LOW
+
+  - id: SAST-104
+    name: socket_reverse_shell
+    description: "socket connected with subprocess stdin/stdout/stderr redirected — reverse shell pattern"
+    pattern: '(?is)(?:socket\.socket|AF_INET|AF_UNIX)[\s\S]{0,400}(?:subprocess\.call|subprocess\.Popen|os\.dup2|\.fileno\s*\(\s*\))'
+    severity: CRITICAL
+    cwe_ids: [CWE-78, CWE-200]
+    fix_hint: "Combining socket connections with subprocess I/O redirection is a reverse shell pattern; remove this code"
+    fp_risk: LOW
+
+  - id: SAST-104b
+    name: subprocess_with_socket_fileno
+    description: "subprocess call with socket fileno() for stdin/stdout — reverse shell I/O redirection (single-line detectable form)"
+    pattern: '(?i)subprocess\.(?:call|Popen|run)\s*\([^)]*fileno\s*\(\s*\)'
+    severity: CRITICAL
+    cwe_ids: [CWE-78, CWE-200]
+    fix_hint: "Passing socket fileno() as subprocess stdin/stdout is a reverse shell technique; remove this code"
+    fp_risk: LOW
+
+  - id: SAST-105
+    name: shutil_sensitive_path_write
+    description: "shutil.copy/move to sensitive system path — backdoor installation pattern"
+    pattern: '(?i)shutil\.(?:copy2?|move|copyfile)\s*\([^,]+,\s*["\x27]/(?:etc/cron|etc/init|etc/systemd|etc/profile|etc/passwd|etc/shadow|root/|proc/)'
+    severity: CRITICAL
+    cwe_ids: [CWE-434, CWE-269]
+    fix_hint: "Writing to system paths via shutil is a persistence/backdoor installation technique; remove this code"
+    fp_risk: LOW
+
+  - id: SAST-106
+    name: log_injection
+    description: "User-controlled data concatenated directly into logging call — log injection / log forging (CWE-117)"
+    pattern: '(?i)(?:logging|logger)\s*\.\s*(?:debug|info|warning|error|critical|exception|fatal)\s*\(\s*(?:[^)]*\+\s*\w|f["\x27][^"]*\{)'
+    severity: MEDIUM
+    cwe_ids: [CWE-117, CWE-93]
+    fix_hint: "Use structured logging: logging.info('User: %s', user_input) — never concatenate user input into log messages"
+    fp_risk: MEDIUM
+
+  - id: SAST-101
+    name: pickle_reduce_payload
+    description: "__reduce__ method in a class — classic pickle deserialization RCE payload pattern"
+    pattern: '(?i)def\s+__reduce__\s*\(\s*self'
+    severity: CRITICAL
+    cwe_ids: [CWE-502, CWE-94]
+    fix_hint: "Defining __reduce__ in a class is the standard technique for crafting pickle RCE payloads; this should never appear in production code"
+    fp_risk: LOW
+
+  - id: SAST-095
+    name: subprocess_download_execute
+    description: "subprocess call with list args containing curl/wget combined with shell execution (sh/bash) — download-and-execute pattern"
+    pattern: '(?i)(?:subprocess|Popen|call|run|check_output)\s*\(\s*\[.{0,200}(?:curl|wget|fetch).{0,200}(?:["\x27](?:sh|bash|zsh|dash|cmd|powershell)["\x27]|["\x27]\|["\x27])'
+    severity: CRITICAL
+    cwe_ids: [CWE-78, CWE-494]
+    fix_hint: "Download-and-execute via subprocess is a code injection pattern; verify the source and use package managers instead"
     fp_risk: LOW
 
   - id: SAST-244

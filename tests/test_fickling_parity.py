@@ -405,6 +405,23 @@ class TestEvasionResistance:
         # Should find os.system even if pickletools partially crashes
         assert len(findings) > 0
 
+    def test_fuzzed_mutation_variants_from_selftest(self):
+        """Self-test mutations with corrupted GLOBAL text should still be flagged."""
+        payloads = {
+            "mutated_os_popen": bytes.fromhex(
+                "8002636f7300706f70656e0a2853276964580a74525d5d5d5d5d5d5d5d5d5d5d61616161616161616161302e"
+            ),
+            "mutated_subprocess_call": bytes.fromhex(
+                "8002637368027102680268027102756270726f636573730a63616c6c0a285d2853276964270a6174522e"
+            ),
+            "mutated_subprocess_check_output": bytes.fromhex(
+                "80026373756268037103710371037072636573730a636865636b5f6f757470750a285d2853276964270a6174522e"
+            ),
+        }
+        for source, data in payloads.items():
+            findings = scanner.scan_bytes(data, source=source)
+            assert findings, source
+
 
 class TestIntrospectionChain:
     """__subclasses__ → __builtins__ → eval chaining."""

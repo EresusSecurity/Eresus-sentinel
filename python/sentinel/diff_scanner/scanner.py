@@ -147,6 +147,29 @@ class DiffScanner:
         file_diffs = parse_unified_diff(diff_text)
         return self._scan_file_diffs(file_diffs)
 
+    def scan_pr_patch(
+        self,
+        diff_text: str,
+        base_ref: str = "",
+        head_ref: str = "",
+        pr_number: str = "",
+    ) -> list[Finding]:
+        """Scan a pull-request patch and tag findings with PR context."""
+        findings = self.scan_diff(diff_text)
+        context_tags = ["mode:pr"]
+        if base_ref:
+            context_tags.append(f"base:{base_ref}")
+        if head_ref:
+            context_tags.append(f"head:{head_ref}")
+        if pr_number:
+            context_tags.append(f"pr:{pr_number}")
+
+        for finding in findings:
+            for tag in context_tags:
+                if tag not in finding.tags:
+                    finding.tags.append(tag)
+        return findings
+
     def scan_git_staged(self) -> list[Finding]:
         """Scan git staged changes (git diff --cached)."""
         diff_text = self._run_git("diff", "--cached")

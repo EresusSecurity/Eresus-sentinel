@@ -38,7 +38,34 @@ Quick Start:
     result = s.scan_output("prompt", "llm response")
 """
 
-__version__ = "0.1.0"
+def _load_project_version() -> str:
+    """Read version from installed metadata, falling back to pyproject.toml in source checkouts."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        return version("eresus-sentinel")
+    except PackageNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        from pathlib import Path
+        import re
+
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        match = re.search(
+            r"(?m)^version\s*=\s*[\"']([^\"']+)[\"']",
+            pyproject.read_text(encoding="utf-8"),
+        )
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    return "0+unknown"
+
+
+__version__ = _load_project_version()
 __author__ = "Eresus Security"
 __license__ = "Proprietary"
 

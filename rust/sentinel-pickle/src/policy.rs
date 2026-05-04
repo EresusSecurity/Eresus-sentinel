@@ -38,6 +38,16 @@ static ALWAYS_DANGEROUS: &[(&str, &str)] = &[
     ("os", "spawn"),
     ("os", "spawnl"),
     ("os", "spawnle"),
+    ("posix", "system"),
+    ("posix", "popen"),
+    ("posix", "exec"),
+    ("posix", "execl"),
+    ("posix", "execle"),
+    ("posix", "execv"),
+    ("posix", "execve"),
+    ("posix", "spawn"),
+    ("posix", "spawnl"),
+    ("posix", "spawnle"),
     ("posixpath", "join"),
     ("nt", "system"),
     ("subprocess", "call"),
@@ -238,6 +248,7 @@ mod tests {
     fn test_dangerous_builtins() {
         let policy = ScanPolicy::default_policy();
         assert_eq!(policy.evaluate_internal("os", "system"), PolicyVerdict::Dangerous);
+        assert_eq!(policy.evaluate_internal("posix", "system"), PolicyVerdict::Dangerous);
         assert_eq!(policy.evaluate_internal("subprocess", "Popen"), PolicyVerdict::Dangerous);
         assert_eq!(policy.evaluate_internal("builtins", "eval"), PolicyVerdict::Dangerous);
     }

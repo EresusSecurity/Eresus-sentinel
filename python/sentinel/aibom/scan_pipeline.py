@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from sentinel.aibom.models import AIBOMResult, AIComponentType, RelationshipType
+from sentinel.aibom.normalizer import normalize_result
 from sentinel.aibom.scanners import BaseAIBOMScanner, default_scanners
 
 
@@ -37,6 +38,7 @@ class ScanPipeline:
                 if self._excluded(c.path):
                     continue
                 result.add(c)
+        normalize_result(result)
         if self.config.cross_ref:
             self._cross_reference(result)
         for enricher in self.config.enrichers:

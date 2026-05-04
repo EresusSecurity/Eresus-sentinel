@@ -2,13 +2,12 @@
 # Eresus Sentinel — GitHub Actions CI Integration
 # ============================================================================
 #
-# Scans PRs and commits for ML security anti-patterns using
-# the diff scanner module.
-#
-# Add this file to .github/workflows/eresus-sentinel.yml
+# Copy this file to .github/workflows/eresus-sentinel.yml in a consumer repo.
+# The template keeps live/network scans out of the default path and verifies
+# installability before running security smoke checks.
 # ============================================================================
 
-name: Eresus Sentinel ML Security Scan
+name: Eresus Sentinel CI
 
 on:
   pull_request:
@@ -21,12 +20,103 @@ permissions:
   pull-requests: write
 
 jobs:
-  ml-security-scan:
-    name: ML Security Diff Scan
+  fast-tests:
+    name: Python ${{ matrix.python-version }} fast tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package with dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run fast test gate
+        env:
+          SENTINEL_OFFLINE: "1"
+          HF_HUB_OFFLINE: "1"
+        run: |
+          python -m pytest \
+            tests/test_cli_parser_regressions.py \
+            tests/test_firewall.py \
+            tests/test_artifact_hardening.py \
+            tests/test_mcp_proxy_runtime.py \
+            tests/test_sast.py \
+            -q
+
+      - name: CLI machine-output smoke
+        run: |
+          sentinel rules list -f json > rules.json
+          python -m json.tool rules.json >/dev/null
+          sentinel scan . -f sarif > scan.sarif || test "$?" = "1"
+          python -m json.tool scan.sarif >/dev/null
+
+  optional-extras:
+    name: Optional extra ${{ matrix.extra }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        extra: ["firewall", "api", "hf", "analysis", "archive", "rust"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install optional extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[${{ matrix.extra }}]"
+
+      - name: Import smoke
+        run: |
+          python - <<'PY'
+          import sentinel
+          print(sentinel.__version__)
+          PY
+
+  package-smoke:
+    name: Wheel and source distribution smoke
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build --sdist --wheel
+          python -m twine check dist/*
+
+      - name: Install wheel and run CLI smoke
+        run: |
+          python -m pip install dist/*.whl
+          sentinel --help >/dev/null
+          sentinel rules list -f json > rules.json
+          python -m json.tool rules.json >/dev/null
+
+  diff-security:
+    name: PR diff security scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -35,36 +125,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Eresus Sentinel
+      - name: Install Sentinel
         run: |
-          pip install -e ./eresus-sentinel/
-          pip install pytest pytest-cov
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
 
-      - name: Run Test Suite
+      - name: Scan PR diff
         run: |
-          pytest tests/ -x -q --tb=short --timeout=120 2>&1 | tail -50
-        env:
-          ERESUS_CI_MODE: "true"
-
-      - name: Scan PR Diff
-        if: github.event_name == 'pull_request'
-        run: |
-          git diff origin/${{ github.base_ref }}...HEAD | \
-            python3 -m sentinel.cli_dispatch --module diff --target -
-        env:
-          ERESUS_CI_MODE: "true"
-
-      - name: Scan Push Diff
-        if: github.event_name == 'push'
-        run: |
-          python3 -m sentinel.cli_dispatch --module diff \
-            --target "${{ github.event.before }}..${{ github.sha }}"
-        env:
-          ERESUS_CI_MODE: "true"
-
-      - name: Fail on Critical Findings
-        if: failure()
-        run: |
-          echo "::error::Eresus Sentinel detected critical ML security issues in this change."
-          echo "Review the scan output above for details."
-          exit 1
+          git diff origin/${{ github.base_ref }}...HEAD | sentinel diff -

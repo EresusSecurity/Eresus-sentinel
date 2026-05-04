@@ -3,10 +3,14 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+EVENT_SCHEMA_VERSION = "event.schema.v1"
 
 
 def _get_schema_dir() -> Path:
@@ -65,6 +69,48 @@ def list_schemas() -> list[str]:
     if not d.exists():
         return []
     return sorted(p.stem for p in d.glob("*.json"))
+
+
+def build_scan_event(
+    *,
+    domain: str,
+    status: str,
+    target: str = "",
+    finding_count: int = 0,
+    duration_ms: float = 0.0,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "scan_id": uuid.uuid4().hex,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "domain": domain,
+        "status": status,
+        "target": target,
+        "finding_count": finding_count,
+        "duration_ms": duration_ms,
+        "metadata": metadata or {},
+    }
+
+
+def build_gateway_event(
+    *,
+    event_type: str,
+    payload: dict[str, Any],
+    source: str = "sentinel.gateway",
+    correlation_id: str = "",
+) -> dict[str, Any]:
+    return {
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "envelope_id": uuid.uuid4().hex,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": event_type,
+        "version": "1.0",
+        "source": source,
+        "correlation_id": correlation_id,
+        "payload": payload,
+        "routing": {"destination": "audit", "priority": "normal"},
+    }
 
 
 def _type_matches(value: Any, expected: str) -> bool:

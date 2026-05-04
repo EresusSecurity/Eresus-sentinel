@@ -1,0 +1,118 @@
+# Sentinel Multi-Language SAST — JavaScript rules
+# FP strategy: all injection rules require LLM context anchor (llm_context_pattern).
+# Pattern must match on a SINGLE LINE (no multiline crossing via .*?).
+version: "1"
+# If this pattern does NOT match anywhere in the file, injection rules are skipped entirely.
+# This prevents firing on non-LLM files (React apps, Node servers without LLM usage).
+file_context_pattern: '(?:openai|anthropic|@google/generative-ai|langchain|llamaindex|ai-sdk|groq|mistral|cohere|together|ollama|huggingface|transformers|gpt|claude|gemini|llm|chatbot|completion)'
+
+rules:
+  - id: MLSAST-001
+    title: "Unvalidated HTTP body passed to LLM prompt (JS)"
+    description: "User-controlled HTTP request body used directly in an LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.72
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Validate and sanitize req.body before including in LLM messages. Use an allow-list schema (Zod, Joi)."
+    # Same-line: req.body.X or req.query.X immediately followed by LLM message construction
+    # [^\n]{0,200} prevents crossing line boundary. Requires file_context_pattern.
+    pattern: '(?:req\.body|req\.query|req\.params)\s*(?:\.\w+|\[[\x22\x27\w]+\])[^\n]{0,200}(?:messages\s*:|content\s*:|prompt\s*[=:+]|\.push\s*\(|system\s*:)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - line_contains: "// "
+      - line_contains: "* "
+
+  - id: MLSAST-020
+    title: "LLM output passed to eval() (JS)"
+    description: "LLM response used as argument to eval() or new Function() — arbitrary code execution risk."
+    severity: CRITICAL
+    confidence: 0.78
+    owasp_llm: LLM02
+    tags: [code-injection, llm-output]
+    remediation: "Never eval() LLM output. Parse as structured data (JSON.parse) and validate schema."
+    # Pattern: eval( or new Function( immediately followed/preceded by known LLM var names
+    # Known LLM result vars: llmResponse, aiResponse, chatResponse, completion, modelOutput, generatedCode
+    pattern: '(?:eval|new\s+Function)\s*\(\s*(?:llm[A-Z]\w*|ai[A-Z]\w*|chat[A-Z]\w*|completion|modelOutput|generatedCode|gptOutput|claudeOutput|geminiOutput)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-021
+    title: "LLM output passed to exec/spawn (JS)"
+    description: "LLM response used as shell command argument — command injection risk."
+    severity: CRITICAL
+    confidence: 0.75
+    owasp_llm: LLM02
+    tags: [code-injection, command-injection, llm-output]
+    remediation: "Never pass LLM output to shell commands. Use a strict allowlist of permitted commands."
+    pattern: '(?:exec|execSync|spawn|spawnSync|execFile)\s*\(\s*(?:llm[A-Z]\w*|ai[A-Z]\w*|chat[A-Z]\w*|completion|modelOutput|generatedCode)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-022
+    title: "LLM output passed to fs.writeFile (JS)"
+    description: "LLM response written to filesystem — path traversal / malicious content risk."
+    severity: HIGH
+    confidence: 0.65
+    owasp_llm: LLM02
+    tags: [file-write, llm-output]
+    remediation: "Validate file path (no traversal) and sanitize content before writing LLM output to disk."
+    pattern: '(?:writeFile|writeFileSync|appendFile|appendFileSync)\s*\([^\n]{0,100}(?:llm[A-Z]\w*|ai[A-Z]\w*|completion|modelOutput|generatedCode)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-040
+    title: "LLM-related env var leaked into prompt (JS)"
+    description: "process.env variable with LLM/AI/API in name used directly in LLM prompt — secret exfiltration risk."
+    severity: HIGH
+    confidence: 0.75
+    owasp_llm: LLM06
+    tags: [data-exfil, secret-leak]
+    remediation: "Never include env vars (especially keys/secrets) in LLM prompts. LLM providers log prompt content."
+    # Only fire when the env var name contains LLM/AI/KEY/SECRET/TOKEN/API
+    # This prevents the massive FP of "any process.env usage"
+    pattern: 'process\.env\.(?:OPENAI|ANTHROPIC|GEMINI|GROQ|MISTRAL|TOGETHER|LLM|AI_|API_KEY|SECRET|TOKEN|PASSWORD)[A-Z_]*[^\n]{0,150}(?:messages\s*:|content\s*:|prompt\s*[=:+]|system\s*:)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-050
+    title: "ML model loaded from HTTP URL (JS)"
+    description: "ML model file loaded from a plain HTTP (non-HTTPS) URL — MITM / supply chain risk."
+    severity: HIGH
+    confidence: 0.78
+    owasp_llm: LLM05
+    tags: [supply-chain, model-loading]
+    remediation: "Use HTTPS. Verify model checksum (SHA-256) after download before loading."
+    # http:// (not https) downloading a model file extension
+    pattern: 'https?://[^\s\x22\x27]{5,200}\.(?:onnx|pkl|pt|bin|safetensors|gguf|h5|keras|tflite)'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+      - line_contains: "https://"  # only flag http:// not https://
+    # Override: only flag http (not https)
+    require_insecure_scheme: true
+
+  - id: MLSAST-060
+    title: "LLM tool definition grants dangerous filesystem access (JS)"
+    description: "MCP/LLM tool definition allows file write/delete operations — excessive agency risk."
+    severity: MEDIUM
+    confidence: 0.62
+    owasp_llm: LLM09
+    tags: [excessive-agency, llm-tool]
+    remediation: "Apply least-privilege to LLM tool definitions. Split read and write tools; require confirmation."
+    # Must have both tool/function definition keyword AND dangerous operation in same block (50-char window)
+    pattern: '(?:tool\s*:\s*\{|function_declarations|tools\s*:\s*\[)[^\n]{0,300}(?:writeFile|unlink|rmdir|rm\s|chmod|chown)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

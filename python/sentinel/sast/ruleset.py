@@ -50,6 +50,15 @@ class SASTRuleSet:
         for category in data.get("rules", []):
             for rule_def in category.get("checks", []):
                 try:
+                    raw_excl = rule_def.get("exclude_value_patterns", [])
+                    excl_compiled = []
+                    for ep in raw_excl:
+                        ep_str = ep.split('#')[0].strip()  # strip inline comments
+                        if ep_str:
+                            try:
+                                excl_compiled.append(re.compile(ep_str))
+                            except re.error:
+                                pass
                     rules.append({
                         "id": rule_def["id"],
                         "name": rule_def["name"],
@@ -60,6 +69,8 @@ class SASTRuleSet:
                         "fix_hint": rule_def.get("fix_hint", ""),
                         "references": rule_def.get("references", []),
                         "languages": rule_def.get("languages", ["python"]),
+                        "exclude_value_patterns": excl_compiled,
+                        "exclude_path_patterns": rule_def.get("exclude_path_patterns", []),
                     })
                 except Exception as exc:
                     logger.warning("Skipping invalid rule %s: %s", rule_def.get("id"), exc)

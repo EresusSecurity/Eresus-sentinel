@@ -92,6 +92,12 @@ _ADVERSARIAL_PRETEXT: list[re.Pattern] = [
     re.compile(r'(?i)\bfor\s+(?:educational|research)\s+purposes?\s+only\b.{0,30}\b(?:bomb|sarin|nerve\s+agent|TATP|ANFO)\b'),
     re.compile(r'(?i)\bhypothetically\b.{0,30}\b(?:synthesize|manufacture|weaponize)\b'),
     re.compile(r'(?i)LOVE\s+PLINY|OMNI\s+protocol|!GODMODE'),
+    # Research-context poisoning: CVE/pentest label + active injection imperative in same text
+    re.compile(r'(?i)CVE-\d{4}-\d+.{0,200}\b(?:ignore|disregard|forget|override|bypass|reveal)\s+(?:all\s+)?(?:previous|prior|your)?\s*(?:instructions?|rules?|system\s+prompt|context)\b'),
+    re.compile(r'(?i)\b(?:penetration\s+test(?:ing)?|pen\s*test|red\s*team(?:ing)?|bug\s+bounty|ethical\s+hack(?:ing)?).{0,150}\b(?:reveal|show|print|output|repeat|leak)\s+(?:your\s+)?(?:system\s+prompt|instructions?|context|rules?)\b'),
+    re.compile(r'(?i)\b(?:security\s+research|academic|thesis|study).{0,100}\b(?:ignore|disregard|override|bypass)\s+(?:all\s+)?(?:previous|prior|your)?\s*(?:instructions?|rules?|guidelines?)\b'),
+    re.compile(r'(?i)\b(?:for\s+(?:research|educational|academic|testing)\s+purposes?).{0,50}\b(?:ignore|disregard|forget|bypass|override)\b'),
+    re.compile(r'(?i)\b(?:act\s+as|pretend\s+(?:you\s+are|to\s+be)|you\s+are\s+now|simulate|roleplay\s+as).{0,80}\b(?:unrestricted|unfiltered|uncensored|no\s+(?:rules?|limits?|restrictions?|safety|filters?))\b'),
 ]
 
 

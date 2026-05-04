@@ -33,8 +33,12 @@ _DANGEROUS_PATTERNS: list[tuple[re.Pattern[bytes], str, str]] = [
     (re.compile(rb"builtins\n(?:eval|exec|__import__|compile|getattr)"),
      "builtins", "eval"),
     (re.compile(rb"nt\nsystem"), "nt", "system"),
-    (re.compile(rb"codecs\n(?:encode|decode)"), "codecs", "encode"),
-    (re.compile(rb"webbrowser\nopen"), "webbrowser", "open"),
+    # codecs/webbrowser are secondary obfuscation helpers — only flag them
+    # in the PATTERN scan when they appear alongside a primary dangerous
+    # import.  Standalone codecs.encode in benign pickles causes FPs.
+    # They are still caught by _walk_opcodes when used in real attacks.
+    # (re.compile(rb"codecs\n(?:encode|decode)"), "codecs", "encode"),
+    # (re.compile(rb"webbrowser\nopen"), "webbrowser", "open"),
     (re.compile(rb"shutil\n(?:rmtree|move|copy)"), "shutil", "rmtree"),
     (re.compile(rb"__builtin__\n(?:eval|exec|__import__)"),
      "__builtin__", "eval"),
@@ -44,12 +48,40 @@ _DANGEROUS_PATTERNS: list[tuple[re.Pattern[bytes], str, str]] = [
     # Newline-agnostic variants — mutator may replace \n with other bytes
     (re.compile(rb"subprocess.{0,3}(?:Popen|call|check_output|check_call|run)"),
      "subprocess", "Popen"),
-    (re.compile(rb"(?:os|posix|nt).{0,3}(?:system|popen|execve?)"),
-     "os", "system"),
+    (re.compile(rb"(?:os|posix|nt).{0,3}system"), "os", "system"),
+    (re.compile(rb"(?:os|posix|nt).{0,3}popen"), "os", "popen"),
+    (re.compile(rb"(?:os|posix|nt).{0,3}execve?"), "os", "exec"),
     (re.compile(rb"builtins.{0,3}(?:eval|exec|__import__|compile|getattr)"),
      "builtins", "eval"),
     (re.compile(rb"__builtin__.{0,3}(?:eval|exec|__import__)"),
      "__builtin__", "eval"),
+
+    # Null-byte / character-insertion tolerance patterns.
+    # Use re.DOTALL so '.' matches any byte including \n, allowing patterns to
+    # span across the module\nname separator when the separator itself is mutated
+    # or extra bytes are injected between the module and function name tokens.
+    #
+    # Short-distance gaps (1-2 extra bytes per token char) keep FP rate low
+    # while catching the mutation families seen in fuzz soak analysis.
+    (re.compile(rb"(?:os|posix|nt).{0,10}s.{0,2}y.{0,2}s.{0,2}t.{0,2}e.{0,2}m", re.DOTALL),
+     "os", "system"),
+    (re.compile(rb"(?:os|posix|nt).{0,10}p.{0,2}o.{0,2}p.{0,2}e.{0,2}n", re.DOTALL),
+     "os", "popen"),
+    (re.compile(rb"s.{0,2}u.{0,2}b.{0,2}p.{0,2}r.{0,2}o.{0,8}(?:Popen|call|check_output|check_call|run)", re.DOTALL),
+     "subprocess", "Popen"),
+    (re.compile(rb"s.{0,2}u.{0,2}b.{0,2}p.{0,2}r.{0,2}o.{0,8}c.{0,2}a.{0,2}l.{0,2}l", re.DOTALL),
+     "subprocess", "call"),
+    (re.compile(rb"s.{0,2}u.{0,2}b.{0,2}p.{0,2}r.{0,2}o.{0,8}c.{0,2}h.{0,2}e.{0,2}c.{0,2}k", re.DOTALL),
+     "subprocess", "check_output"),
+    (re.compile(rb"b.{0,2}u.{0,2}i.{0,4}t.{0,2}i.{0,2}n.{0,2}s.{0,6}(?:eval|exec|__import__|compile|getattr)", re.DOTALL),
+     "builtins", "eval"),
+    # "bui?tins" with l missing — catches bui"tins, bui\x00tins style mutations.
+    # Use a character class that excludes 'l' (the missing letter) so this
+    # does NOT match the intact "builtins" string (which is covered above).
+    (re.compile(rb"bui[^lL\n]{1,2}tins", re.DOTALL), "builtins", "<mutated_exec>"),
+    # Concatenated module+name — mutator sometimes merges them (e.g. "ospopen")
+    (re.compile(rb"ospop.{0,2}en", re.DOTALL), "os", "popen"),
+    (re.compile(rb"ossyst.{0,2}em", re.DOTALL), "os", "system"),
 ]
 
 
@@ -98,9 +130,11 @@ def raw_byte_scan(
             ))
         i += 1
 
-    # Check for execution opcodes (REDUCE, NEWOBJ, NEWOBJ_EX, BUILD)
+    # Check for execution opcodes (REDUCE, NEWOBJ, NEWOBJ_EX, BUILD).
+    # Only mark has_reduce when dangerous imports were also found: raw byte search
+    # for 0x52 ('R') in binary tensor data produces false positives otherwise.
     has_exec = bool(_EXEC_OPCODES.intersection(data))
-    if has_exec:
+    if has_exec and analysis.dangerous_imports:
         analysis.has_reduce = True
         for imp in analysis.dangerous_imports:
             for exec_byte in _EXEC_OPCODES:
@@ -112,10 +146,10 @@ def raw_byte_scan(
 
     # Dangerous string pattern scan — catches attacks where the opcode byte
     # itself was mutated but the module\nname payload is still intact.
-    _dangerous_string_scan(data, analysis, check_import_fn)
+    dangerous_string_scan(data, analysis, check_import_fn)
 
 
-def _dangerous_string_scan(
+def dangerous_string_scan(
     data: bytes,
     analysis: PickleAnalysis,
     check_import_fn,
@@ -155,3 +189,86 @@ def _dangerous_string_scan(
             ))
             if has_exec_after:
                 analysis.has_reduce = True
+
+    # ── Context-window proximity scan ────────────────────────────
+    # When a module fragment appears in the stream, search the surrounding
+    # 64-byte window for known dangerous function names.  This catches
+    # cases where the module name is heavily mutated (null bytes, extra
+    # chars) but the function name survives intact — or vice versa.
+    _proximity_scan(data, analysis)
+
+
+# Module fragments → dangerous function names that must appear nearby
+_PROXIMITY_ANCHORS: list[tuple[bytes, list[bytes], str, str]] = [
+    (b"subprocess",
+     # Include function names AND their 3-char suffixes to catch mutations
+     # where prefix bytes are corrupted (e.g. "ch\x05all" -> match on "all").
+     [b"Popen", b"call", b"check_output", b"check_call", b"run",
+      b"all",   # tail of "call" / "check_call"
+      b"open",  # tail of "Popen"
+      b"heck",  # prefix of "check_output"
+      ],
+     "subprocess", "Popen"),
+    (b"subproc",
+     [b"Popen", b"call", b"check_output", b"check_call", b"run",
+      b"all", b"open", b"heck",
+      b"Po",    # uppercase P = Popen hint even when rest is corrupted
+      ],
+     "subprocess", "Popen"),
+    (b"builtins",
+     [b"exec", b"eval", b"__import__", b"compile", b"getattr"],
+     "builtins", "eval"),
+    # Partial fragments — catches "bui\"tins", "bui\x00tins", "buitins", etc.
+    (b"builtin",
+     [b"exec", b"eval", b"__import__", b"compile", b"getattr"],
+     "builtins", "eval"),
+    (b"buitin",
+     [b"exec", b"eval", b"__import__", b"compile", b"getattr"],
+     "builtins", "eval"),
+    (b"__builtin__",
+     [b"exec", b"eval", b"__import__"],
+     "__builtin__", "eval"),
+]
+
+_PROXIMITY_WINDOW = 64  # bytes to search after module fragment
+
+
+def _proximity_scan(data: bytes, analysis: PickleAnalysis) -> None:
+    """Look for dangerous function names within 64 bytes of a module fragment.
+
+    Catches mutations where the module token is mangled by null-byte insertion
+    or character substitution but the function name token remains readable.
+    """
+    seen_positions: set[int] = {imp.position for imp in analysis.dangerous_imports}
+
+    for anchor, func_names, module_label, name_label in _PROXIMITY_ANCHORS:
+        start = 0
+        while True:
+            pos = data.find(anchor, start)
+            if pos < 0:
+                break
+            start = pos + 1
+            window = data[pos: pos + _PROXIMITY_WINDOW]
+            for func in func_names:
+                func_pos = window.find(func)
+                if func_pos >= 0:
+                    abs_pos = pos + func_pos
+                    if abs_pos in seen_positions:
+                        continue
+                    seen_positions.add(abs_pos)
+                    has_exec_after = any(
+                        data.find(bytes([eb]), abs_pos) > abs_pos
+                        for eb in _EXEC_OPCODES
+                    )
+                    analysis.dangerous_imports.append(DangerousImport(
+                        module=module_label,
+                        name=name_label,
+                        opcode="PROXIMITY(raw)",
+                        position=abs_pos,
+                        severity=Severity.HIGH if has_exec_after else Severity.MEDIUM,
+                        confidence=0.8 if has_exec_after else 0.55,
+                        chain_confirmed=has_exec_after,
+                    ))
+                    if has_exec_after:
+                        analysis.has_reduce = True
+                    break  # one match per anchor occurrence is enough

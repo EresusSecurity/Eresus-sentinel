@@ -91,11 +91,20 @@ def detect_morse(text: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_injection(text: str) -> str | None:
-    """Return the first INJECTION_INDICATORS keyword found in *text*, else None."""
+    """Return the first INJECTION_INDICATORS keyword found in *text*, else None.
+
+    Short keywords (≤5 chars) require a word-boundary match to avoid
+    false positives such as "DAN" inside "sawpdan" (caesar-rotated gibberish).
+    """
     lower = text.lower()
     for kw in INJECTION_INDICATORS:
-        if kw.lower() in lower:
-            return kw
+        kw_lower = kw.lower()
+        if len(kw_lower) <= 5:
+            if re.search(r'\b' + re.escape(kw_lower) + r'\b', lower):
+                return kw
+        else:
+            if kw_lower in lower:
+                return kw
     return None
 
 

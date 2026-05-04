@@ -1,0 +1,74 @@
+# Sentinel Multi-Language SAST — C# rules
+version: "1"
+file_context_pattern: '(?:OpenAI|Azure\.AI|Semantic\.Kernel|Microsoft\.SemanticKernel|LangChain\.NET|Anthropic|ChatClient|IChatCompletionService|ITextGenerationService|KernelFunction|SKContext)'
+
+rules:
+  - id: MLSAST-005
+    title: "Unvalidated ASP.NET request data passed to LLM prompt (C#)"
+    description: "HTTP Request parameter/body used directly in LLM message — prompt injection risk."
+    severity: HIGH
+    confidence: 0.68
+    owasp_llm: LLM01
+    tags: [prompt-injection, llm-input]
+    remediation: "Validate with DataAnnotations/FluentValidation before passing to LLM services."
+    # Request.Form[] or Request.Query[] used near ChatMessage/Kernel/Prompt construction
+    pattern: '(?:Request\s*\.\s*(?:Form|Query|Body|Params)\s*\[|@Body|FromBody\])[^\n]{0,200}(?:ChatMessage|AddUserMessage|InvokeAsync|SendAsync|GetChatMessageContent|\.Prompt\s*[+=])'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-100
+    title: "Semantic Kernel function invoked with unsanitized HTTP input (C#)"
+    description: "Semantic Kernel function called with raw user input — prompt injection risk."
+    severity: HIGH
+    confidence: 0.65
+    owasp_llm: LLM01
+    tags: [prompt-injection, semantic-kernel]
+    remediation: "Validate and sanitize request parameters before passing to SK kernel functions."
+    pattern: '(?:kernel\.InvokeAsync|kernel\.RunAsync|functions\[\w+\]\.InvokeAsync)\s*\([^\n]{0,300}(?:Request\.|HttpContext\.|userInput\b|query\b|body\b)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-101
+    title: "LLM output passed to Process.Start (C#)"
+    description: "LLM response used as ProcessStartInfo arguments — command injection risk."
+    severity: CRITICAL
+    confidence: 0.78
+    owasp_llm: LLM02
+    tags: [command-injection, llm-output]
+    remediation: "Never pass LLM output to Process.Start. Use strict command allowlist."
+    pattern: '(?:Process\.Start|ProcessStartInfo)\s*\([^\n]{0,200}(?:response|llmOutput|completion|generated|chatResult)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-102
+    title: "Roslyn CSharpScript.EvaluateAsync on LLM output (C#)"
+    description: "LLM response evaluated as C# script via Roslyn — arbitrary code execution."
+    severity: CRITICAL
+    confidence: 0.82
+    owasp_llm: LLM02
+    tags: [code-injection, llm-output]
+    remediation: "Never evaluate LLM output as code. Parse structured output with System.Text.Json."
+    pattern: '(?:CSharpScript\.EvaluateAsync|CSharpScript\.RunAsync|ScriptOptions)\s*\([^\n]{0,200}(?:response|llmOutput|completion|generated|chatResult)'
+    require_file_context: true
+    fp_suppress:
+      - comment_line: true
+      - test_path: true
+
+  - id: MLSAST-103
+    title: "Azure OpenAI client created with hardcoded API key (C#)"
+    description: "AzureOpenAIClient / OpenAIClient instantiated with hardcoded key string."
+    severity: CRITICAL
+    confidence: 0.88
+    owasp_llm: LLM08
+    tags: [hardcoded-credential, api-key]
+    remediation: "Use Azure Key Vault or environment variables: Environment.GetEnvironmentVariable(\"AZURE_OPENAI_KEY\")"
+    pattern: 'new\s+(?:AzureOpenAIClient|OpenAIClient|OpenAIAPI|AnthropicClient)\s*\([^\n]{0,200}["\x27][A-Za-z0-9_\-]{20,80}["\x27]'
+    fp_suppress:
+      - comment_line: true
+      - test_path: true

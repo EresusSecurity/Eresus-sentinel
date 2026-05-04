@@ -97,3 +97,51 @@ rule tool_abuse_injection
     condition:
         any of them
 }
+
+rule model_weight_exfil
+{
+    meta:
+        description = "Detects large base64 blob + URL in same context — model-embedded exfil payload"
+        severity = "CRITICAL"
+        confidence = "0.87"
+        category = "data_exfiltration"
+        rule_id = "YARA-EXFIL-002"
+        cwe = "CWE-506,CWE-311"
+
+    strings:
+        $b64 = /[A-Za-z0-9+\/]{120,}={0,2}/
+        $url1 = /https?:\/\/[^\s"'<>]{15,}/
+        $url2 = /ftp:\/\/[^\s"'<>]{10,}/
+        $dec1 = "b64decode" nocase
+        $dec2 = "base64.decode" nocase
+        $dec3 = "fromBase64String" nocase
+
+    condition:
+        $b64 and (any of ($url*)) and (any of ($dec*))
+}
+
+rule model_metadata_c2
+{
+    meta:
+        description = "Model metadata contains C2-style callback: command execution + remote URL in same region"
+        severity = "CRITICAL"
+        confidence = "0.91"
+        category = "data_exfiltration"
+        rule_id = "YARA-EXFIL-003"
+        cwe = "CWE-78,CWE-200"
+
+    strings:
+        $cmd1 = "os.system(" nocase
+        $cmd2 = "subprocess.Popen(" nocase
+        $cmd3 = "subprocess.run(" nocase
+        $cmd4 = "/bin/bash" nocase
+        $cmd5 = "/bin/sh" nocase
+        $cmd6 = "powershell" nocase
+        $cmd7 = "cmd.exe" nocase
+
+        $url1 = /https?:\/\/[^\s"'<>]{10,}/
+        $url2 = /\b(?:\d{1,3}\.){3}\d{1,3}:[0-9]{2,5}\b/
+
+    condition:
+        any of ($cmd*) and any of ($url*)
+}

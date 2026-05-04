@@ -7,9 +7,9 @@
 
 # Eresus Sentinel
 
-**Production-grade security platform for AI/LLM ecosystems.**
+**Alpha-stage, deterministic-first AI security toolkit for local audits, MCP/agent checks, model artifact scanning, and prompt firewall testing.**
 
-Sentinel provides deterministic, YAML-driven security scanning across the entire AI stack — from model artifacts and prompt firewalls to supply chain auditing and red team automation. Zero AI required to produce findings; AI is an optional enrichment layer.
+Sentinel provides deterministic, YAML-driven security scanning across the AI stack — from model artifacts and prompt firewalls to supply chain auditing and red team automation. Zero AI is required to produce findings; AI/judge adapters are optional enrichment layers.
 
 <p align="center">
   <img src="demo.gif" alt="Eresus Sentinel Demo" width="700">
@@ -33,6 +33,20 @@ Sentinel provides deterministic, YAML-driven security scanning across the entire
 | 📓 **Notebook** | `notebook_scanner/` | Jupyter security scanning (14 plugins) |
 | 📝 **Diff** | `diff_scanner/` | Git diff/PR ML anti-pattern detection |
 
+## Domain Maturity
+
+| Domain | Maturity |
+|--------|----------|
+| Pickle/artifact no-load scanning | Beta |
+| Prompt firewall deterministic checks | Beta |
+| SAST/secrets/notebook/diff | Beta |
+| MCP manifest/live scanning | Beta |
+| MCP proxy runtime enforcement | Experimental |
+| Dashboard/API | Experimental |
+| HF/supply-chain live integrations | Experimental |
+| Runtime gateway provider adapters | Experimental |
+| AI/judge enrichment | Optional experimental |
+
 ## Quick Start
 
 ```bash
@@ -41,8 +55,10 @@ pip install -e ".[dev]"
 
 # Verify installation
 sentinel doctor
+sentinel doctor --json
 
-# Scan a project
+# Preview the scanner plan, then scan a project
+sentinel scan ./my-project --plan --profile fast
 sentinel scan ./my-project/
 
 # Firewall a prompt
@@ -97,24 +113,19 @@ sentinel shell
 
 ## CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `sentinel scan <path>` | Full security scan across all domains |
-| `sentinel firewall <text>` | Input/output firewall scan |
-| `sentinel artifact <path>` | Model artifact scanning |
-| `sentinel sast <path>` | Static analysis (secrets, code patterns) |
-| `sentinel agent <path>` | Agent/MCP security validation |
-| `sentinel mcp scan <target>` | MCP manifest, HTTP JSON-RPC, or stdio live scan |
-| `sentinel supply-chain <path>` | Dependency + provenance audit |
-| `sentinel redteam --target <model>` | Automated red team assessment |
-| `sentinel hf-guard <repo>` | Pre-download HuggingFace security check |
-| `sentinel evaluate` | Scanner effectiveness benchmarks |
-| `sentinel evaluate <config.yaml>` | Config-driven provider evals with assertions |
-| `sentinel benchmark` | Latency benchmarks (p50/p95/p99) |
-| `sentinel doctor` | System health check |
-| `sentinel scanners` | List all registered scanners |
-| `sentinel shell` | Interactive REPL |
-| `sentinel fuzz <action>` | Pickle fuzzer (generate/mutate/validate) |
+The most common commands are:
+
+```bash
+sentinel scan ./project --profile fast -f json
+sentinel artifact ./models -f sarif
+sentinel firewall "user input text" -f json
+sentinel mcp scan ./mcp-manifest.json
+git diff main...HEAD | sentinel diff - -f sarif
+```
+
+See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for the full command table
+and [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) for exit codes and output
+shape.
 
 ## Python SDK
 
@@ -210,10 +221,10 @@ Intercept and inspect all MCP protocol traffic in real-time:
 
 ```bash
 # Stdio mode — wrap any MCP server
-sentinel proxy --mode stdio -- npx my-mcp-server
+sentinel proxy --transport stdio --mode enforce --server-cmd npx my-mcp-server
 
 # HTTP mode — reverse proxy
-sentinel proxy --mode http --upstream http://localhost:3000 --port 8080
+sentinel proxy --transport http --mode enforce --upstream http://localhost:3000 --port 8080
 ```
 
 ## Configuration
@@ -279,14 +290,18 @@ docker compose up
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Quick Start](docs/QUICKSTART.md) | Getting started guide |
-| [Architecture](docs/ARCHITECTURE.md) | System design and data flow |
-| [Rules Reference](docs/RULES.md) | YAML rule format specification |
-| [Contributing](CONTRIBUTING.md) | Development setup and PR process |
-| [Security Policy](SECURITY.md) | Vulnerability reporting |
-| [Changelog](CHANGELOG.md) | Release history |
+- [Quick Start](docs/QUICKSTART.md)
+- [Turkish Quick Start](docs/TR_QUICKSTART.md)
+- [CLI Reference](docs/CLI_REFERENCE.md)
+- [Rule Authoring](docs/RULE_AUTHORING.md)
+- [Scanner Authoring](docs/SCANNER_AUTHORING.md)
+- [MCP Proxy Deployment](docs/MCP_PROXY_DEPLOYMENT.md)
+- [CI and Pre-Commit](docs/CI_PRECOMMIT.md)
+- [False Positive Handling](docs/FALSE_POSITIVES.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [FAQ](docs/FAQ.md)
+- [Community Notes](docs/COMMUNITY.md)
+- [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
 
 ## Authentication & Security
 
@@ -316,7 +331,12 @@ See [Security Policy](SECURITY.md) for full hardening guide.
 - API server: `pip install eresus-sentinel[api]` (adds `fastapi`, `uvicorn`)
 - Web dashboard: `pip install eresus-sentinel[web]`
 - ML scanning: `pip install eresus-sentinel[ml]` (adds `torch`, `transformers`)
+- Rust pickle backend: `cd rust/sentinel-pickle && maturin develop --release`
 - All extras: `pip install eresus-sentinel[all]`
+
+## Alpha Disclaimer
+
+> **This is alpha software.** APIs, CLI flags, finding schemas, and rule IDs may change between releases without deprecation notice. Do not depend on output stability in production CI pipelines yet.
 
 ## License
 

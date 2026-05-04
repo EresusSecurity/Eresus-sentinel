@@ -4,6 +4,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from sentinel.finding import Finding
+
 
 class BaseReporter(ABC):
     """Abstract base for all report generators.
@@ -15,7 +17,7 @@ class BaseReporter(ABC):
     @abstractmethod
     def generate(
         self,
-        findings: list,
+        findings: list[Finding],
         metadata: dict[str, Any] | None = None,
     ) -> str:
         """Generate a report string.
@@ -30,7 +32,7 @@ class BaseReporter(ABC):
 
     def write(
         self,
-        findings: list,
+        findings: list[Finding],
         path: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:

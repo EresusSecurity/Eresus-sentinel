@@ -1,0 +1,114 @@
+# TensorFlow MetaGraph Security Rules
+# Sentinel artifact scanner — TensorFlow .meta checkpoint graph definitions
+# Based on modelaudit/modelaudit/scanners/tf_metagraph_scanner.py
+
+metadata:
+  version: "1.0.0"
+  format: "tf_metagraph"
+  extensions: [".meta"]
+  description: >
+    Detection rules for TensorFlow MetaGraph protobuf files (.meta).
+    Covers dangerous TF ops, executable op context gating, command/network
+    string indicators, and encoded payload detection.
+
+limits:
+  max_parse_bytes: 20971520      # 20 MB
+  min_parse_bytes: 8
+  max_graph_nodes: 200000
+  max_function_nodes: 100000
+  max_attr_value_bytes: 32768
+  max_collection_value_bytes: 262144
+  max_signal_examples: 8
+
+executable_context_ops:
+  - PyFunc
+  - PyFuncStateless
+  - PyCall
+  - EagerPyFunc
+  - StatefulPartitionedCall
+  - PartitionedCall
+  - ExecuteOp
+  - ShellExecute
+  - LoadLibrary
+  - LoadLibraryV2
+
+collection_exec_hints:
+  - script
+  - command
+  - entrypoint
+  - hook
+  - callback
+  - runtime
+  - plugin
+  - library
+
+benign_checkpoint_io_ops:
+  - SaveV2
+  - RestoreV2
+
+excluded_from_dangerous:
+  - DecodeRaw
+  - DecodeJpeg
+  - DecodePng
+  - SaveV2
+  - RestoreV2
+
+dangerous_tf_ops:
+  critical:
+    - PyFunc
+    - PyFuncStateless
+    - EagerPyFunc
+    - PyCall
+    - ShellExecute
+    - LoadLibrary
+    - LoadLibraryV2
+    - ImmutableConst
+  high:
+    - RunPyFunc
+    - StatefulPartitionedCall
+    - PartitionedCall
+    - LookupTableImport
+    - GenerateVocabRemapping
+    - InitializeTableFromTextFile
+
+string_checks:
+  library_or_path:
+    severity: HIGH
+    cwe_ids: ["CWE-114", "CWE-22"]
+    requires_exec_op_context: true
+    description: >
+      A suspicious library or filesystem path was found in a TF node attribute
+      string. When combined with an executable-context op (PyFunc, LoadLibrary,
+      etc.), this suggests a model that loads or executes native code.
+    pattern: '(?i)(?:\b[a-z]:[\\\/][^\s"]+|\.\.[/\\][^\s"]+|(?:/[^\s"]+){2,}|[^\s"]+\.(?:dll|so|dylib)\b)'
+
+  command:
+    severity: HIGH
+    cwe_ids: ["CWE-78"]
+    requires_exec_op_context: true
+    description: >
+      A command execution keyword was found in a TF node attribute string.
+      Combined with PyFunc or similar ops, this indicates the graph executes
+      shell commands during inference.
+    pattern: '(?i)(?:\bos\.system\b|\bsubprocess\.(?:run|popen|call|check_call|check_output)\b|\b(?:bash|sh|zsh|powershell(?:\.exe)?|cmd(?:\.exe)?)\b|\b(?:curl|wget)\b\s+https?://|\bpython\s+-c\b|/bin/(?:sh|bash))'
+
+  network:
+    severity: HIGH
+    cwe_ids: ["CWE-200", "CWE-494"]
+    requires_exec_op_context: true
+    description: >
+      A network indicator (URL, IP, socket) was found in a TF node attribute
+      string. Combined with executable ops, this suggests a C2 callback or
+      data exfiltration during model inference.
+    pattern: '(?i)(?:https?://|wss?://|ftp://|tcp://|udp://|\bsocket\b|\b(?:\d{1,3}\.){3}\d{1,3}\b)'
+
+  encoded_payload:
+    severity: CRITICAL
+    cwe_ids: ["CWE-506", "CWE-94"]
+    requires_exec_op_context: false
+    description: >
+      A long Base64-encoded blob adjacent to a decode/eval keyword was found
+      in a TF node attribute. This pattern indicates a stage-2 payload
+      embedded in the computation graph.
+    b64_pattern: '\b[A-Za-z0-9+/]{120,}={0,2}\b'
+    decode_hint_pattern: '(?i)(?:base64|b64decode|frombase64string|decode\(|eval\(|exec\()'

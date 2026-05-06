@@ -38,6 +38,17 @@ _MAX_DEPTH = 32
 _MAX_URL_FINDINGS = 20
 _MAX_KEY_FINDINGS = 30
 
+# Tokenizer / vocabulary files whose keys are language tokens, not config.
+# Scanning them for "password" / "secret" / "exec" yields only FPs.
+_VOCAB_FILENAMES: frozenset[str] = frozenset({
+    "tokenizer.json", "vocab.json", "merges.txt",
+    "special_tokens_map.json", "added_tokens.json",
+    "spiece.model", "sentencepiece.bpe.model",
+})
+
+# Deep JSON paths inside tokenizer structures that hold vocabulary maps.
+_VOCAB_PATH_PREFIXES = ("model.vocab.", "added_tokens.", "vocab.", "merges.")
+
 _URL_RE = re.compile(r'https?://[a-zA-Z0-9.\-_/:?=&%#@]+', re.IGNORECASE)
 _CLOUD_URI_RE = re.compile(
     r'(?:s3|gs|az|wasbs?|abfss?)://[^\s"<>]+', re.IGNORECASE
@@ -335,11 +346,19 @@ class MLManifestScanner:
     )
     def _check_suspicious_key_rules(self, obj: Any, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
+        # Vocabulary files contain language tokens ("password", "secret", …)
+        # that are NOT config keys — skip suspicious-key scan entirely.
+        fname = Path(filepath).name.lower()
+        if fname in _VOCAB_FILENAMES:
+            return findings
         rules = _suspicious_key_rules()
         seen: set[str] = set()
         for path_str, key, value in _iter_key_value_pairs(obj):
             if len(findings) >= _MAX_KEY_FINDINGS:
                 break
+            # Skip vocabulary/token map paths inside tokenizer structures
+            if any(path_str.startswith(pfx) for pfx in _VOCAB_PATH_PREFIXES):
+                continue
             for rule_id, title, pats, sev, cwe_ids, description in rules:
                 cache_key = f"{rule_id}:{path_str}"
                 if cache_key in seen:

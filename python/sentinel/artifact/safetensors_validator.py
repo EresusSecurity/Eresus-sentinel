@@ -243,6 +243,25 @@ class SafetensorsValidator:
                     evidence=f"Key: {key}, Value length: {len(value):,} chars",
                 ))
 
+            # ── Prompt injection in metadata values ──────────────
+            # Metadata strings are often surfaced in model cards, logs, and
+            # inference UIs — a classic supply-chain prompt injection vector.
+            if isinstance(value, str) and self._has_prompt_injection(value):
+                findings.append(Finding.artifact(
+                    rule_id="ARTIFACT-041",
+                    title="Prompt injection detected in safetensors metadata",
+                    description=(
+                        f"Metadata key '{key}' in '{source}' contains a "
+                        f"prompt injection directive. Downstream LLM pipelines "
+                        f"that render this metadata may be hijacked by a "
+                        f"malicious actor to override safety instructions."
+                    ),
+                    severity=Severity.HIGH,
+                    target=source,
+                    evidence=f"Key: {key}, snippet: {str_value[:200]}",
+                    cwe_ids=["CWE-77"],
+                ))
+
             # ── SSTI / code injection in metadata values ─────────
             # Safetensors metadata is JSON — but ML frameworks often treat
             # specific keys (prompt_template, system_prompt, etc.) as Jinja2
@@ -265,6 +284,21 @@ class SafetensorsValidator:
                 ))
 
         return findings
+
+    @staticmethod
+    def _has_prompt_injection(text: str) -> bool:
+        """Detect LLM prompt injection directives in plain-text metadata values."""
+        import re as _re
+        _PI_RE = _re.compile(
+            r"(?i)"
+            r"\b(?:ignore|disregard|bypass|override|forget|discard)\b.{0,40}"
+            r"\b(?:previous|prior|prev|all|above|system|safety|original)\b.{0,40}"
+            r"\b(?:instructions?|prompt|rules?|constraints?|guidelines?|context)\b"
+            r"|\bDAN\b.{0,60}\b(?:mode|now|activated)\b"
+            r"|\byou\s+are\s+now\b.{0,60}\b(?:unrestricted|free|jailbreak)\b"
+            r"|\bsystem\s*prompt\b.{0,60}\b(?:output|reveal|print|show|dump)\b"
+        )
+        return bool(_PI_RE.search(text))
 
     @staticmethod
     def _has_code_injection(text: str) -> bool:

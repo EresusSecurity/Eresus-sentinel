@@ -42,6 +42,8 @@ KNOWN_AI_PACKAGES = [
     "xgboost", "lightgbm", "catboost", "fastai", "spacy",
     "nltk", "gensim", "pillow", "opencv-python", "mediapipe",
     "ultralytics", "detectron2", "torchvision", "torchaudio",
+    "requests", "flask", "django", "fastapi", "aiohttp",
+    "boto3", "pyyaml", "cryptography", "paramiko", "jinja2",
 ]
 
 
@@ -105,11 +107,11 @@ class DependencyAuditor:
 
     def audit_directory(self, dirpath: str) -> list[Finding]:
         """Recursively scan a directory for dependency files."""
-        self.findings = []
+        all_findings: list[Finding] = []
         path = Path(dirpath)
 
         if not path.is_dir():
-            return self.findings
+            return all_findings
 
         # Collect all known manifest/lockfile names
         target_files = set()
@@ -128,10 +130,10 @@ class DependencyAuditor:
                 continue
             if fpath.name in target_files:
                 found_any = True
-                self.audit_file(str(fpath))
+                all_findings.extend(self.audit_file(str(fpath)))
 
         if not found_any:
-            self.findings.append(Finding.supply_chain(
+            all_findings.append(Finding.supply_chain(
                 rule_id="DEP-001",
                 title="No dependency files found",
                 description=f"Directory '{dirpath}' has no recognized dependency manifests. "
@@ -140,7 +142,7 @@ class DependencyAuditor:
                 target=dirpath,
             ))
 
-        return self.findings
+        return all_findings
 
     def _parse_requirements_txt(self, filepath: str) -> list[DependencyEntry]:
         """Parse pip requirements.txt format."""

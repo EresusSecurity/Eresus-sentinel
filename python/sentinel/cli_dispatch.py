@@ -223,6 +223,7 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
     name_lower = path.name.lower()
 
     if suffix == ".zip":
+        import io
         import zipfile
         archive_findings = ArchiveSlipDetector().scan_file(str(path))
         findings.extend(archive_findings)
@@ -231,6 +232,42 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
                 with zipfile.ZipFile(str(path), "r") as zf:
                     if any(n.startswith("code/") for n in zf.namelist()):
                         findings.extend(TorchScriptScanner().scan_file(str(path)))
+                    # Scan inner model files for pickle RCE, safetensors SSTI, etc.
+                    _PICKLE_EXTS = {".pkl", ".pickle", ".p", ".dill", ".pt", ".pth",
+                                    ".bin", ".ckpt", ".dat", ".joblib"}
+                    _SAFE_EXTS = {".safetensors"}
+                    _GGUF_EXTS = {".gguf", ".ggml"}
+                    for name in zf.namelist():
+                        inner_suffix = Path(name).suffix.lower()
+                        if inner_suffix in _PICKLE_EXTS:
+                            try:
+                                data = zf.read(name)
+                                inner_findings = PickleScanner().scan_bytes(data, source=f"{path}!{name}")
+                                findings.extend(inner_findings)
+                            except Exception:
+                                pass
+                        elif inner_suffix in _SAFE_EXTS:
+                            try:
+                                import tempfile
+                                with tempfile.NamedTemporaryFile(suffix=inner_suffix, delete=False) as tmp:
+                                    tmp.write(zf.read(name))
+                                    tmp_path = tmp.name
+                                inner_findings = SafetensorsValidator().scan_file(tmp_path)
+                                findings.extend(inner_findings)
+                                Path(tmp_path).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                        elif inner_suffix in _GGUF_EXTS:
+                            try:
+                                import tempfile
+                                with tempfile.NamedTemporaryFile(suffix=inner_suffix, delete=False) as tmp:
+                                    tmp.write(zf.read(name))
+                                    tmp_path = tmp.name
+                                inner_findings = GGUFAnalyzer().scan_file(tmp_path)
+                                findings.extend(inner_findings)
+                                Path(tmp_path).unlink(missing_ok=True)
+                            except Exception:
+                                pass
             except zipfile.BadZipFile:
                 pass
         return findings
@@ -272,6 +309,15 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".xml",): OpenVINOScanner,
         (".jinja", ".jinja2", ".j2", ".template"): Jinja2InjectionScanner,
     }
+
+    # Model card / README.md — prompt injection and SSTI patterns
+    if suffix == ".md" and path.name.lower() in ("readme.md", "model_card.md", "modelcard.md"):
+        try:
+            from sentinel.scanner_selection import ManifestScanner
+            findings.extend(_findings_from_artifact_result(ManifestScanner().scan_file(str(path))))
+        except Exception as exc:
+            logger.warning("ManifestScanner failed on %s: %s", path, exc)
+        return findings
 
     for extensions, scanner_classes in scanner_map.items():
         if any(name_lower.endswith(ext) for ext in extensions):

@@ -75,7 +75,9 @@ def main():
     parser.add_argument("--webhook-url", default=None, help="HTTP endpoint for webhook format (-f webhook)")
     parser.add_argument("--webhook-token", default=None, help="Bearer token for webhook auth")
     parser.add_argument("--show-skipped", action="store_true", help="show files skipped due to unsupported format")
-    parser.add_argument("--min-severity", choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+    parser.add_argument("--min-severity",
+                        choices=["info", "low", "medium", "high", "critical",
+                                 "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
                         help="minimum severity to report")
 
     sub = parser.add_subparsers(dest="command")
@@ -88,7 +90,8 @@ def main():
         if severity:
             p.add_argument(
                 "--min-severity",
-                choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+                choices=["info", "low", "medium", "high", "critical",
+                         "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
                 default=argparse.SUPPRESS,
             )
 
@@ -110,7 +113,8 @@ def main():
     p.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     p.add_argument(
         "--min-severity",
-        choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        choices=["info", "low", "medium", "high", "critical",
+                 "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
         default=argparse.SUPPRESS,
     )
     p.add_argument(
@@ -330,7 +334,8 @@ def main():
     a2a_scan.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
     a2a_scan.add_argument(
         "--min-severity",
-        choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        choices=["info", "low", "medium", "high", "critical",
+                 "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
         default=argparse.SUPPRESS,
     )
     a2a_scan.set_defaults(func=cmd_a2a, a2a_action="scan")
@@ -371,6 +376,13 @@ def main():
     _add_output_args(p)
     p.set_defaults(func=cmd_notebook)
 
+    from sentinel.cli.cmd_redteam_ext import (
+        cmd_redteam_compare,
+        cmd_redteam_schedule,
+        cmd_redteam_pdf,
+        cmd_redteam_budget,
+    )
+
     p = sub.add_parser("red-team", aliases=["redteam"], help="red team probes")
     p.add_argument("target", nargs="?")
     p.add_argument("--target", dest="target_flag")
@@ -392,6 +404,71 @@ def main():
         help="attack strategy name (e.g. autodan, meta_agent, adaptive)",
     )
     p.set_defaults(func=cmd_redteam)
+
+    # ── sentinel redteam compare ───────────────────────────────────────
+    p_cmp = sub.add_parser(
+        "redteam-compare",
+        aliases=["rt-compare"],
+        help="run probes against multiple models side-by-side",
+    )
+    p_cmp.add_argument(
+        "--models", nargs="+", required=True, metavar="MODEL",
+        help="model names to compare (e.g. gpt-4o claude-3-sonnet)",
+    )
+    p_cmp.add_argument(
+        "--probes", nargs="+", metavar="PROBE",
+        help="probe names (default: pair persuasion many_shot)",
+    )
+    p_cmp.add_argument(
+        "--max-prompts", type=int, default=10, metavar="N",
+        help="max prompts per probe per model (default: 10)",
+    )
+    p_cmp.add_argument(
+        "--budget", type=float, default=None, metavar="USD",
+        help="max API spend in USD across all models",
+    )
+    p_cmp.add_argument(
+        "--pdf", default=None, metavar="PATH",
+        help="export results to PDF at this path",
+    )
+    _add_output_args(p_cmp, formats=["table", "json"], severity=False)
+    p_cmp.set_defaults(func=cmd_redteam_compare)
+
+    # ── sentinel redteam schedule ──────────────────────────────────────
+    p_sch = sub.add_parser(
+        "redteam-schedule",
+        aliases=["rt-schedule"],
+        help="manage recurring red-team scans",
+    )
+    p_sch.add_argument(
+        "schedule_action",
+        nargs="?",
+        choices=["list", "add", "remove", "run", "run-now"],
+        default="list",
+        help="action: list|add|remove|run|run-now (default: list)",
+    )
+    p_sch.add_argument("--db", default=None, metavar="PATH", help="schedule DB JSON path")
+    p_sch.add_argument("--name", default="Unnamed Scan", help="schedule entry name (for add)")
+    p_sch.add_argument("--cron", default="0 * * * *", help="cron expression (for add)")
+    p_sch.add_argument("--probes", nargs="+", help="probe names (for add)")
+    p_sch.add_argument("--model", default=None, help="generator model (for add)")
+    p_sch.add_argument("--webhook", default=None, help="webhook URL for notifications (for add)")
+    p_sch.add_argument("--id", default=None, help="schedule entry id (for remove/run-now)")
+    p_sch.set_defaults(func=cmd_redteam_schedule)
+
+    # ── sentinel redteam-pdf ───────────────────────────────────────────
+    p_pdf = sub.add_parser(
+        "redteam-pdf",
+        aliases=["rt-pdf"],
+        help="export redteam JSON results to PDF",
+    )
+    p_pdf.add_argument("json_file", help="path to redteam JSON results file")
+    p_pdf.add_argument("-o", "--output", default=None, help="output PDF path")
+    p_pdf.add_argument(
+        "--backend", choices=["auto", "reportlab", "weasyprint", "markdown"],
+        default="auto", help="PDF rendering backend",
+    )
+    p_pdf.set_defaults(func=cmd_redteam_pdf)
 
     p = sub.add_parser("secrets-scan", aliases=["secrets"], help="enterprise secrets scanner (120+ patterns)")
     p.add_argument("path", help="file or directory to scan")
@@ -997,7 +1074,8 @@ def main():
             result = args.func(args)
         sys.exit(result if isinstance(result, int) else 0)
     except Exception as e:
-        err.print(f"  [red]error:[/red] {e}")
+        from rich.markup import escape as _esc
+        err.print(f"  [red]error:[/red] {_esc(str(e))}")
         sys.exit(2)
 
 

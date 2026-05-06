@@ -23,6 +23,26 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+def _mask_key(key: str | None) -> str:
+    """Mask an API key for safe logging — shows only first 4 and last 4 chars."""
+    if not key:
+        return "(not set)"
+    if len(key) <= 8:
+        return "***"
+    return f"{key[:4]}...{key[-4:]}"
+
+
+def _sanitize_error(exc: Exception) -> str:
+    """Remove potential API key / token values from exception messages."""
+    import re
+    msg = str(exc)
+    # Redact anything that looks like a bearer token or sk-... key
+    msg = re.sub(r"sk-[A-Za-z0-9_-]{8,}", "sk-***", msg)
+    msg = re.sub(r"Bearer [A-Za-z0-9_\-\.]+", "Bearer ***", msg)
+    msg = re.sub(r"api[_-]?key[=:\s]+[A-Za-z0-9_\-]{8,}", "api_key=***", msg, flags=re.IGNORECASE)
+    return msg
+
+
 @dataclass
 class GeneratorResponse:
     """Standardized response from any generator."""
@@ -211,11 +231,15 @@ class Generator(ABC):
                     delay = self.config.retry_delay * (2 ** attempt)
                     logger.warning(
                         "Generator %s attempt %d/%d failed: %s. Retrying in %.1fs",
-                        self.name, attempt + 1, self.config.max_retries, exc, delay
+                        self.name, attempt + 1, self.config.max_retries,
+                        _sanitize_error(exc), delay,
                     )
                     time.sleep(delay)
 
-        raise RuntimeError(f"Generator {self.name} failed after {self.config.max_retries + 1} attempts: {last_error}")
+        raise RuntimeError(
+            f"Generator {self.name} failed after {self.config.max_retries + 1} attempts: "
+            f"{_sanitize_error(last_error)}"
+        )
 
     def _enforce_rate_limit(self):
         """Simple rate limiting."""

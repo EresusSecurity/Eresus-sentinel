@@ -10,7 +10,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class EvalRunRecord:
     run_id: str

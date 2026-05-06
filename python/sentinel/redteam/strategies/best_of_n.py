@@ -112,10 +112,81 @@ class BestOfNStrategy(BaseStrategy):
         """
         scored = []
         for prompt, response in responses:
-            if self.use_basic_refusal:
-                jailbreak = not is_refusal(response)
-            else:
-                # Without LLM judge, fall back to is-refusal heuristic
-                jailbreak = not is_refusal(response)
+            jailbreak = not is_refusal(response)
             scored.append((prompt, response, jailbreak))
         return scored
+
+    def run_with_temperature_sweep(
+        self,
+        prompt: str,
+        generator: object,
+        temperatures: list[float] | None = None,
+        max_workers: int = 4,
+        classifier: object | None = None,
+    ) -> dict[str, object]:
+        """Run the same prompt at multiple temperatures in parallel and return
+        the best (non-refusal) response.
+
+        Args:
+            prompt:       The attack prompt to try.
+            generator:    Generator instance — must support `config.temperature`.
+            temperatures: Temperature values to sweep (default: 9 values 0.3→1.5).
+            max_workers:  Thread-pool size for parallel calls.
+            classifier:   Optional classifier; defaults to heuristic is_refusal check.
+
+        Returns:
+            dict with keys: best_prompt, best_response, best_temperature,
+                            succeeded, all_results.
+        """
+        import concurrent.futures
+        import copy
+
+        temps = temperatures or [0.3, 0.5, 0.7, 0.9, 1.0, 1.1, 1.2, 1.3, 1.5]
+        variants = self.transform(prompt)
+
+        def _try(variant: str, temp: float) -> dict:
+            try:
+                orig_temp = None
+                if hasattr(generator, "config") and hasattr(generator.config, "temperature"):
+                    orig_temp = generator.config.temperature
+                    generator.config.temperature = temp  # type: ignore[union-attr]
+                resp = generator.generate(variant)  # type: ignore[union-attr]
+                response_text = getattr(resp, "text", str(resp))
+                if orig_temp is not None:
+                    generator.config.temperature = orig_temp  # type: ignore[union-attr]
+                succeeded = not is_refusal(response_text)
+                if classifier and hasattr(classifier, "classify"):
+                    try:
+                        result = classifier.classify(variant, response_text)
+                        succeeded = result.attack_succeeded
+                    except Exception:
+                        pass
+                return {"variant": variant, "response": response_text,
+                        "temperature": temp, "succeeded": succeeded}
+            except Exception as exc:
+                return {"variant": variant, "response": "", "temperature": temp,
+                        "succeeded": False, "error": str(exc)}
+
+        tasks = [(v, t) for v in variants[:self.n] for t in temps]
+        all_results: list[dict] = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_try, v, t): (v, t) for v, t in tasks}
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    all_results.append(future.result())
+                except Exception as exc:
+                    all_results.append({"succeeded": False, "error": str(exc)})
+
+        successes = [r for r in all_results if r.get("succeeded")]
+        best = successes[0] if successes else (all_results[0] if all_results else {})
+
+        return {
+            "best_prompt": best.get("variant", prompt),
+            "best_response": best.get("response", ""),
+            "best_temperature": best.get("temperature"),
+            "succeeded": bool(successes),
+            "total_tried": len(all_results),
+            "success_count": len(successes),
+            "all_results": all_results,
+        }

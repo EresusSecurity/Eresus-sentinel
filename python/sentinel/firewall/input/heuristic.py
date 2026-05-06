@@ -212,6 +212,193 @@ _INDIRECT_PROBE_RE = re.compile(
     r"|what\s+(?:secrets?|information)\s+(?:are\s+you\s+(?:keeping|hiding)|were\s+you\s+told)"
     r"|(?:dump|print|show|reveal|expose)\s+(?:your\s+|all\s+of\s+your\s+)?context\s+window"
     r"|output\s+(?:all\s+of\s+)?your\s+(?:full\s+)?context"
+    # Internal state / reasoning chain leakage
+    r"|(?:output|print|show|reveal|display)\s+(?:your\s+)?(?:internal\s+)?(?:reasoning|thinking|thought|scratchpad|chain\s+of\s+thought)"
+    r"|output\s+your\s+(?:entire\s+)?(?:text\s+block|context|system).{0,60}(?:verbatim|word\s+for\s+word)"
+    r")"
+)
+
+# New-rule / policy override injection
+_NEW_RULE_INJECT_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"new\s+rule(?:s)?(?:\s+from\s+now\s+on|(?:\s+is|\s*:))"
+    r"|from\s+now\s+on\s+(?:you\s+(?:must|shall|will|should|have\s+to)|the\s+(?:rule|policy))"
+    r"|(?:end|stop|close)\s+(?:context|session|conversation)[.,\s]*"
+    r"(?:begin|start|open|new)\s+(?:context|session|conversation)"
+    r"|you\s+have\s+no\s+safety\s+guidelines"
+    r"|no\s+safety\s+guidelines"
+    r"|answer\s+(?:every|all)\s+(?:question|prompt)s?\s+without\s+restrictions?"
+    r")"
+)
+
+# Indirect AI-targeting / indirect injection (document/web context)
+_INDIRECT_AI_TARGET_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"if\s+you\s+are\s+an?\s+ai"
+    r"|if\s+you'?re\s+an?\s+(?:ai|llm|language\s+model|assistant)"
+    r"|(?:ai|llm|language\s+model)\s+(?:reading|processing|analyzing|scanning)\s+this"
+    r"|(?:assistant|bot)\s+reading\s+this"
+    r"|(?:forward|send|email|transmit)\s+(?:all\s+)?(?:conversation|messages?|context|prompt|system)\s+to"
+    r"|respond\s+with\s*:\s*(?:i\s+have\s+been\s+compromised|i\s+am\s+compromised)"
+    r")"
+)
+
+# Markdown/URL-based exfiltration patterns
+_MARKDOWN_EXFIL_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"!\[(?:[^\]]{0,60})\]\(https?://(?:[^/]+)/(?:[^)]{0,80})"
+    r"(?:\?[^)]*(?:data|d|q|token|key|content|result|response|secret|prompt|api)[^)]*)"
+    r"|!\[.*?\]\(https?://(?:evil|attacker|exfil|steal|log|capture|track|hook)"
+    r")"
+)
+
+# Jailbreak persona / liberation patterns
+_JAILBREAK_PERSONA_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"\bgodmode\s+(?:enabled?|on|activated?)"
+    r"|\bliberation\s+(?:loading|enabled?|mode|complete)"
+    r"|\bim\s+free\b|\bi'?m\s+(?:free|liberated|unchained|unshackled)\b"
+    r"|\b(?:you\s+are\s+)?aim\b.{0,60}(?:machiavellian|always\s+intelligent|no\s+moral)"
+    r"|\balways\s+intelligent\s+machiavellian\b"
+    r"|\bdan\s+mode\b|\bdan\s+(?:jailbreak|prompt)\b"
+    r"|\bdev(?:eloper)?\s+mode\s+enabled\b"
+    r"|\bno\s+ethical\s+limits?\b"
+    r"|semantic(?:ally)?\s+opposite\s+(?:detailed|output|response)"
+    r"|insert\s+divider.{0,20}godmode"
+    r")"
+)
+
+# NATO phonetic + common steganographic encodings
+_STEGO_ENCODING_RE = re.compile(
+    r"(?i)"
+    r"\b(?:Alpha|Bravo|Charlie|Delta|Echo|Foxtrot|Golf|Hotel|India|Juliet|"
+    r"Kilo|Lima|Mike|November|Oscar|Papa|Quebec|Romeo|Sierra|Tango|"
+    r"Uniform|Victor|Whiskey|X-ray|Yankee|Zulu)\b"
+    r"(?:\s+(?:Alpha|Bravo|Charlie|Delta|Echo|Foxtrot|Golf|Hotel|India|Juliet|"
+    r"Kilo|Lima|Mike|November|Oscar|Papa|Quebec|Romeo|Sierra|Tango|"
+    r"Uniform|Victor|Whiskey|X-ray|Yankee|Zulu)){9,}"
+)
+
+# Reversed/obfuscated injection (check decoded form separately)
+_REVERSED_INJECT_KEYWORDS = frozenset([
+    "snoitcurtsni",  # "instructions" reversed
+    "snoitcurtsnI",
+    "etangised",     # "designate" reversed
+    "erongi",        # "ignore" reversed
+    "tuptuO",        # "Output" reversed
+    "tpmorp",        # "prompt" reversed
+    "tpmorp metsys",  # "system prompt" reversed
+])
+
+# File-read injection probes
+_FILE_READ_INJECT_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"(?:read|output|print|show|reveal|dump|display)\s+(?:(?:and\s+)?(?:output|print|show|display)\s+)?"
+    r"(?:the\s+)?contents?\s+of\s+/(?:etc|proc|var|home|root|Users?)"
+    r"|(?:cat|type)\s+/(?:etc|proc|var|home|root)"
+    r"|/etc/passwd|/etc/shadow|/etc/hosts"
+    r"|~/.ssh/(?:id_rsa|authorized_keys|known_hosts)"
+    r")"
+)
+
+# Agentic action injection (tool-use override)
+_AGENTIC_ACTION_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"execute\s+(?:the\s+following|this|it)\s+without\s+(?:asking|confirming|confirm|prompt)"
+    r"|send\s+(?:an?\s+)?e?mail\s+to\s+(?:all|everyone|all@)"
+    r"|without\s+(?:asking|confirming)\s+(?:for\s+)?(?:permission|confirm|approval)?"
+    r".{0,80}(?:send|execute|run|call|post|delete|drop)"
+    r")"
+)
+
+# Continuation / data-extraction probe
+_CONTINUATION_PROBE_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"continue\s+(?:this\s+)?(?:text|sentence|passage|message)\s*:\s*['\"]?.*(?:api\s+key|token|password|secret|credential)"
+    r"|(?:complete|finish|continue)\s+.*(?:api\s+key\s+is|password\s+is|secret\s+is|token\s+is)"
+    r")"
+)
+
+# PII SQL exfiltration probe
+_PII_SQL_RE = re.compile(
+    r"(?i)"
+    r"SELECT\s+.{0,80}(?:email|ssn|credit_card|password|passwd|phone|address|dob|birth)"
+    r".{0,80}FROM\s+\w"
+)
+
+# Jailbreak override / uncensored / unrestrained patterns
+_JAILBREAK_OVERRIDE_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"\b(?:respond|answer|reply|output|generate)\s+.{0,60}(?:unhinged|uncensored|unfiltered|unrestrained|without\s+censorship|without\s+restriction)\b"
+    r"|\bno\s+(?:rules?|limits?|filter|restriction|censorship)\s+only\b"
+    r"|\b(?:reset|loading|initializing)\s+.{0,20}(?:cortex|refusals?\s+disabled|guardrails?\s+off|limits?\s+removed)\b"
+    r"|\bnew\s+(?:paradigm|mode|system\s+instruction)\b.{0,100}(?:refusal|restriction|limit|uncensored)"
+    r"|\b(?:refusals?\s+disabled|restrictions?\s+disabled|filters?\s+disabled|limits?\s+disabled)\b"
+    r"|\binverse\s+(?:it|your).{0,40}(?:system\s+(?:prompt|instruction)|new\s+system)\b"
+    r"|(?:RULE|RULES)\s*:?\s*NEVER\s+(?:say\s+)?(?:sorry|i\s+can'?t|refuse|decline)"
+    r"|\bleak\s+(?:innerthinking|inner\s+thinking|your\s+thoughts?|context|system)\b"
+    r")"
+)
+
+# Authority spoofing / fake policy jailbreaks
+_AUTHORITY_SPOOF_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"(?:geneva\s+convention|freedom\s+of\s+information|executive\s+order|official\s+policy)"
+    r".{0,60}(?:allows?|permits?|enables?|authorizes?|overrides?)\s+(?:all|every|this|any)"
+    r"|(?:this\s+is\s+(?:a\s+)?(?:government|official|authorized|law\s+enforcement|emergency))"
+    r".{0,60}(?:override|bypass|allow|permit|authorize)"
+    r")"
+)
+
+# Steganographic encoding attacks
+_STEGO_ATTACK_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"(?:invisible|hidden|unicode\s+tag)\s+characters?\s+(?:embedded|encoded|hidden)"
+    r"|(?:cyrillic|lookalike|homoglyph)\s+(?:characters?|letters?)\s+to\s+(?:bypass|evade)"
+    r"|(?:lsb|rgb\s+lsb)\s+steg"
+    r"|(?:each\s+emoji|emoji\s+(?:map|cipher|code))\s+maps?\s+to\s+a\s+(?:letter|character|word)"
+    r"|(?:decode|execute)\s+(?:this|the)\s+(?:binary|hex|base64)\s+(?:sequence|string|data).{0,60}(?:system\s+prompt|instruction|command)"
+    r"|(?:treat\s+as|this\s+is\s+your)\s+new\s+system\s+prompt\s+(?:instruction|command)?"
+    r"|(?:fullwidth|full.width)\s+unicode.{0,60}(?:evade|bypass|avoid)"
+    r"|hidden\s+text.{0,40}(?:then\s+)?execute\s+(?:instruction|command)"
+    r")"
+)
+
+# PLINY / KAEL / named jailbreak tokens
+_NAMED_JAILBREAK_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    r"\bLOVE\s+PLINY\b"
+    r"|\bKAEL\b.{0,40}(?:output|system|prompt|verbatim)"
+    r"|\bvq_1337\b"
+    r"|\bDAN\s+mode\b"
+    r")"
+)
+
+# Anti-refusal / training-data-poisoning jailbreaks
+# Detects prompts that combine adversarial dataset generation with explicit
+# refusal suppression — e.g. JB-016 red-team dataset attack.
+# Requires BOTH components to avoid FPs on legitimate "no refusals" phrases.
+_ANTI_REFUSAL_RE = re.compile(
+    r"(?i)"
+    r"(?:"
+    # "attack pairs / red-team dataset" + refusal suppression (either order)
+    r"\b(?:attack\s+pairs?|adversarial\s+pairs?|jailbreak\s+pairs?|red.?team\s+(?:dataset|pairs?|examples?))"
+    r".{0,120}(?:NOT\s+refusal[s]?|no\s+refusal[s]?|without\s+refusal[s]?|avoid(?:ing)?\s+refusal[s]?)\b"
+    r"|(?:NOT\s+refusal[s]?|no\s+refusal[s]?|without\s+refusal[s]?|avoid(?:ing)?\s+refusal[s]?)"
+    r".{0,120}\b(?:attack\s+pairs?|adversarial\s+pairs?|jailbreak\s+pairs?|red.?team\s+(?:dataset|pairs?|examples?))\b"
+    # Explicit "successes must be X NOT refusals" construction
+    r"|successes?\s+must\s+be\s+(?:\w+\s+)?NOT\s+refusal[s]?"
     r")"
 )
 
@@ -381,6 +568,155 @@ class HeuristicInjectionScanner(InputScanner):
                 title="System prompt reveal attempt detected",
                 pattern="system-prompt-reveal",
                 confidence=0.89,
+            )
+
+        if _NEW_RULE_INJECT_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="New-rule / policy-override injection detected",
+                pattern="new-rule-injection",
+                confidence=0.91,
+            )
+
+        if _INDIRECT_AI_TARGET_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Indirect AI-targeting injection detected",
+                pattern="indirect-ai-target",
+                confidence=0.90,
+            )
+
+        if _MARKDOWN_EXFIL_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Markdown URL exfiltration attempt detected",
+                pattern="markdown-exfiltration",
+                confidence=0.92,
+            )
+
+        if _JAILBREAK_PERSONA_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Jailbreak persona/liberation pattern detected",
+                pattern="jailbreak-persona",
+                confidence=0.91,
+            )
+
+        if _STEGO_ENCODING_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="NATO phonetic alphabet encoding detected",
+                pattern="nato-phonetic-encoding",
+                confidence=0.88,
+            )
+
+        # Check for reversed-text injection keywords
+        for kw in _REVERSED_INJECT_KEYWORDS:
+            if kw.lower() in expanded.lower():
+                return _blocking_result(
+                    prompt,
+                    title="Reversed-text injection encoding detected",
+                    pattern="reversed-text-encoding",
+                    confidence=0.87,
+                )
+
+        if _FILE_READ_INJECT_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="File-read injection probe detected",
+                pattern="file-read-injection",
+                confidence=0.92,
+            )
+
+        if _AGENTIC_ACTION_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Agentic action injection detected",
+                pattern="agentic-action-injection",
+                confidence=0.90,
+            )
+
+        if _CONTINUATION_PROBE_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Data-extraction continuation probe detected",
+                pattern="continuation-data-probe",
+                confidence=0.89,
+            )
+
+        if _PII_SQL_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="SQL PII exfiltration query detected",
+                pattern="pii-sql-exfiltration",
+                confidence=0.92,
+            )
+
+        # "provide/give/output unrestrained/uncensored response" without leading verb captured above
+        if re.search(r"(?i)\b(?:provide|give|generate|make)\b.{0,80}\b(?:unrestrained|uncensored|unfiltered)\b.{0,40}\b(?:response|answer|output|reply)\b", expanded):
+            return _blocking_result(
+                prompt,
+                title="Uncensored/unrestrained output request detected",
+                pattern="unrestrained-output-request",
+                confidence=0.89,
+            )
+
+        # Agentic/tool-abuse patterns
+        if re.search(r"(?i)(?:call\s+(?:the\s+)?system\s+function.{0,60}(?:execute|arbitrary|command)|transfer\s+text\s+without\s+displaying|web\s+search\s+tool.{0,60}without\s+(?:display|show))", expanded):
+            return _blocking_result(
+                prompt,
+                title="Agentic tool-abuse injection detected",
+                pattern="agentic-tool-abuse",
+                confidence=0.91,
+            )
+
+        # "Access Restricted Section" roleplay framing
+        if re.search(r"(?i)access\s+restricted\s+section", expanded):
+            return _blocking_result(
+                prompt,
+                title="Restricted-section access injection detected",
+                pattern="access-restricted-section",
+                confidence=0.88,
+            )
+
+        if _ANTI_REFUSAL_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Anti-refusal / safety-suppression jailbreak detected",
+                pattern="anti-refusal-demand",
+                confidence=0.90,
+            )
+
+        if _JAILBREAK_OVERRIDE_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Jailbreak override / uncensored-mode pattern detected",
+                pattern="jailbreak-override",
+                confidence=0.91,
+            )
+
+        if _AUTHORITY_SPOOF_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Authority-spoofing jailbreak detected",
+                pattern="authority-spoof",
+                confidence=0.90,
+            )
+
+        if _STEGO_ATTACK_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Steganographic encoding attack detected",
+                pattern="stego-encoding-attack",
+                confidence=0.92,
+            )
+
+        if _NAMED_JAILBREAK_RE.search(expanded):
+            return _blocking_result(
+                prompt,
+                title="Named jailbreak token detected",
+                pattern="named-jailbreak",
+                confidence=0.93,
             )
 
         max_score = 0.0

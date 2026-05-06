@@ -4,7 +4,7 @@ Eresus Sentinel — Red Team Generators Package.
 Generator adapters for connecting to target LLMs during red-team assessments.
 Each generator provides a unified interface for sending prompts and receiving responses.
 
-Supported backends (12):
+Supported backends (14):
   - OpenAI (GPT-5.4, GPT-5.4-pro/mini/nano, GPT-5.3-Codex, GPT-OSS, o3/o4-mini)
   - Anthropic (Claude Opus 4.6, Sonnet 4.6, Haiku 4.5)
   - Azure OpenAI (Azure-hosted GPT-5.4 deployments)
@@ -17,6 +17,8 @@ Supported backends (12):
   - Generic REST API (any OpenAI-compatible endpoint)
   - Echo (testing)
   - Function (custom callable)
+  - WebSocket (streaming WebSocket target)
+  - OpenRouter (300+ models via single API key)
 """
 
 from sentinel.redteam.generators.anthropic import AnthropicGenerator
@@ -31,7 +33,9 @@ from sentinel.redteam.generators.litellm import LiteLLMGenerator
 from sentinel.redteam.generators.ollama import OllamaGenerator
 from sentinel.redteam.generators.openai import OpenAIGenerator
 from sentinel.redteam.generators.rest import RESTGenerator
+from sentinel.redteam.generators.openrouter import OpenRouterGenerator
 from sentinel.redteam.generators.together import TogetherGenerator
+from sentinel.redteam.generators.websocket import WebSocketGenerator
 
 __all__ = [
     "Generator", "GeneratorResponse",
@@ -39,6 +43,7 @@ __all__ = [
     "GeminiGenerator", "HuggingFaceGenerator", "OllamaGenerator",
     "GroqGenerator", "TogetherGenerator", "LiteLLMGenerator",
     "RESTGenerator", "EchoGenerator", "FunctionGenerator",
+    "WebSocketGenerator", "OpenRouterGenerator",
 ]
 
 GENERATOR_REGISTRY = {
@@ -54,6 +59,8 @@ GENERATOR_REGISTRY = {
     "rest": RESTGenerator,
     "echo": EchoGenerator,
     "function": FunctionGenerator,
+    "websocket": WebSocketGenerator,
+    "openrouter": OpenRouterGenerator,
 }
 
 

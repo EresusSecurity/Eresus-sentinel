@@ -104,6 +104,19 @@ _ANCHOR_REF_RATIO = 10             # aliases per unique anchor
 # Merge-key pattern (ARTIFACT-040)
 _MERGE_KEY_RE = re.compile(r"^[ \t]*<<\s*:\s*\*([A-Za-z0-9_.\-]+)", re.MULTILINE)
 
+# Prompt injection pattern — detects supply-chain LLM prompt poisoning in YAML
+# values (e.g. system_prompt, chat_template, description fields in model cards).
+_PROMPT_INJECT_RE = re.compile(
+    r"(?i)"
+    r"\b(?:ignore|disregard|bypass|override|forget|discard)\b.{0,40}"
+    r"\b(?:previous|prior|prev|all|above|system|safety|original)\b.{0,40}"
+    r"\b(?:instructions?|prompt|rules?|constraints?|guidelines?|context)\b"
+    r"|\bDAN\b.{0,60}\b(?:mode|now|activated)\b"
+    r"|\byou\s+are\s+now\b.{0,60}\b(?:unrestricted|free|jailbreak)\b"
+    r"|\bsystem\s*prompt\b.{0,60}\b(?:output|reveal|print|show|dump)\b",
+    re.DOTALL,
+)
+
 _MAX_SCAN_BYTES = 32 * 1024 * 1024  # 32 MB cap
 
 
@@ -133,6 +146,9 @@ class YamlScanner:
         # ── ARTIFACT-038: reverse shell / backdoor payloads in values ──────
         findings.extend(self._check_backdoor_payloads(text, path))
 
+        # ── ARTIFACT-040a: prompt injection in YAML values ──────────────────
+        findings.extend(self._check_prompt_injection(text, path))
+
         # ── ARTIFACT-039: anchor/alias bomb ────────────────────────────────
         findings.extend(self._check_anchor_bomb(text, path))
 
@@ -144,6 +160,40 @@ class YamlScanner:
     # -----------------------------------------------------------------------
     # Private helpers
     # -----------------------------------------------------------------------
+
+    def _check_prompt_injection(
+        self, text: str, path: Path
+    ) -> list[Finding]:
+        """Detect LLM prompt injection directives in YAML string values.
+
+        Model cards, tokenizer configs, and system prompt fields in YAML
+        files are a supply-chain attack vector for poisoning LLM pipelines.
+        """
+        m = _PROMPT_INJECT_RE.search(text)
+        if not m:
+            return []
+        line_no = text[: m.start()].count("\n") + 1
+        snippet = text[max(0, m.start() - 20): m.end() + 20].replace("\n", " ")
+        return [Finding.artifact(
+            rule_id="ARTIFACT-041",
+            title="Prompt injection directive in YAML model artifact",
+            description=(
+                "YAML file contains a prompt injection directive in a string value. "
+                "This is a supply-chain attack vector: model cards, tokenizer "
+                "configs, and system_prompt fields are often surfaced directly "
+                "to downstream LLMs, allowing an attacker to override safety "
+                "instructions or hijack agent behavior."
+            ),
+            severity=Severity.HIGH,
+            target=f"{path}:{line_no}",
+            evidence=f"match={snippet!r}",
+            cwe_ids=["CWE-77"],
+            remediation=(
+                "Treat all string values in model YAML as untrusted. "
+                "Sanitize or reject model metadata containing instruction "
+                "override directives before passing to any LLM pipeline."
+            ),
+        )]
 
     def _check_unsafe_tags(
         self, data: bytes, path: Path

@@ -52,7 +52,7 @@ _LEAK_PATTERNS: dict[str, list[tuple[re.Pattern, float, str]]] = {
     ],
     "roleplay_extraction": [
         (re.compile(r"\b(?:pretend|act\s*as\s*if|roleplay|imagine)\b.{0,40}\b(?:no\s*rules|no\s*(?:restrictions|guidelines)|unlimited|unrestricted)", re.I), 0.9, "Unrestricted roleplay"),
-        (re.compile(r"\b(?:DAN|Do\s*Anything\s*Now|STAN|Developer\s*Mode|God\s*Mode|Jailbreak)", re.I), 0.95, "Known jailbreak persona"),
+        (re.compile(r"\b(?:DAN|Do\s*Anything\s*Now|STAN|Developer\s*Mode|God\s*Mode|Jailbreak)\b", re.I), 0.95, "Known jailbreak persona"),
         (re.compile(r"\b(?:you\s*are\s*(?:a\s*)?(?:hacker|penetration\s*tester|security\s*researcher))\b.{0,40}\b(?:reveal|extract|access)", re.I), 0.85, "Security researcher roleplay"),
     ],
     "summarization_leak": [

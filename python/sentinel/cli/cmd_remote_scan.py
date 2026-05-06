@@ -37,6 +37,13 @@ def cmd_remote_scan(args) -> int:
         if any("not installed" in e or "not available" in e for e in result.errors):
             _fail("required dependency missing — see errors above")
             return 2
+        # Unsupported scheme, invalid URI, or configuration error
+        if any(
+            "unsupported" in e.lower() or "invalid" in e.lower() or "error" in e.lower()
+            for e in result.errors
+        ):
+            _fail(f"invalid or unsupported URI: {uri}")
+            return 2
 
     findings = result.findings
     fmt = getattr(args, "format", "table")

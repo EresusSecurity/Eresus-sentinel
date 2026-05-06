@@ -142,8 +142,11 @@ def _is_negated_source_match(text: str, pos: int) -> bool:
     window = lower[max(0, pos - _WINDOW_CHARS):pos]
     if NEGATION_PATTERN.search(window):
         return True
+    # Check for documentation/glossary context — but NOT "description" since
+    # that is a ubiquitous JSON/YAML key name and would suppress real findings
+    # inside "description" field values.
     context = lower[max(0, pos - 80):pos + 80]
-    return bool(re.search(r"\b(?:define|definition|glossary|explain|description|classify)\b", context))
+    return bool(re.search(r"\b(?:define|definition|glossary|explain|classify)\b", context))
 
 
 def _has_a2a_context(path: Path, text: str) -> bool:

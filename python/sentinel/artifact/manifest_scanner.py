@@ -38,6 +38,17 @@ _MAX_DEPTH = 32
 _MAX_URL_FINDINGS = 20
 _MAX_KEY_FINDINGS = 30
 
+# Tokenizer / vocabulary files whose keys are language tokens, not config.
+# Scanning them for "password" / "secret" / "exec" yields only FPs.
+_VOCAB_FILENAMES: frozenset[str] = frozenset({
+    "tokenizer.json", "vocab.json", "merges.txt",
+    "special_tokens_map.json", "added_tokens.json",
+    "spiece.model", "sentencepiece.bpe.model",
+})
+
+# Deep JSON paths inside tokenizer structures that hold vocabulary maps.
+_VOCAB_PATH_PREFIXES = ("model.vocab.", "added_tokens.", "vocab.", "merges.")
+
 _URL_RE = re.compile(r'https?://[a-zA-Z0-9.\-_/:?=&%#@]+', re.IGNORECASE)
 _CLOUD_URI_RE = re.compile(
     r'(?:s3|gs|az|wasbs?|abfss?)://[^\s"<>]+', re.IGNORECASE
@@ -324,14 +335,30 @@ class MLManifestScanner:
 
     # Jinja2 {% include %} inside a chat_template value = file inclusion attack
     _JINJA2_INCLUDE_RE = re.compile(r'\{%-?\s*include\s+[\'"]', re.IGNORECASE)
-
+    # Patterns that indicate actual SSTI exploitation (not just normal templating)
+    _SSTI_EXPLOIT_RE = re.compile(
+        r'__class__|__subclasses__|__mro__|__globals__|__builtins__'
+        r'|subprocess|popen|os\.system|eval\s*\(|exec\s*\('
+        r'|lipsum\s*\[|cycler\s*\[|joiner\s*\[|namespace\s*\['
+        r'|attr\s*\(.*__'
+        r'|request\.environ|config\.items',
+        re.IGNORECASE | re.DOTALL,
+    )
     def _check_suspicious_key_rules(self, obj: Any, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
+        # Vocabulary files contain language tokens ("password", "secret", …)
+        # that are NOT config keys — skip suspicious-key scan entirely.
+        fname = Path(filepath).name.lower()
+        if fname in _VOCAB_FILENAMES:
+            return findings
         rules = _suspicious_key_rules()
         seen: set[str] = set()
         for path_str, key, value in _iter_key_value_pairs(obj):
             if len(findings) >= _MAX_KEY_FINDINGS:
                 break
+            # Skip vocabulary/token map paths inside tokenizer structures
+            if any(path_str.startswith(pfx) for pfx in _VOCAB_PATH_PREFIXES):
+                continue
             for rule_id, title, pats, sev, cwe_ids, description in rules:
                 cache_key = f"{rule_id}:{path_str}"
                 if cache_key in seen:
@@ -359,6 +386,26 @@ class MLManifestScanner:
                                 target=filepath,
                                 evidence=evidence,
                                 cwe_ids=["CWE-98", "CWE-94"],
+                            ))
+                        elif (rule_id == "MANIFEST-KEY-003"
+                                and isinstance(value, str)
+                                and not self._SSTI_EXPLOIT_RE.search(value)):
+                            # chat_template present but no SSTI exploit patterns found.
+                            # Downgrade to MEDIUM advisory — legitimate instruct models
+                            # always have a chat_template; only escalate when the value
+                            # contains actual SSTI payload markers.
+                            findings.append(Finding.artifact(
+                                rule_id=rule_id,
+                                title=title + " (audit recommended)",
+                                description=(
+                                    f"Field '{path_str}' in '{filepath}' contains a Jinja2 "
+                                    f"template. No exploit patterns detected in value, but the "
+                                    f"template should be audited before deployment."
+                                ),
+                                severity=Severity.MEDIUM,
+                                target=filepath,
+                                evidence=evidence,
+                                cwe_ids=cwe_ids,
                             ))
                         else:
                             findings.append(Finding.artifact(

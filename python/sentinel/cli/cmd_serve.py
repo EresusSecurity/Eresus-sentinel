@@ -28,6 +28,10 @@ def cmd_serve(args):
     policy = getattr(args, 'policy', '')
     host, port = args.host, args.port
 
+    if not (1 <= port <= 65535):
+        _fail(f"invalid port {port} — must be between 1 and 65535")
+        return 2
+
     if use_ui:
         public_bind_hosts = {"0.0.0.0", "::"}  # noqa: S104 - display URL for public binds
         display_host = "127.0.0.1" if host in public_bind_hosts else host
@@ -154,6 +158,20 @@ def cmd_proxy(args):
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8080)
         upstream = getattr(args, "upstream", "http://localhost:3000")
+
+        # Validate port range
+        if not (1 <= port <= 65535):
+            _fail(f"invalid port {port} — must be between 1 and 65535")
+            return 2
+
+        # Validate upstream URL
+        if not upstream or not upstream.strip():
+            _fail("--upstream URL cannot be empty")
+            return 2
+        if not upstream.startswith(("http://", "https://")):
+            _fail(f"invalid --upstream URL '{upstream}' — must start with http:// or https://")
+            return 2
+
         console.print(f"  [green]▶[/green] listening on {host}:{port} → {upstream}")
         console.print(f"  [dim]health: http://{host}:{port}/health[/dim]")
         try:

@@ -699,7 +699,9 @@ class KerasScanner:
         findings = []
         source = str(path)
 
-        # Always flag HDF5 as legacy risk
+        # Always flag HDF5 as legacy risk (advisory — LOW severity)
+        # MEDIUM would trigger on every legitimate TF/Keras HDF5 model;
+        # downgrade to LOW so the advisory is surfaced without blocking CI.
         findings.append(Finding.artifact(
             rule_id="KERAS-010",
             title="Legacy HDF5 model format",
@@ -709,7 +711,7 @@ class KerasScanner:
                 "WILL execute during model loading. Convert to .keras format and use "
                 "safe_mode=True."
             ),
-            severity=Severity.MEDIUM,
+            severity=Severity.LOW,
             target=source,
             cwe_ids=["CWE-502"],
             remediation=(

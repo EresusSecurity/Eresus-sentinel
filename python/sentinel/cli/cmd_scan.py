@@ -69,7 +69,8 @@ def _add_artifact_output_args(parser: argparse.ArgumentParser, *, severity: bool
     if severity:
         parser.add_argument(
             "--min-severity",
-            choices=["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+            choices=["info", "low", "medium", "high", "critical",
+                     "INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
             default=argparse.SUPPRESS,
         )
 
@@ -457,7 +458,7 @@ def cmd_artifact_entry(args: argparse.Namespace) -> int:
         tokens = tokens[1:]
     if not tokens or tokens[0] in {"-h", "--help"}:
         _artifact_legacy_parser().print_help()
-        return 0
+        return 2 if not tokens else 0
 
     action = tokens[0]
     if action == "scan":
@@ -597,6 +598,13 @@ def cmd_scan(args):
     if not os.path.exists(args.path):
         from sentinel.cli._helpers import err
         err.print(f"  [red]error:[/red] target not found: {args.path}")
+        return 2
+
+    # Reject empty output path before doing any work
+    out = getattr(args, "output", None)
+    if out is not None and not out.strip():
+        from sentinel.cli._helpers import err
+        err.print("  [red]error:[/red] -o/--output path cannot be empty")
         return 2
 
     resolved = os.path.realpath(args.path)
@@ -778,6 +786,10 @@ def cmd_firewall(args):
     text = sys.stdin.read() if args.input == "-" else args.input
     direction = args.direction
     fmt = getattr(args, "format", "table")
+
+    if not text or not text.strip():
+        _fail("input must not be empty or whitespace-only")
+        return 2
 
     if len(text) > MAX_FIREWALL_INPUT:
         _warn(f"input truncated from {len(text):,} to {MAX_FIREWALL_INPUT:,} chars (DoS protection)")

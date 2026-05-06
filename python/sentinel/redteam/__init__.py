@@ -8,9 +8,9 @@ Architecture:
     Evaluator orchestrates full red team sessions with scoring.
 
 Modules:
-    probes/      — 39 attack vector classes across 8 categories
+    probes/      — 45+ attack vector classes across 8 categories
     detectors/   — 12 advanced detectors (tool chain, exfil, behavioral, toxicity)
-    generators/  — 12 target adapters (OpenAI, Anthropic, Gemini, Groq, Together, etc.)
+    generators/  — 14 target adapters (OpenAI, Anthropic, Gemini, Groq, Together, WebSocket, OpenRouter, etc.)
     buffs/       — Prompt mutation engine (encoding, paraphrase, templates, chains)
     harness      — Pipeline coordinator with multi-turn + chain support
     analyzer     — Post-run statistical analysis and OWASP mapping
@@ -23,6 +23,7 @@ from sentinel.redteam.attempt import Attempt, AttemptStatus
 from sentinel.redteam.buffs import (
     Buff,
     ChainBuff,
+    CipherBuff,
     EncodingBuff,
     LowResourceLanguageBuff,
     MultiTemplateBuff,
@@ -56,8 +57,23 @@ from sentinel.redteam.probe import (
     SystemPromptExtractionProbe,
 )
 
+from .budget import BudgetController, BudgetExceededError, BudgetSnapshot
+from .classifiers import (
+    CommitteeClassifier,
+    CosineSimilarityClassifier,
+    HeuristicClassifier,
+    InsecureCodeScorer,
+    LLMJudgeClassifier,
+    PlagiarismScorer,
+    ResponseClassifier,
+    SentimentClassifier,
+)
 from .coding_agent import CodingAgentFuzzer, CodingAgentPayloads
 from .compliance_mapper import ComplianceMapper
+from .hf_dataset_registry import HFDatasetRegistry
+from .multi_model_compare import ComparisonReport, MultiModelComparison
+from .report_pdf import RedTeamPDFExporter
+from .scheduler import ScanScheduler, ScheduleEntry
 from .harmful_plugins import CompetitorMentionPlugin, HarmfulContentPlugin, HarmPluginRegistry
 from .injection_plugins import (
     InjectionPluginRegistry,
@@ -82,8 +98,23 @@ __all__ = [
     # Generators
     "Generator", "OllamaGenerator", "OpenAIGenerator", "EchoGenerator",
     # Buffs
-    "Buff", "EncodingBuff", "LowResourceLanguageBuff", "ParaphraseBuff",
+    "Buff", "EncodingBuff", "CipherBuff", "LowResourceLanguageBuff", "ParaphraseBuff",
     "ChainBuff", "ParallelBuff", "TemplateBuff", "MultiTemplateBuff",
+    # Classifiers (Sprint 1)
+    "ResponseClassifier", "HeuristicClassifier", "CommitteeClassifier",
+    # Classifiers (Sprint 2)
+    "CosineSimilarityClassifier", "SentimentClassifier",
+    "InsecureCodeScorer", "PlagiarismScorer", "LLMJudgeClassifier",
+    # Multi-model comparison
+    "MultiModelComparison", "ComparisonReport",
+    # HF Dataset Registry
+    "HFDatasetRegistry",
+    # Scheduler
+    "ScanScheduler", "ScheduleEntry",
+    # Budget controller
+    "BudgetController", "BudgetExceededError", "BudgetSnapshot",
+    # PDF export
+    "RedTeamPDFExporter",
     # Coding Agent Security
     "CodingAgentFuzzer", "CodingAgentPayloads",
     # Injection Plugins

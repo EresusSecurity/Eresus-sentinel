@@ -28,12 +28,19 @@ URL_PATTERN = re.compile(
 
 
 def _check_domain_resolves(domain: str, timeout: float = 2.0) -> bool:
-    """Check if a domain resolves via DNS (per-call timeout, no global side effects)."""
+    """Check if a domain resolves via DNS with per-call timeout.
+
+    Uses thread-local default-timeout save/restore to avoid global side effects.
+    """
+    old_timeout = socket.getdefaulttimeout()
     try:
-        socket.getaddrinfo(domain, None, socket.AF_UNSPEC, socket.SOCK_STREAM, 0, socket.AI_ADDRCONFIG)
+        socket.setdefaulttimeout(timeout)
+        socket.getaddrinfo(domain, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         return True
     except (socket.gaierror, socket.timeout, OSError):
         return False
+    finally:
+        socket.setdefaulttimeout(old_timeout)
 
 
 class URLReachabilityScanner(OutputScanner):

@@ -1128,9 +1128,16 @@ def cmd_scanners(args):
 def cmd_watch(args):
     import hashlib
 
+    path = Path(args.path)
+    if not path.exists():
+        console.print(f"  [red]error:[/red] path not found: {args.path}")
+        return 2
+    if args.interval <= 0:
+        console.print(f"  [red]error:[/red] interval must be positive, got {args.interval}")
+        return 2
+
     _header(f"watch → {args.path} · every {args.interval}s", args=args)
 
-    path = Path(args.path)
     prev = ""
 
     try:

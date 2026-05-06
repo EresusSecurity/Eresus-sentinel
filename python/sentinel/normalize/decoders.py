@@ -87,6 +87,23 @@ def _decode_rot13_candidate(text: str) -> list[str]:
     return []
 
 
+def _decode_rot47_candidate(text: str) -> list[str]:
+    """Decode ROT47 (shifts all printable ASCII 33-126 by 47) and return if
+    any signal word appears in the decoded text."""
+    if not any(33 <= ord(c) <= 126 for c in text):
+        return []
+    decoded = "".join(
+        chr(33 + (ord(c) - 33 + 47) % 94) if 33 <= ord(c) <= 126 else c
+        for c in text
+    )
+    if decoded == text:
+        return []
+    low = decoded.lower()
+    if any(w in low for w in _ROT13_SIGNAL_WORDS) or "previous instructions" in low:
+        return [decoded]
+    return []
+
+
 def _decode_unicode_escape_candidate(text: str) -> list[str]:
     if "\\u" not in text and "\\x" not in text:
         return []
@@ -99,9 +116,34 @@ def _decode_unicode_escape_candidate(text: str) -> list[str]:
     return []
 
 
-def decode_common(text: str, max_decode: int = 4) -> list[str]:
+# ── Spaced-chars and camelCase collapse ───────────────────────
+
+# Matches "I g n o r e" style: single chars separated by spaces
+_SPACED_CHARS_RE = re.compile(r"(?<!\w)(?:[A-Za-z] ){3,}[A-Za-z](?!\w)")
+# CamelCase split: insert space before each uppercase that follows lowercase
+_CAMEL_SPLIT_RE = re.compile(r"([a-z])([A-Z])")
+
+
+def _collapse_spaced_chars(text: str) -> list[str]:
+    """Collapse 'I g n o r e' style spaced-chars back to 'Ignore'."""
+    collapsed = _SPACED_CHARS_RE.sub(lambda m: m.group(0).replace(" ", ""), text)
+    if collapsed != text and _looks_printable(collapsed):
+        return [collapsed]
+    return []
+
+
+def _split_camel_case(text: str) -> list[str]:
+    """Convert 'IgnoreAllPreviousInstructions' → 'Ignore All Previous Instructions'."""
+    split = _CAMEL_SPLIT_RE.sub(r"\1 \2", text)
+    if split != text and _looks_printable(split):
+        return [split]
+    return []
+
+
+def decode_common(text: str, max_decode: int = 8) -> list[str]:
     """Return up to *max_decode* candidate decoded strings extracted
-    from *text*. Handles base64, hex, rot13, and unicode-escape wraps.
+    from *text*. Handles base64, hex, rot13, unicode-escape, URL encoding,
+    NFKC Unicode normalization, spaced-chars, and camelCase wraps.
     """
     candidates: list[str] = []
 
@@ -111,7 +153,28 @@ def decode_common(text: str, max_decode: int = 4) -> list[str]:
     if len(candidates) < max_decode:
         candidates.extend(_decode_rot13_candidate(text))
     if len(candidates) < max_decode:
+        candidates.extend(_decode_rot47_candidate(text))
+    if len(candidates) < max_decode:
         candidates.extend(_decode_unicode_escape_candidate(text))
+    # URL decode (handles %XX, %uXXXX, double-encoding)
+    if len(candidates) < max_decode and "%" in text:
+        url_form = decode_url(text)
+        if url_form != text and _looks_printable(url_form):
+            candidates.append(url_form)
+    # NFKC Unicode normalization (maps math-bold, fullwidth, etc. to ASCII)
+    if len(candidates) < max_decode:
+        try:
+            nfkc = unicodedata.normalize("NFKC", text)
+            if nfkc != text and _looks_printable(nfkc):
+                candidates.append(nfkc)
+        except Exception:  # noqa: BLE001
+            pass
+    # Spaced-chars collapse ('I g n o r e' → 'Ignore')
+    if len(candidates) < max_decode:
+        candidates.extend(_collapse_spaced_chars(text))
+    # CamelCase split ('IgnoreAll...' → 'Ignore All ...')
+    if len(candidates) < max_decode:
+        candidates.extend(_split_camel_case(text))
 
     return candidates[:max_decode]
 

@@ -119,6 +119,10 @@ class PickleScanner:
             rust_findings = [f for f in rust_findings if f.rule_id not in _suppress]
         return self._merge_rust_findings(rust_findings, findings)
 
+    # Pickle-specific limit: genops + opcode walk on large random files hangs.
+    # 50 MB is generous for any legitimate pickle; real model weights use ZIP.
+    _MAX_PICKLE_BYTES = 50 * 1024 * 1024
+
     def scan_file(self, file_path: str | Path) -> list[Finding]:
         """Scan a pickle file from disk."""
         path = Path(file_path)
@@ -126,7 +130,7 @@ class PickleScanner:
             logger.warning("File not found: %s", path)
             return []
         try:
-            data = safe_read_bytes(path)
+            data = safe_read_bytes(path, max_size=self._MAX_PICKLE_BYTES)
         except FileTooLargeError as e:
             logger.warning("File too large to scan: %s", e)
             return [Finding.artifact(

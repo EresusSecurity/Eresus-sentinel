@@ -54,6 +54,7 @@ from sentinel.redteam.buffs.base import (
     UppercaseBuff,
     WrapBuff,
 )
+from sentinel.redteam.buffs.cipher_buffs import CipherBuff
 from sentinel.redteam.buffs.encoding import EncodingBuff
 from sentinel.redteam.buffs.low_resource_languages import LowResourceLanguageBuff
 from sentinel.redteam.buffs.paraphrase import ParaphraseBuff
@@ -79,6 +80,7 @@ __all__ = [
     "ShuffleBuff",
     # Mutation
     "EncodingBuff",
+    "CipherBuff",
     "LowResourceLanguageBuff",
     "ParaphraseBuff",
 ]

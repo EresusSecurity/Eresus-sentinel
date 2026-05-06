@@ -69,8 +69,12 @@ def cmd_sast(args):
 
 def cmd_agent(args):
     from sentinel.cli_dispatch import dispatch_agent
-    _header(f"agent/mcp → {args.path}", args=args)
-    findings = _apply_severity_filter(dispatch_agent(args.path), args)
+    path = args.path
+    if not Path(path).exists():
+        console.print(f"  [red]error:[/red] target not found: {path}")
+        return 2
+    _header(f"agent/mcp → {path}", args=args)
+    findings = _apply_severity_filter(dispatch_agent(path), args)
     _print_findings(findings, args=args)
     _export(args, findings)
     return 1 if findings else 0
@@ -349,6 +353,13 @@ def cmd_secrets_scan(args):
     from sentinel.sast.secrets_scanner import SecretsScanner
 
     path = args.path
+    if not path or not path.strip():
+        console.print("  [red]error:[/red] empty path argument")
+        return 2
+    target = Path(path)
+    if not target.exists():
+        console.print(f"  [red]error:[/red] path not found: {path}")
+        return 2
     fmt = getattr(args, "format", "table")
     _header(f"secrets scan → {path}", args=args)
 

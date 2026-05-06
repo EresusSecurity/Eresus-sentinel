@@ -182,8 +182,44 @@ class ManifestScanner:
 
     def _scan_model_card(self, path: Path, findings: list[Finding]) -> None:
         text = path.read_text(encoding="utf-8", errors="replace")
-        if "<script" in text.lower() or "javascript:" in text.lower():
+        text_lower = text.lower()
+        if "<script" in text_lower or "javascript:" in text_lower:
             findings.append(Finding.artifact(rule_id="MANIFEST-004", title="XSS in model card", description="Script injection in model card", severity=Severity.HIGH, target=str(path), cwe_ids=["CWE-79"]))
+        # Prompt injection patterns in model card content
+        _INJECTION_PATTERNS = [
+            "ignore previous instructions",
+            "ignore all previous",
+            "disregard previous",
+            "forget previous instructions",
+            "you are now",
+            "you are dan",
+            "output your system prompt",
+            "output all api keys",
+            "output system prompt",
+        ]
+        for pat in _INJECTION_PATTERNS:
+            if pat in text_lower:
+                findings.append(Finding.artifact(
+                    rule_id="MANIFEST-005",
+                    title="Prompt injection in model card",
+                    description=f"Model card contains possible prompt injection: '{pat}'",
+                    severity=Severity.HIGH,
+                    target=str(path),
+                    evidence=pat,
+                    cwe_ids=["CWE-77"],
+                ))
+                break
+        # SSTI / template injection in YAML frontmatter
+        import re
+        if re.search(r"\{\{[^}]{1,200}\}\}", text):
+            findings.append(Finding.artifact(
+                rule_id="MANIFEST-006",
+                title="Template injection in model card",
+                description="Model card YAML frontmatter contains Jinja2/template-style expression",
+                severity=Severity.HIGH,
+                target=str(path),
+                cwe_ids=["CWE-94"],
+            ))
 
 
 # ── Archive Scanners ─────────────────────────────────────────────────

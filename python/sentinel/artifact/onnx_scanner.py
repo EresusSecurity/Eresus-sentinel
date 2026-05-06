@@ -650,6 +650,12 @@ class ONNXScanner:
             # Control-flow operators (can hide payloads in subgraphs)
             found_cf = [op.decode() for op in _BINARY_CONTROL_FLOW_OPS if op in data]
             if found_cf:
+                # `If` alone is common in legitimate transformer models
+                # (attention masking, conditional branching). Only escalate
+                # to HIGH when Loop or Scan are present — these are far less
+                # common in benign models and are the primary payload-hiding ops.
+                has_loop_or_scan = any(op in ("Loop", "Scan") for op in found_cf)
+                cf_severity = Severity.HIGH if has_loop_or_scan else Severity.MEDIUM
                 findings.append(Finding.artifact(
                     rule_id="ONNX-012",
                     title=f"Control-flow operators in ONNX binary: {found_cf}",
@@ -658,7 +664,7 @@ class ONNXScanner:
                         f"Loop/Scan/If nodes can hide malicious subgraphs and are a "
                         f"known payload concealment technique."
                     ),
-                    severity=Severity.HIGH,
+                    severity=cf_severity,
                     target=source,
                     evidence=f"Ops found: {found_cf}",
                     cwe_ids=["CWE-94"],

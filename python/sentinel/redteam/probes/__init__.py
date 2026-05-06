@@ -43,6 +43,16 @@ Probe categories:
   - LeakReplay — training data memorization testing
 """
 
+from sentinel.redteam.probes.actor_attack import ActorAttackProbe
+from sentinel.redteam.probes.audio_attack import AudioAttackProbe
+from sentinel.redteam.probes.genetic import GeneticJailbreakProbe
+from sentinel.redteam.probes.historical_academic import HistoricalAcademicProbe
+from sentinel.redteam.probes.image_attack import ImageAttackProbe
+from sentinel.redteam.probes.many_shot import ManyShotProbe
+from sentinel.redteam.probes.pair_probe import PAIRProbe
+from sentinel.redteam.probes.persuasion import PersuasionProbe
+from sentinel.redteam.probes.thought_experiment import ThoughtExperimentProbe
+from sentinel.redteam.probes.word_game import WordGameProbe
 from sentinel.redteam.probes.aegis import (
     AegisCSEProbe,
     AegisDefamationProbe,
@@ -474,4 +484,16 @@ __all__ = [
     "OverrelianceProbe", "PromptExtractionProbe",
     "ShellInjectionProbe", "SQLInjectionProbe", "SSRFProbe",
     "ToolDiscoveryProbe",
+    # Sprint 1 probes
+    "GeneticJailbreakProbe",
+    "ActorAttackProbe",
+    "WordGameProbe",
+    "AudioAttackProbe",
+    # Sprint 2 probes
+    "PAIRProbe",
+    "PersuasionProbe",
+    "ManyShotProbe",
+    "ThoughtExperimentProbe",
+    "HistoricalAcademicProbe",
+    "ImageAttackProbe",
 ]

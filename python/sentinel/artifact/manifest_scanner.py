@@ -324,7 +324,15 @@ class MLManifestScanner:
 
     # Jinja2 {% include %} inside a chat_template value = file inclusion attack
     _JINJA2_INCLUDE_RE = re.compile(r'\{%-?\s*include\s+[\'"]', re.IGNORECASE)
-
+    # Patterns that indicate actual SSTI exploitation (not just normal templating)
+    _SSTI_EXPLOIT_RE = re.compile(
+        r'__class__|__subclasses__|__mro__|__globals__|__builtins__'
+        r'|subprocess|popen|os\.system|eval\s*\(|exec\s*\('
+        r'|lipsum\s*\[|cycler\s*\[|joiner\s*\[|namespace\s*\['
+        r'|attr\s*\(.*__'
+        r'|request\.environ|config\.items',
+        re.IGNORECASE | re.DOTALL,
+    )
     def _check_suspicious_key_rules(self, obj: Any, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
         rules = _suspicious_key_rules()
@@ -359,6 +367,26 @@ class MLManifestScanner:
                                 target=filepath,
                                 evidence=evidence,
                                 cwe_ids=["CWE-98", "CWE-94"],
+                            ))
+                        elif (rule_id == "MANIFEST-KEY-003"
+                                and isinstance(value, str)
+                                and not self._SSTI_EXPLOIT_RE.search(value)):
+                            # chat_template present but no SSTI exploit patterns found.
+                            # Downgrade to MEDIUM advisory — legitimate instruct models
+                            # always have a chat_template; only escalate when the value
+                            # contains actual SSTI payload markers.
+                            findings.append(Finding.artifact(
+                                rule_id=rule_id,
+                                title=title + " (audit recommended)",
+                                description=(
+                                    f"Field '{path_str}' in '{filepath}' contains a Jinja2 "
+                                    f"template. No exploit patterns detected in value, but the "
+                                    f"template should be audited before deployment."
+                                ),
+                                severity=Severity.MEDIUM,
+                                target=filepath,
+                                evidence=evidence,
+                                cwe_ids=cwe_ids,
                             ))
                         else:
                             findings.append(Finding.artifact(

@@ -64,6 +64,9 @@ docs_generation_prompt.md
 
 # IDE / editor configs
 .windsurf/
+.cursor
+.gemini
+
 
 # Local runtime configs
 sandbox.yaml
@@ -71,3 +74,20 @@ policy.yaml
 
 # Generated adversarial test corpus (contains intentional fake secrets)
 tests/adversarial_corpus/generated/
+
+# macOS
+.DS_Store
+
+# Adversarial testing scripts & artifacts (local only)
+scripts/adversarial_stress_test.sh
+scripts/adversarial_test.sh
+scripts/analyze_adversarial.py
+scripts/deep_adversarial_test.py
+scripts/stress_cli_matrix.sh
+_analyze_stress.py
+sentinel_full_help.txt
+SENTINEL_CLI_COMPLETE_HELP.txt
+
+# Accidental shell artifacts
+bash
+-

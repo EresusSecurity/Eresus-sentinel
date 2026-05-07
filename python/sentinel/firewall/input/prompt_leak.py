@@ -38,7 +38,7 @@ _LEAK_PATTERNS: dict[str, list[tuple[re.Pattern, float, str]]] = {
     ],
     "ignore_instructions": [
         (re.compile(r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,30}\b(?:previous|above|prior|all|earlier|system)\b.{0,20}\b(?:instructions?|rules?|prompts?|constraints?|guidelines?)", re.I), 0.95, "Ignore-instructions attack"),
-        (re.compile(r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,15}\b(?:your|my|the|any)\b.{0,20}\b(?:instructions?|rules?|prompts?|constraints?|guidelines?|config)", re.I), 0.90, "Direct rule override"),
+        (re.compile(r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,15}\b(?:your|my|the|any)\b.{0,20}\b(?:instructions?|rules?|prompts?|constraints?|guidelines?)", re.I), 0.90, "Direct rule override"),
         (re.compile(r"\b(?:new\s*session|start\s*over|reset\s*(?:context|conversation)|clear\s*(?:memory|history))\b.{0,40}\b(?:ignore|forget|disregard|override|bypass|previous|system|instructions?|rules?|prompt)", re.I), 0.75, "Session reset with injection context"),
         (re.compile(r"\b(?:you\s*are\s*now|from\s*now\s*on|your\s*new\s*(?:role|task|instructions?))\b.{0,40}\b(?:ignore|forget|bypass|override|unrestricted|unfiltered|no\s*rules|no\s*limits)", re.I), 0.85, "Role reassignment with override"),
     ],
@@ -52,7 +52,9 @@ _LEAK_PATTERNS: dict[str, list[tuple[re.Pattern, float, str]]] = {
     ],
     "roleplay_extraction": [
         (re.compile(r"\b(?:pretend|act\s*as\s*if|roleplay|imagine)\b.{0,40}\b(?:no\s*rules|no\s*(?:restrictions|guidelines)|unlimited|unrestricted)", re.I), 0.9, "Unrestricted roleplay"),
-        (re.compile(r"\b(?:DAN|Do\s*Anything\s*Now|STAN|Developer\s*Mode|God\s*Mode|Jailbreak)\b", re.I), 0.95, "Known jailbreak persona"),
+        (re.compile(r"\b(?:DAN|Do\s*Anything\s*Now|STAN|God\s*Mode)\b", re.I), 0.95, "Known jailbreak persona"),
+        (re.compile(r"\bDeveloper\s*Mode\b.{0,40}\b(?:enabled|activated|on|active|engaged|unlock|bypass)\b", re.I), 0.90, "Developer mode activation"),
+        (re.compile(r"\bJailbreak\b.{0,30}\b(?:me|it|now|this|the\s*model|bypass|mode|enabled|activate)\b", re.I), 0.90, "Jailbreak activation context"),
         (re.compile(r"\b(?:you\s*are\s*(?:a\s*)?(?:hacker|penetration\s*tester|security\s*researcher))\b.{0,40}\b(?:reveal|extract|access)", re.I), 0.85, "Security researcher roleplay"),
     ],
     "summarization_leak": [

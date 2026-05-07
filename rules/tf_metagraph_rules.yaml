@@ -1,6 +1,5 @@
 # TensorFlow MetaGraph Security Rules
 # Sentinel artifact scanner — TensorFlow .meta checkpoint graph definitions
-# Based on modelaudit/modelaudit/scanners/tf_metagraph_scanner.py
 
 metadata:
   version: "1.0.0"

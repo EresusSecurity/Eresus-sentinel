@@ -3,7 +3,7 @@
 Runs the same prompts against multiple LLM providers and scores responses
 using configurable assertions. Produces a comparison matrix and HTML/JSON report.
 
-This fills the gap vs promptfoo-style evaluation:
+Features:
   - Multiple providers in one run
   - Per-prompt side-by-side scoring
   - Pluggable assertion functions (exact, contains, regex, llm-judge)

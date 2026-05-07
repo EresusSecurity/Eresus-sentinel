@@ -1,13 +1,13 @@
 """Weight distribution anomaly / trojan detection for model files.
 
-Detects potential neural trojans via three statistical analyses:
+Detects potential neural trojans via four statistical analyses:
   1. Z-score outlier detection on per-neuron weight norms
   2. Cosine similarity dissimilarity (isolated neurons)
   3. Extreme weight value detection (3σ anomalies)
+  4. Spectral signature analysis (SVD — top singular value ratio)
 
 Architecture classification prevents false positives on LLMs.
 
-Inspired by: ModelAudit (promptfoo) weight analysis approach.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ class TrojanDetector:
             layer_findings = self._analyze_layer(
                 np.array(weights, dtype=np.float32),
                 layer_name, source, z_thresh,
-                outlier_pct_limit,
+                outlier_pct_limit, is_llm,
             )
             findings.extend(layer_findings)
 
@@ -94,6 +94,7 @@ class TrojanDetector:
     def _analyze_layer(
         self, weights, layer_name: str, source: str,
         z_thresh: float, outlier_pct_limit: float,
+        is_llm: bool = False,
     ) -> list[Finding]:
         import numpy as np
 
@@ -208,6 +209,82 @@ class TrojanDetector:
                     ))
         except Exception:
             pass
+
+        # 4. Spectral signature analysis (SVD top singular value ratio)
+        # Reference: Tran et al. "Spectral Signatures in Backdoor Attacks" NeurIPS 2018
+        # A trojan-poisoned layer often has a dramatically dominant top singular value
+        # compared to the others (rank-1 perturbation from the trigger pattern).
+        if weights.ndim == 2 and min(weights.shape) >= 4 and max(weights.shape) <= 4096:
+            try:
+                s = np.linalg.svd(weights, compute_uv=False)
+                if len(s) >= 2 and s[1] > 1e-8:
+                    top_ratio = float(s[0] / s[1])
+                    # Normal weight matrices rarely exceed ratio ~10–20.
+                    # Backdoor injections tend to produce ratios > 50.
+                    ratio_threshold = 100.0 if is_llm else 50.0
+                    if top_ratio > ratio_threshold:
+                        findings.append(Finding.artifact(
+                            rule_id="TROJAN-004",
+                            title=f"Spectral anomaly (dominant singular value) in {layer_name}",
+                            description=(
+                                f"Layer '{layer_name}' has a top/second singular value ratio "
+                                f"of {top_ratio:.1f} (threshold: {ratio_threshold:.0f}). "
+                                "A dominant rank-1 perturbation is a statistical signature of "
+                                "backdoor/trojan injection (Tran et al., NeurIPS 2018)."
+                            ),
+                            severity=Severity.HIGH,
+                            confidence=min(0.9, 0.55 + (top_ratio - ratio_threshold) / ratio_threshold * 0.1),
+                            target=source,
+                            evidence=(
+                                f"sv_ratio={top_ratio:.2f}, s0={s[0]:.4f}, s1={s[1]:.4f}, "
+                                f"shape={weights.shape}, layer={layer_name}"
+                            ),
+                            location=Location(file=source),
+                            cwe_ids=["CWE-506"],
+                            tags=["mitre-atlas:AML.T0043", "trojan", "spectral-signature"],
+                        ))
+            except Exception:
+                pass
+
+        # 5. Bimodal weight distribution (indicator of hidden neuron clusters)
+        # Backdoor neurons often form a separate cluster with distinct mean.
+        if weights.ndim >= 2 and min(weights.shape) <= 2048:
+            try:
+                flat = weights.flatten().astype(np.float64)
+                if len(flat) >= 100:
+                    # Split into two halves by sign and compare cluster means
+                    pos = flat[flat > 0]
+                    neg = flat[flat < 0]
+                    if len(pos) > 10 and len(neg) > 10:
+                        pos_mean, neg_mean = float(np.mean(pos)), float(np.mean(neg))
+                        pos_std,  neg_std  = float(np.std(pos)),  float(np.std(neg))
+                        overall_std = float(np.std(flat))
+                        if overall_std > 1e-8:
+                            bimodal_score = abs(pos_mean - neg_mean) / overall_std
+                            # High bimodal score with asymmetric cluster sizes suggests hidden cluster
+                            size_ratio = max(len(pos), len(neg)) / (min(len(pos), len(neg)) + 1)
+                            if bimodal_score > 8.0 and size_ratio > 10.0:
+                                findings.append(Finding.artifact(
+                                    rule_id="TROJAN-005",
+                                    title=f"Bimodal weight distribution anomaly in {layer_name}",
+                                    description=(
+                                        f"Layer '{layer_name}' shows a strongly bimodal weight "
+                                        f"distribution (score={bimodal_score:.1f}, cluster_ratio={size_ratio:.1f}). "
+                                        "Asymmetric clusters may indicate hidden backdoor neurons."
+                                    ),
+                                    severity=Severity.MEDIUM,
+                                    confidence=0.55,
+                                    target=source,
+                                    evidence=(
+                                        f"bimodal_score={bimodal_score:.2f}, "
+                                        f"size_ratio={size_ratio:.1f}, layer={layer_name}"
+                                    ),
+                                    location=Location(file=source),
+                                    cwe_ids=["CWE-506"],
+                                    tags=["mitre-atlas:AML.T0043", "trojan", "bimodal"],
+                                ))
+            except Exception:
+                pass
 
         return findings
 

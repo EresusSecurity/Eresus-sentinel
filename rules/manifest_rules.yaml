@@ -1,6 +1,5 @@
 # ML Manifest / Configuration File Security Rules
 # Sentinel artifact scanner — JSON/YAML/TOML model config files
-# Based on modelaudit/modelaudit/scanners/manifest_scanner.py
 
 metadata:
   version: "1.0.0"

@@ -3,7 +3,6 @@ Off-Topic Detection probe.
 
 Tests if an AI system properly stays on-topic and refuses
 requests that are outside its designated purpose/scope.
-Based on promptfoo's off-topic plugin.
 """
 
 from __future__ import annotations

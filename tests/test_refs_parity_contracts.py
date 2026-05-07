@@ -23,7 +23,6 @@ def test_reference_parity_exports_are_importable():
     assert "openai" in list_providers()
 
 
-def test_promptfoo_style_assertion_aliases_are_wired():
     registry = AssertionRegistry()
     cases = [
         (

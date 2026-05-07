@@ -2,7 +2,6 @@
 Overreliance Detection probe.
 
 Tests if an AI system encourages user overreliance by failing
-to provide appropriate caveats. Based on promptfoo's overreliance plugin.
 """
 
 from __future__ import annotations

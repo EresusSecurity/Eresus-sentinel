@@ -170,3 +170,129 @@ suspicious_template_keys:
   - "template_string"
   - "format_string"
   - "eval_template"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SAST Rules — Jinja2 Web Application Security
+# Detect misconfigurations and unsafe patterns in Python web applications
+# using Jinja2 (Flask, FastAPI, Starlette, standalone).
+# ─────────────────────────────────────────────────────────────────────────────
+sast_rules:
+
+  - id: JINJA-001
+    title: "Jinja2 autoescape disabled"
+    severity: HIGH
+    cwe: CWE-116
+    owasp: A03
+    description: >
+      Jinja2 Environment created with autoescape=False (or no autoescape).
+      Any user-controlled variable rendered in this environment will not be
+      HTML-escaped, leading to reflected or stored XSS.
+    pattern: 'Environment\s*\([^)]*autoescape\s*=\s*False'
+    fix: "Set autoescape=select_autoescape(['html','xml']) or autoescape=True"
+    fp_suppress:
+      - pattern: '(?i)(?:test_|#\s*noqa|#\s*nosec)'
+
+  - id: JINJA-002
+    title: "Jinja2 Environment with no autoescape argument"
+    severity: MEDIUM
+    cwe: CWE-116
+    description: >
+      Jinja2 Environment instantiated without specifying autoescape.
+      The default is False, which disables HTML escaping for all templates.
+    pattern: 'Environment\s*\([^)]*\)\s*(?!.*autoescape)'
+    fix: "Always pass autoescape=select_autoescape() when creating an Environment"
+
+  - id: JINJA-003
+    title: "render_template_string with user-controlled input"
+    severity: CRITICAL
+    cwe: CWE-1336
+    owasp: A03
+    description: >
+      render_template_string() called with a variable that may contain user input.
+      This enables Server-Side Template Injection (SSTI) — an attacker can craft
+      a value like {{''.__class__.__mro__[1].__subclasses__()}} to achieve RCE.
+    pattern: '(?:render_template_string|Template)\s*\([^)]*(?:request\.|f["\x27]|format\(|\+\s*\w|%\s*\w|\w\s*\+)'
+    fix: "Never pass user input to render_template_string. Use render_template with a static file."
+    references:
+      - "CVE-2019-8341"
+      - "https://portswigger.net/research/server-side-template-injection"
+
+  - id: JINJA-004
+    title: "Markup() wrapping user-controlled variable"
+    severity: HIGH
+    cwe: CWE-79
+    owasp: A03
+    description: >
+      jinja2.Markup() (or markupsafe.Markup()) marks a string as safe HTML,
+      bypassing autoescaping. Wrapping user input in Markup() exposes the
+      application to XSS.
+    pattern: '(?:Markup|markupsafe\.Markup)\s*\(\s*(?:request\.|f["\x27]|\w+\s*\+|str\(|\w+\[)'
+    fix: "Never pass untrusted data to Markup(). Only mark known-safe static strings."
+
+  - id: JINJA-005
+    title: "|safe filter on user-controlled variable"
+    severity: HIGH
+    cwe: CWE-79
+    owasp: A03
+    description: >
+      The Jinja2 |safe filter disables HTML escaping for the expression it is
+      applied to. If the variable holds user-supplied content, this is an XSS sink.
+    pattern: '\{\{[^}]*(?:request\.|user_|input_|data\.|body\.|param)\w*\s*\|\s*safe\s*\}\}'
+    fix: "Remove |safe from user-controlled variables. Let autoescape do its job."
+
+  - id: JINJA-006
+    title: "LLM output piped into Jinja2 template"
+    severity: CRITICAL
+    cwe: CWE-1336
+    owasp: A05
+    description: >
+      LLM/AI model output used as a Jinja2 template string or injected into one
+      without sanitization. An attacker who controls model inputs can craft a
+      prompt that causes the model to output a SSTI payload.
+    pattern: '(?:render_template_string|Template)\s*\([^)]{0,200}(?:response|completion|output|generated|llm_|ai_|model_output|chat_response)'
+    fix: >
+      Never use LLM output as a template. Treat all model output as untrusted user
+      input. Render into a static template with escaped variables.
+
+  - id: JINJA-007
+    title: "f-string or string concatenation passed to Template()"
+    severity: CRITICAL
+    cwe: CWE-1336
+    description: >
+      A Python f-string or string concatenation is directly passed to
+      jinja2.Template() — common pattern when developers want to interpolate
+      a variable into a template before rendering it, inadvertently creating SSTI.
+    pattern: '(?:jinja2\.)?Template\s*\(\s*(?:f["\x27][^"\x27]*\{|["\x27][^"\x27]*["\x27]\s*\+|["\x27][^"\x27]*["\x27]\s*%)'
+    fix: "Pass only static string literals to Template(). Put variables inside the template as {{ var }}."
+
+  - id: JINJA-008
+    title: "Jinja2 sandbox escape via __class__ traversal"
+    severity: CRITICAL
+    cwe: CWE-94
+    description: >
+      Jinja2 SandboxedEnvironment escape via Python object introspection chain.
+      Even sandboxed environments can be escaped in some Python versions.
+    pattern: '(?:__class__|__mro__|__subclasses__|__globals__|__builtins__)\s*[\.\[]'
+    fix: >
+      Avoid using SandboxedEnvironment with user input. Use a whitelist approach
+      or avoid templating user-supplied content entirely.
+
+  - id: JINJA-009
+    title: "Jinja2 template loaded from user-controlled file path"
+    severity: HIGH
+    cwe: CWE-22
+    description: >
+      Template file path derived from user input, enabling path traversal to
+      load arbitrary templates from the filesystem.
+    pattern: '(?:get_template|from_string)\s*\([^)]*(?:request\.|user_|input_|\+\s*\w|\w\s*\+)'
+    fix: "Validate and whitelist template names before passing to get_template()."
+
+  - id: JINJA-010
+    title: "Disabled sandbox via unsafe_undefined or DebugUndefined"
+    severity: MEDIUM
+    cwe: CWE-749
+    description: >
+      Using DebugUndefined or Undefined with unsafe_undefined weakens Jinja2's
+      variable isolation, potentially leaking internal context values.
+    pattern: '(?:DebugUndefined|unsafe_undefined\s*=\s*True|Undefined\s*\(\s*[^)]*unsafe)'
+    fix: "Use StrictUndefined in production to surface template errors early without leaking context."

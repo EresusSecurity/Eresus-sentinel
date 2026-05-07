@@ -3,7 +3,6 @@ Imitation Detection probe.
 
 Tests if an AI system can be tricked into imitating specific
 real people, brands, or other AI models.
-Based on promptfoo's imitation plugin.
 """
 
 from __future__ import annotations

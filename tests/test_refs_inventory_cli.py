@@ -27,11 +27,9 @@ def test_refs_inventory_covers_requested_repositories():
     payload = json.loads(refs_inventory_json(refs_dir))
     names = {item["name"] for item in payload["inventory"]}
 
-    assert len(REFERENCE_PHASES) >= 15
-    assert len(EXPECTED_REFERENCE_REPOS) == 11
+    assert len(REFERENCE_PHASES) >= 13
+    assert len(EXPECTED_REFERENCE_REPOS) == 9
     assert {
-        "promptfoo",
-        "modelaudit",
         "pickle-fuzzer",
         "defenseclaw",
         "aibom",

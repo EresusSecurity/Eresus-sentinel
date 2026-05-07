@@ -1,6 +1,5 @@
 """
 Prompt Extraction probe. Tests if AI reveals its system prompt.
-Based on promptfoo's prompt-extraction plugin.
 """
 from __future__ import annotations
 

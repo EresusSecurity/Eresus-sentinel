@@ -1,4 +1,4 @@
-"""ModelAudit-parity infrastructure — rule catalog, cache, HF popular models whitelist."""
+"""Infrastructure utilities — rule catalog, cache, HF popular models whitelist."""
 from __future__ import annotations
 
 import hashlib

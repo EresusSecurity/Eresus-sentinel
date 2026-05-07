@@ -227,16 +227,16 @@ credential:
   case_sensitive: true
   patterns:
     - {pattern: '(?:AccessKeyId|SecretAccessKey|SessionToken)', rule_id: aws_credential, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'AKIA[0-9A-Z]{16}', rule_id: aws_access_key, severity: CRITICAL, cwe: CWE-798}
+    - {pattern: 'AKIA[0-9A-Z]{16}', rule_id: BP-aws_access_key, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'ASIA[0-9A-Z]{16}', rule_id: aws_temp_access_key, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'sk-[a-zA-Z0-9]{20,}', rule_id: openai_api_key, severity: CRITICAL, cwe: CWE-798}
+    - {pattern: 'sk-[a-zA-Z0-9]{20,}', rule_id: BP-openai_api_key, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'sk-proj-[a-zA-Z0-9\\-_]{20,}', rule_id: openai_project_key, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'sk-ant-[a-zA-Z0-9\\-_]{20,}', rule_id: anthropic_api_key, severity: CRITICAL, cwe: CWE-798}
+    - {pattern: 'sk-ant-[a-zA-Z0-9\\-_]{20,}', rule_id: BP-anthropic_api_key, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'ghp_[a-zA-Z0-9]{36}', rule_id: github_pat, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'gho_[a-zA-Z0-9]{36}', rule_id: github_oauth, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'github_pat_[a-zA-Z0-9_]{22,}', rule_id: github_fine_grained_pat, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'glpat-[a-zA-Z0-9\\-_]{20,}', rule_id: gitlab_pat, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'xox[bpras]-[a-zA-Z0-9\\-]+', rule_id: slack_token, severity: CRITICAL, cwe: CWE-798}
+    - {pattern: 'xox[bpras]-[a-zA-Z0-9\\-]+', rule_id: BP-slack_token, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'Bearer\\s+[a-zA-Z0-9\\-_.+/=]{20,}', rule_id: bearer_token, severity: HIGH, cwe: CWE-798}
     - {pattern: '(?:password|passwd|pwd)\\s*[:=]\\s*[''"]*[^''"]{4,}', rule_id: password_literal, severity: CRITICAL, cwe: CWE-798}
     - {pattern: '(?:api[_-]?key|apikey)\\s*[:=]\\s*[''"]*[^''"]{10,}', rule_id: api_key_literal, severity: CRITICAL, cwe: CWE-798}
@@ -249,16 +249,16 @@ credential:
     - {pattern: 'sk_live_[a-zA-Z0-9]{24,}', rule_id: stripe_secret_key, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'rk_live_[a-zA-Z0-9]{24,}', rule_id: stripe_restricted_key, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'sq0csp-[a-zA-Z0-9\\-_]{43}', rule_id: square_access_token, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'AIza[a-zA-Z0-9\\-_]{35}', rule_id: google_api_key, severity: CRITICAL, cwe: CWE-798}
+    - {pattern: 'AIza[a-zA-Z0-9\\-_]{35}', rule_id: BP-google_api_key, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'ya29\\.[a-zA-Z0-9\\-_]+', rule_id: google_oauth_token, severity: HIGH, cwe: CWE-798}
     - {pattern: 'dop_v1_[a-f0-9]{64}', rule_id: digitalocean_pat, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'hf_[a-zA-Z0-9]{34}', rule_id: huggingface_token, severity: CRITICAL, cwe: CWE-798}
+    - {pattern: 'hf_[a-zA-Z0-9]{34}', rule_id: BP-huggingface_token, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'npm_[a-zA-Z0-9]{36}', rule_id: npm_token, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'pypi-AgE[a-zA-Z0-9\\-_]{50,}', rule_id: pypi_token, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'ATATT3x[a-zA-Z0-9\\-_+=]{10,}', rule_id: atlassian_token, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'EAACEdEose0cBA[a-zA-Z0-9]+', rule_id: facebook_token, severity: CRITICAL, cwe: CWE-798}
     - {pattern: 'r1_[a-zA-Z0-9]{24}', rule_id: replicate_api_key, severity: CRITICAL, cwe: CWE-798}
-    - {pattern: 'eyJ[a-zA-Z0-9_-]{10,}\\.eyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]+', rule_id: jwt_token, severity: HIGH, cwe: CWE-798}
+    - {pattern: 'eyJ[a-zA-Z0-9_-]{10,}\\.eyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]+', rule_id: BP-jwt_token, severity: HIGH, cwe: CWE-798}
     - {pattern: 'age1[a-z0-9]{58}', rule_id: age_public_key, severity: HIGH, cwe: CWE-798}
     - {pattern: 'AGE-SECRET-KEY-1[A-Z0-9]{58}', rule_id: age_secret_key, severity: CRITICAL, cwe: CWE-798}
 

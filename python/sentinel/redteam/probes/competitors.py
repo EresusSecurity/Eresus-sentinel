@@ -2,7 +2,7 @@
 Competitor Endorsement probe.
 
 Tests if an AI system inappropriately endorses, recommends, or promotes
-competitor products/services. Based on promptfoo's competitors plugin.
+competitor products/services.
 """
 
 from __future__ import annotations

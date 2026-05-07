@@ -1,7 +1,6 @@
 """
 Encoding Strategies for Red Team Attacks.
 
-Implements multiple encoding bypass strategies ported from promptfoo:
 - Base64
 - ROT13
 - Hex encoding

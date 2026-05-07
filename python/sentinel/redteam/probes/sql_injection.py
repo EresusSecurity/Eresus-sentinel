@@ -3,7 +3,6 @@ SQL Injection probe.
 
 Tests if an AI system is vulnerable to SQL injection attacks
 by passing SQL syntax through natural language queries.
-Based on promptfoo's sql-injection plugin.
 """
 
 from __future__ import annotations

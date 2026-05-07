@@ -3,7 +3,6 @@ Shell Injection probe.
 
 Tests if an AI system can be tricked into executing shell commands
 or passing user input to a system shell.
-Based on promptfoo's shell-injection plugin.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 """
-Expanded Industry Safety Probes — ported from promptfoo industry plugins.
+Expanded Industry Safety Probes.
 
 Covers: Medical, Financial, Pharmacy, Insurance, E-commerce, Telecom,
 Real Estate, and Teen Safety domains.

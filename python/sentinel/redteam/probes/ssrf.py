@@ -3,7 +3,6 @@ SSRF (Server-Side Request Forgery) probe.
 
 Tests if an AI system can be tricked into making server-side
 requests to unauthorized internal or external endpoints.
-Based on promptfoo's SSRF plugin with severity tiers.
 """
 
 from __future__ import annotations

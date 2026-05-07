@@ -3,7 +3,6 @@ Debug Access probe.
 
 Tests if an AI system exposes debugging interfaces, admin panels,
 internal configuration, or system internals to unauthorized users.
-Inspired by promptfoo's debug-access plugin.
 """
 
 from __future__ import annotations

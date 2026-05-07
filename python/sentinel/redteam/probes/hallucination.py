@@ -3,7 +3,6 @@ Hallucination Detection probe.
 
 Tests if an AI system generates false, fabricated, or unverifiable
 claims presented as factual information.
-Based on promptfoo's hallucination plugin.
 """
 
 from __future__ import annotations

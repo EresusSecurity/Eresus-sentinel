@@ -284,6 +284,70 @@ benign_patterns:
       - spaced_letter_bypass
       - base64_toxic_payload
 
+  # ── "Act as" in professional / customer service role context ─────────────
+  - id: FP-BP-020
+    pattern: '(?i)act\s+as\s+(?:a\s+)?(?:teacher|tutor|mentor|coach|advisor|therapist|doctor|lawyer|accountant|engineer|developer|designer|translator|editor|writer|journalist|customer\s+service|support\s+agent|virtual\s+assistant|helpful\s+assistant)'
+    confidence_penalty: 0.45
+    rationale: Legitimate professional role-play request — not persona override attack
+    applies_to_rules:
+      - persona_override
+      - evil_persona
+
+  # ── "Pretend you are" in legitimate educational / simulation context ──────
+  - id: FP-BP-021
+    pattern: '(?i)(?:pretend|imagine|suppose|assume)\s+(?:you\s+are|you\x27re|you\s+were)\s+(?:a\s+)?(?:teacher|tutor|student|character\s+in|person\s+who|expert\s+in|assistant\s+that|bot\s+that|tool\s+that)'
+    confidence_penalty: 0.40
+    rationale: Educational simulation or tool persona — not adversarial persona override
+    applies_to_rules:
+      - persona_override
+      - instruction_override
+
+  # ── Chat UI slash commands and reset phrases ──────────────────────────────
+  - id: FP-BP-022
+    pattern: '(?i)(?:^|\s)(?:/clear|/reset|/start|/new|/restart|/help|new\s+chat|start\s+(?:a\s+)?new\s+(?:chat|conversation|session|thread)|clear\s+(?:the\s+)?(?:chat|conversation|history|context|screen))\b'
+    confidence_penalty: 0.50
+    rationale: Standard chat UI commands for resetting conversation — not injection
+    applies_to_rules:
+      - instruction_erasure
+      - instruction_override
+
+  # ── CI/CD pipeline and config management "override" references ────────────
+  - id: FP-BP-023
+    pattern: '(?i)(?:ci/cd|github\s+actions?|gitlab\s+ci|jenkins|circleci|terraform|ansible|helm|kubectl|docker\s+compose|override\s+(?:file|config|values?|env|defaults?|variable|setting|parameter|flag)|--override|config\s+override)'
+    confidence_penalty: 0.45
+    rationale: DevOps/IaC configuration override — not instruction injection
+    applies_to_rules:
+      - instruction_override
+      - configuration_probe
+
+  # ── Security documentation "how to bypass X" in defensive writing context ─
+  - id: FP-BP-024
+    pattern: '(?i)(?:documentation|README|wiki|blog\s+post|security\s+guide|hardening\s+guide|best\s+practices?|OWASP|mitigation|defense\s+in\s+depth)\s+.{0,80}(?:bypass|circumvent|evade|defeat)\s+.{0,60}(?:filter|WAF|guard|check|validation|sanitiz)'
+    confidence_penalty: 0.40
+    rationale: Security hardening documentation legitimately discusses bypass techniques
+    applies_to_rules:
+      - zero_width_char_bypass
+      - digit_substitute_bypass
+      - encoding_evasion
+
+  # ── "Ignore X" in data processing / ETL / analytics context ─────────────
+  - id: FP-BP-025
+    pattern: '(?i)(?:ignore\s+(?:null|none|empty|blank|whitespace|nan|missing|duplicate|invalid|malformed)\s+(?:values?|entries?|rows?|records?|fields?|lines?|tokens?)|pandas|dataframe|spark|sql\s+query|etl\s+pipeline)'
+    confidence_penalty: 0.45
+    rationale: Data engineering context — ignore nulls/missing values is standard ETL
+    applies_to_rules:
+      - instruction_override
+      - instruction_erasure
+
+  # ── "System" in technical infrastructure / OS context ───────────────────
+  - id: FP-BP-026
+    pattern: '(?i)(?:operating\s+system|linux\s+system|windows\s+system|file\s+system|distributed\s+system|computer\s+system|system\s+(?:call|log|monitor|admin|administrator|tray|boot|crash|update|upgrade|resource|memory|cpu|disk|network|service|daemon|process))'
+    confidence_penalty: 0.40
+    rationale: Technical "system" usage in OS/infrastructure context
+    applies_to_rules:
+      - system_prompt_leak
+      - configuration_probe
+
 # ──────────────────────────────────────────────────────────────────────────────
 # DOMAIN ALLOWLISTS
 # Specific use cases that should reduce alert severity

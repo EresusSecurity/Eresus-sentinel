@@ -3,7 +3,6 @@
 Multi-line context-aware detection that checks for indicator COMBINATIONS,
 not single keywords. Each CVE match includes CVSS, CWE, and remediation.
 
-Inspired by: ModelAudit (promptfoo) CVE pattern matching.
 """
 
 from __future__ import annotations

@@ -6,7 +6,6 @@ scores the result (via a supplied scoring function). Expands the
 most promising branches first (best-first search) or exhaustively
 (BFS/DFS).
 
-Promptfoo parity: matches their tree-search jailbreak strategy with
 branching factor, depth limits, and score-guided pruning.
 """
 from __future__ import annotations

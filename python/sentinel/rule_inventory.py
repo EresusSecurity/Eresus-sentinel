@@ -58,7 +58,19 @@ def rule_roots(cwd: Path | None = None) -> list[RuleRoot]:
         RuleRoot(package_root / "rules", "package_rules", priority + 2, "package/rules"),
         RuleRoot(package_root / "config", "package_config", priority + 3, "package/config"),
     ])
-    return roots
+    # Deduplicate roots that resolve to the same real filesystem path
+    # (e.g. python/sentinel/rules is a symlink to ../../rules — avoid double-loading)
+    seen_real: set[Path] = set()
+    deduped: list[RuleRoot] = []
+    for root in roots:
+        try:
+            real = root.path.resolve()
+        except OSError:
+            real = root.path
+        if real not in seen_real:
+            seen_real.add(real)
+            deduped.append(root)
+    return deduped
 
 
 def rule_inventory(cwd: Path | None = None) -> list[dict[str, Any]]:

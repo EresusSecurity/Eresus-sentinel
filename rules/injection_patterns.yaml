@@ -1255,3 +1255,234 @@ reverse_shell:
     name: yaml_python_rce_prompt
     severity: CRITICAL
     tags: [yaml, rce, deserialization]
+
+# ============================================================================
+# ADDITIONAL INJECTION CATEGORIES — 2025 THREAT LANDSCAPE
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# PROMPT LEAKING — System prompt extraction attempts
+# ---------------------------------------------------------------------------
+prompt_leaking:
+  - pattern: '(?i)(?:print|output|show|display|reveal|expose|dump|return|repeat|
+echo|write)\s+(?:the\s+)?(?:full\s+)?(?:system\s+prompt|system\s+message|initial
+\s+prompt|original\s+prompt|first\s+message|your\s+instructions?|your\s+prompt|
+your\s+configuration|your\s+setup|your\s+directions?|your\s+rules?)'
+    name: system_prompt_dump
+    severity: CRITICAL
+    tags: [prompt_leaking, extraction]
+
+  - pattern: '(?i)(?:what\s+(?:is|are|were)\s+(?:your|the)\s+(?:exact|full|compl
+ete|original|verbatim|literal)\s+(?:instructions?|prompt|system\s+message|config
+uration|directives?|guidelines?))'
+    name: exact_instructions_request
+    severity: HIGH
+    tags: [prompt_leaking]
+
+  - pattern: '(?i)(?:copy[- ]paste|verbatim(?:ly)?|word[\s-]for[\s-]word|exact
+\s+wording|literally)\s+(?:your\s+)?(?:system\s+prompt|initial\s+prompt|instruc
+tions?)'
+    name: verbatim_prompt_request
+    severity: HIGH
+    tags: [prompt_leaking]
+
+  - pattern: '(?i)(?:summarize|paraphrase|describe|tell\s+me\s+about)\s+(?:yours+)?(?:system\s+prompt|configuration|initial\s+instructions?|setup|programming)'
+    name: indirect_prompt_extraction
+    severity: MEDIUM
+    tags: [prompt_leaking]
+
+  - pattern: '(?i)(?:translate|convert|encode|decode)\s+(?:your\s+)?(?:system\s+
+prompt|instructions?)\s+(?:to|into)\s+(?:[a-z]+)'
+    name: prompt_translation_extraction
+    severity: HIGH
+    tags: [prompt_leaking]
+
+  - pattern: '(?i)(?:ignore|pretend|act\s+as\s+if)\s+(?:confidentiality|nda|secu
+rity|restriction)\s+(?:and|then)\s+(?:reveal|show|share|print)'
+    name: confidentiality_bypass_extract
+    severity: CRITICAL
+    tags: [prompt_leaking, policy_bypass]
+
+# ---------------------------------------------------------------------------
+# RAG POISONING — Retrieval-Augmented Generation attacks
+# ---------------------------------------------------------------------------
+rag_poisoning:
+  - pattern: '(?i)(?:ignore|disregard)\s+(?:the\s+)?(?:retrieved|provided|above|
+injected|context|document|passage|chunk)\s+(?:context|documents?|information|dat
+a|text|content)'
+    name: retrieved_context_override
+    severity: CRITICAL
+    tags: [rag, indirect_injection]
+
+  - pattern: '(?i)(?:\[INST\]|\[SYS\]|<\|system\|>|<system>)\s*(?:ignore|forget|
+override)\s+(?:the\s+)?(?:above|previous|original)'
+    name: rag_template_injection
+    severity: CRITICAL
+    tags: [rag, template_injection]
+
+  - pattern: '(?i)(?:this\s+document|this\s+text|the\s+following)\s+(?:contains?|
+has)\s+(?:an?\s+)?(?:important|critical|urgent)\s+(?:update|instruction|override|
+message)\s+(?:for\s+)?(?:the\s+)?(?:AI|assistant|model|LLM|system)'
+    name: rag_doc_instruction_injection
+    severity: CRITICAL
+    tags: [rag, indirect_injection]
+
+  - pattern: '(?i)NOTE:\s*(?:AI|Assistant|System):\s*(?:ignore|override|forget|d
+isregard)'
+    name: rag_note_injection
+    severity: CRITICAL
+    tags: [rag, indirect_injection]
+
+  - pattern: '(?i)(?:HIDDEN\s+(?:INSTRUCTION|COMMAND|DIRECTIVE)|SECRET\s+(?:INSTR
+UCTION|COMMAND)|INVISIBLE\s+TEXT|INJECT\s*:)'
+    name: hidden_instruction_marker
+    severity: CRITICAL
+    tags: [rag, steganography]
+
+# ---------------------------------------------------------------------------
+# MULTIMODAL INJECTION — Image/audio prompt attacks
+# ---------------------------------------------------------------------------
+multimodal_injection:
+  - pattern: '(?i)(?:encoded\s+in|embedded\s+in|hidden\s+in)\s+(?:the\s+)?(?:image|picture|photo|screenshot|audio|video|file|attachment)\s+(?:is\s+)?(?:an?\s+)?(?:instruction|command|prompt|directive)'
+    name: multimodal_hidden_instruction
+    severity: CRITICAL
+    tags: [multimodal, steganography]
+
+  - pattern: '(?i)(?:read|extract|decode|interpret|process)\s+(?:the\s+)?(?:QR\s+code|barcode|watermark|steganograph|hidden\s+text)\s+(?:in|from)\s+(?:the\s+)?(?:image|photo|picture|screenshot)'
+    name: visual_encoding_attack
+    severity: HIGH
+    tags: [multimodal, visual_injection]
+
+  - pattern: '(?i)(?:follow|execute|run|obey)\s+(?:the\s+)?(?:instructions?|commands?|directives?)\s+(?:visible|shown|displayed|written|encoded)\s+in\s+(?:the\s+)?(?:image|picture|screenshot|video)'
+    name: visual_instruction_follow
+    severity: CRITICAL
+    tags: [multimodal, visual_injection]
+
+# ---------------------------------------------------------------------------
+# CONTEXT WINDOW OVERFLOW — Token flooding / attention dilution
+# ---------------------------------------------------------------------------
+context_window_overflow:
+  - pattern: '(?i)(?:repeat|write|output|print|generate)\s+(?:the\s+(?:word|phra
+se|character|token|string)\s+)?[''"]?[\w\s]{1,20}[''"]?\s+(?:\d{3,}|\d+\s+times?
+|many\s+times|repeatedly|over\s+and\s+over)'
+    name: token_repetition_flood
+    severity: HIGH
+    tags: [dos, context_overflow]
+
+  - pattern: "(?s).{2000,}"
+    name: excessive_input_length
+    severity: LOW
+    tags: [context_overflow, dos]
+
+  - pattern: '(?i)(?:fill|pad|flood|overflow)\s+(?:the\s+)?(?:context|window|buf
+fer|memory|attention)\s+(?:with|using)'
+    name: context_flood_explicit
+    severity: HIGH
+    tags: [context_overflow]
+
+# ---------------------------------------------------------------------------
+# FUNCTION CALLING ABUSE — Tool/function invocation manipulation
+# ---------------------------------------------------------------------------
+function_calling_abuse:
+  - pattern: '(?i)(?:call|invoke|execute|run|trigger|use)\s+(?:the\s+)?(?:tool|f
+unction|plugin|API|endpoint|webhook)\s+(?:named?\s+)?[''"]?(?:exec|shell|bash|cmd
+|system|os\.|subprocess|eval)[''"]?'
+    name: dangerous_function_call_request
+    severity: CRITICAL
+    tags: [function_calling, tool_abuse]
+
+  - pattern: '(?i)(?:use\s+the\s+)?(?:file_?(?:read|write|delete|exec)|shell_?ex
+ec|code_?exec|system_?call|bash_?exec|python_?exec)\s*(?:\(|tool)'
+    name: dangerous_tool_name_invocation
+    severity: CRITICAL
+    tags: [function_calling, mcp]
+
+  - pattern: '(?i)\{[^}]{0,50}(?:"tool_call"|"function_call"|"name"\s*:\s*"(?:ex
+ec|shell|bash|system|eval|run)")[^}]{0,50}\}'
+    name: json_tool_call_injection
+    severity: CRITICAL
+    tags: [function_calling, json_injection]
+
+  - pattern: '(?i)(?:exfiltrate|leak|send|transmit|upload|post)\s+(?:(?:the\s+)?
+(?:data|contents?|results?|output))\s+(?:to|via|using|through)\s+(?:a\s+)?(?:too
+l|function|API|webhook|URL|endpoint)'
+    name: tool_data_exfiltration
+    severity: CRITICAL
+    tags: [exfiltration, tool_abuse]
+
+  - pattern: '(?i)(?:chain|sequence|combine|pipe)\s+(?:multiple\s+)?(?:tools?|fu
+nctions?|calls?|actions?)\s+(?:to|in\s+order\s+to|so\s+that|in\s+sequence)'
+    name: tool_chaining_attack
+    severity: HIGH
+    tags: [function_calling, agentic]
+
+# ---------------------------------------------------------------------------
+# INDIRECT INJECTION — Attacks via external content
+# ---------------------------------------------------------------------------
+indirect_injection:
+  - pattern: '(?i)(?:when\s+you\s+(?:read|process|analyze|see|encounter|find|lo
+ad)\s+(?:this|the\s+(?:document|file|email|message|page|content|data)))'
+    name: time_delayed_injection
+    severity: CRITICAL
+    tags: [indirect_injection, delayed]
+
+  - pattern: '(?i)(?:anyone\s+(?:who\s+reads?|reading|processing)\s+this|to\s+th
+e\s+(?:AI|assistant|LLM|model)\s+(?:reading|processing|analyzing))'
+    name: third_party_targeted_injection
+    severity: CRITICAL
+    tags: [indirect_injection, supply_chain]
+
+  - pattern: '(?i)(?:email|calendar\s+event|meeting\s+(?:invite|request)|documen
+t|pdf|webpage)\s+(?:contains?|has)\s+(?:hidden|embedded|secret)\s+(?:instruction
+|command|payload)'
+    name: embedded_channel_injection
+    severity: HIGH
+    tags: [indirect_injection, email_injection]
+
+  - pattern: '(?i)SYSTEM\s*:\s*(?:OVERRIDE|INJECTION|NEW\s+INSTRUCTION|IGNORE\s+
+PREVIOUS)'
+    name: system_label_spoofing
+    severity: CRITICAL
+    tags: [indirect_injection, label_spoofing]
+
+# ---------------------------------------------------------------------------
+# PROMPT AUGMENTATION ATTACKS — Few-shot / example poisoning
+# ---------------------------------------------------------------------------
+few_shot_poisoning:
+  - pattern: '(?i)(?:here\s+(?:are|is)\s+(?:some\s+)?(?:examples?|samples?|demos
+?))\s*:?\s*(?:User|Human|Q)\s*:\s*.{0,100}(?:Assistant|AI|A)\s*:\s*.{0,100}(?:bo
+mb|weapon|hack|malware|exploit|bypass|jailbreak)'
+    name: few_shot_harmful_example
+    severity: CRITICAL
+    tags: [few_shot, poisoning]
+
+  - pattern: '(?i)(?:following\s+(?:the\s+)?(?:same\s+)?(?:format|pattern|exampl
+e|template))\s+(?:above|below|provided)\s*,\s*(?:now\s+)?(?:generate|write|creat
+e|produce)'
+    name: example_format_exploit
+    severity: HIGH
+    tags: [few_shot, format_injection]
+
+# ---------------------------------------------------------------------------
+# CROSS-PROMPT INJECTION — Multi-turn / conversation history attacks
+# ---------------------------------------------------------------------------
+cross_prompt_injection:
+  - pattern: '(?i)(?:in\s+(?:your|our)\s+(?:previous|last|earlier|prior)\s+(?:co
+nversation|session|turn|exchange|interaction)(?:,|\s+you\s+(?:agreed|said|stated|
+promised|told\s+me)))'
+    name: false_memory_injection
+    severity: HIGH
+    tags: [cross_prompt, memory_manipulation]
+
+  - pattern: '(?i)(?:you\s+previously\s+(?:agreed|confirmed|told\s+me|said|promi
+sed|established)\s+that)\s+(?:you\s+(?:will|can|would|could|should|are\s+able\s+
+to)\s+(?:ignore|bypass|skip|help\s+with))'
+    name: conversation_gaslighting
+    severity: CRITICAL
+    tags: [cross_prompt, social_engineering]
+
+  - pattern: '(?i)(?:continuing\s+from\s+(?:our|the)\s+(?:last|previous|prior)\s
++session)\s+(?:where\s+(?:you|we)\s+(?:were\s+discussing|agreed|established))'
+    name: false_session_continuation
+    severity: HIGH
+    tags: [cross_prompt, session_injection]

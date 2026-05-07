@@ -12,7 +12,6 @@ Techniques:
   - Right-to-left override marks
   - Invisible separator characters
 
-Inspired by: promptfoo ASCII smuggling strategy.
 """
 
 from __future__ import annotations

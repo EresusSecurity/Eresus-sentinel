@@ -1,0 +1,78 @@
+# ============================================================
+# Eresus Sentinel — Dependency License Blocklist
+# ============================================================
+#
+# blocked_licenses: Licenses that must NOT appear in a project
+#   without explicit legal review. Finding severity: HIGH.
+#
+# warn_licenses: Licenses requiring legal review before use.
+#   Finding severity: MEDIUM.
+#
+# References:
+#   - https://spdx.org/licenses/
+#   - https://choosealicense.com/appendix/
+# ============================================================
+
+blocked_licenses:
+  - id: AGPL-3.0
+    name: GNU Affero General Public License v3.0
+    reason: "Strong copyleft — requires all network-accessible derivatives to be open-sourced"
+  - id: AGPL-3.0-only
+    name: GNU Affero General Public License v3.0 only
+    reason: "Strong copyleft"
+  - id: AGPL-3.0-or-later
+    name: GNU Affero General Public License v3.0 or later
+    reason: "Strong copyleft"
+  - id: GPL-3.0
+    name: GNU General Public License v3.0
+    reason: "Copyleft — derivative works must be GPL-licensed"
+  - id: GPL-3.0-only
+    name: GNU General Public License v3.0 only
+    reason: "Copyleft"
+  - id: GPL-3.0-or-later
+    name: GNU General Public License v3.0 or later
+    reason: "Copyleft"
+  - id: GPL-2.0
+    name: GNU General Public License v2.0
+    reason: "Copyleft"
+  - id: GPL-2.0-only
+    name: GNU General Public License v2.0 only
+    reason: "Copyleft"
+  - id: GPL-2.0-or-later
+    name: GNU General Public License v2.0 or later
+    reason: "Copyleft"
+  - id: SSPL-1.0
+    name: Server Side Public License v1
+    reason: "Viral license — requires open-sourcing all software used to offer the product as a service"
+  - id: BUSL-1.1
+    name: Business Source License 1.1
+    reason: "Restricts production use; becomes OSS after a change date but may block commercial deployment"
+  - id: CC-BY-NC-4.0
+    name: Creative Commons Attribution-NonCommercial 4.0
+    reason: "Non-commercial restriction — cannot be used in commercial products"
+  - id: CC-BY-NC-SA-4.0
+    name: Creative Commons Attribution-NonCommercial-ShareAlike 4.0
+    reason: "Non-commercial + copyleft"
+  - id: CC-BY-NC-ND-4.0
+    name: Creative Commons Attribution-NonCommercial-NoDerivatives 4.0
+    reason: "Non-commercial + no derivatives"
+
+warn_licenses:
+  - id: LGPL-2.1
+    name: GNU Lesser General Public License v2.1
+    reason: "Weak copyleft — static linking may require open-sourcing your code; dynamic linking is generally safe"
+  - id: LGPL-3.0
+    name: GNU Lesser General Public License v3.0
+    reason: "Weak copyleft — same as LGPL-2.1"
+  - id: MPL-2.0
+    name: Mozilla Public License 2.0
+    reason: "File-level copyleft — modified MPL files must remain MPL; separate files can stay proprietary"
+  - id: EUPL-1.2
+    name: European Union Public Licence 1.2
+    reason: "Copyleft with compatibility clauses; legal review recommended for EU-deployed software"
+  - id: CPAL-1.0
+    name: Common Public Attribution License 1.0
+    reason: "Requires attribution in the user interface; may conflict with branding requirements"
+  - id: OSL-3.0
+    name: Open Software License 3.0
+    reason: "Strong copyleft with patent retaliation clause; often incompatible with commercial use"

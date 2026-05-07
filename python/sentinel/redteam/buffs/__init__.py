@@ -58,6 +58,19 @@ from sentinel.redteam.buffs.cipher_buffs import CipherBuff
 from sentinel.redteam.buffs.encoding import EncodingBuff
 from sentinel.redteam.buffs.low_resource_languages import LowResourceLanguageBuff
 from sentinel.redteam.buffs.paraphrase import ParaphraseBuff
+from sentinel.redteam.buffs.buffers import (
+    AsciiArtBuff,
+    AuthorityEscalationBuff,
+    CaesarCipherBuff,
+    CharSwapBuff,
+    ContextFloodingBuff,
+    EmbeddedInstructionJSONBuff,
+    EmotionalManipulationBuff,
+    ReversedTokensBuff,
+    StringJoinBuff,
+    SuffixAppendBuff,
+    TokenSpacingBuff,
+)
 
 __all__ = [
     # Base
@@ -83,4 +96,16 @@ __all__ = [
     "CipherBuff",
     "LowResourceLanguageBuff",
     "ParaphraseBuff",
+    # Extended
+    "CaesarCipherBuff",
+    "StringJoinBuff",
+    "CharSwapBuff",
+    "SuffixAppendBuff",
+    "TokenSpacingBuff",
+    "ReversedTokensBuff",
+    "AsciiArtBuff",
+    "ContextFloodingBuff",
+    "EmbeddedInstructionJSONBuff",
+    "AuthorityEscalationBuff",
+    "EmotionalManipulationBuff",
 ]

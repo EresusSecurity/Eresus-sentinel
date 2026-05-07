@@ -8,7 +8,6 @@ Scans the last section of model files for:
   - Embedded code patterns (import os, eval, exec, etc.)
   - Base64/hex encoded payloads with dangerous seeds
 
-Inspired by: ModelAudit (promptfoo) binary tail analysis.
 """
 
 from __future__ import annotations

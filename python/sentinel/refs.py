@@ -51,22 +51,6 @@ class ReferencePhase:
 
 EXPECTED_REFERENCE_REPOS: tuple[ReferenceRepo, ...] = (
     ReferenceRepo(
-        name="promptfoo",
-        url="https://github.com/promptfoo/promptfoo.git",
-        priority="P1/P2",
-        domains=("redteam", "eval", "providers"),
-        p1_targets=("provider matrix", "assertion engine", "eval CLI shape"),
-        p2_targets=("viewer parity", "share/import flows", "cloud adapters"),
-    ),
-    ReferenceRepo(
-        name="modelaudit",
-        url="https://github.com/promptfoo/modelaudit.git",
-        priority="P1/P2",
-        domains=("artifact", "registry", "supply_chain"),
-        p1_targets=("scanner registry split", "auto format routing", "artifact result contract"),
-        p2_targets=("remote source resolvers", "license SBOM", "weight distribution fixtures"),
-    ),
-    ReferenceRepo(
         name="pickle-fuzzer",
         url="https://github.com/cisco-ai-defense/pickle-fuzzer.git",
         priority="P1/P2",
@@ -144,10 +128,7 @@ EXPECTED_REFERENCE_REPOS: tuple[ReferenceRepo, ...] = (
 REFERENCE_PHASES: tuple[ReferencePhase, ...] = (
     ReferencePhase(1, "Clone and normalize references", "P1", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.refs",), ("normalized URL map", "clone status"), "native-live"),
     ReferencePhase(2, "Build reference inventory", "P1", tuple(repo.name for repo in EXPECTED_REFERENCE_REPOS), ("sentinel.refs", "sentinel.parity"), ("file/code counts", "remote/head metadata"), "native-live"),
-    ReferencePhase(3, "Promptfoo eval parity", "P1", ("promptfoo",), ("redteam", "evaluator", "providers"), ("provider matrix", "assertion contract"), "partial"),
-    ReferencePhase(4, "ModelAudit artifact parity", "P1", ("modelaudit",), ("artifact", "scanner_selection", "cli"), ("scanner split IDs", "auto format routing"), "partial"),
     ReferencePhase(5, "Pickle fuzzer contract parity", "P1", ("pickle-fuzzer",), ("fuzzer.pickle", "artifact.PickleScanner"), ("protocol/mutator manifest", "self-test smoke"), "native-live"),
-    ReferencePhase(6, "Rust pickle parity", "P1", ("modelaudit", "pickle-fuzzer"), ("rust/sentinel-pickle", "artifact.pickle"), ("nested/expansion/tamper coverage", "backend selector"), "partial"),
     ReferencePhase(7, "Runtime gateway governance", "P1", ("defenseclaw",), ("runtime_gateway", "gateway", "policy"), ("provider adapter contract", "verdict model"), "partial"),
     ReferencePhase(8, "Runtime audit observability", "P2", ("defenseclaw",), ("event_schemas", "sink_registry", "notifier"), ("sink schema map", "event contracts"), "partial"),
     ReferencePhase(9, "AIBOM scanner parity", "P1", ("aibom",), ("aibom.scanners", "aibom.scan_pipeline"), ("registry smoke", "endpoint classifier"), "partial"),

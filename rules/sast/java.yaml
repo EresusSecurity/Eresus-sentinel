@@ -19,7 +19,7 @@ rules:
       - comment_line: true
       - test_path: true
 
-  - id: MLSAST-022
+  - id: MLSAST-JAVA-022
     title: "LLM output passed to Runtime.exec() (Java)"
     description: "LLM response string used as shell command — command injection risk."
     severity: CRITICAL

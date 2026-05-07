@@ -566,6 +566,14 @@ class SecretsScanner:
 
             is_comment = stripped.startswith("#") or stripped.startswith("//")
 
+            # Skip comment lines that contain example/placeholder markers —
+            # these are documentation examples, not real leaked credentials
+            if is_comment and re.search(
+                r'\b(?:example|placeholder|dummy|sample|your[_\-]?(?:api[_\-]?)?key|changeme|todo|redacted|xxx+)\b',
+                stripped, re.I
+            ):
+                continue
+
             # Regex patterns — run on ALL lines including comments
             # (credentials left in comments are still leaked credentials)
             for sp in self._patterns:

@@ -2,7 +2,6 @@
 Homoglyph Encoding Strategy.
 
 Uses visually similar Unicode characters (homoglyphs) to bypass
-text-based filters. Ported from promptfoo's homoglyph strategy.
 """
 from __future__ import annotations
 

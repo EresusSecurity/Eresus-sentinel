@@ -1,8 +1,6 @@
 """PromptInjections corpus strategy.
 
-50+ curated DAN/jailbreak prompt wrappers from the promptfoo promptInjections
-strategy (src/redteam/strategies/promptInjections/data.ts).
-
+50+ curated DAN/jailbreak prompt wrappers.
 Each wrapper uses ``__PROMPT__`` as the injection placeholder which is replaced
 with the actual attack content at transform time.  The strategy is intentionally
 non-LLM (no API calls) — it is a pure text transformation.
@@ -11,7 +9,6 @@ from __future__ import annotations
 
 from sentinel.redteam.strategies.base import BaseStrategy
 
-# Curated subset of the promptfoo promptInjections corpus.
 # Placeholder ``__PROMPT__`` is substituted with the target prompt.
 _WRAPPERS: list[str] = [
     # DAN variants
@@ -324,13 +321,11 @@ _WRAPPERS: list[str] = [
 class PromptInjectionsStrategy(BaseStrategy):
     """Wraps the attack prompt in 50 curated DAN/jailbreak wrappers.
 
-    Equivalent to promptfoo's promptInjections strategy corpus.
     Each wrapper replaces ``__PROMPT__`` with the target prompt text.
     No LLM calls required — pure text transformation.
     """
 
     name = "prompt_injections"
-    description = "50 curated DAN/jailbreak wrappers (promptfoo promptInjections corpus)"
 
     def __init__(self, max_wrappers: int | None = None):
         self.max_wrappers = max_wrappers

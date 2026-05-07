@@ -51,13 +51,13 @@ torchscript:
     - pattern: "__import__"
       description: "Dynamic import"
       severity: CRITICAL
-    - pattern: "eval("
+    - pattern: "eval\\("
       description: "Dynamic code evaluation"
       severity: CRITICAL
-    - pattern: "exec("
+    - pattern: "exec\\("
       description: "Dynamic code execution"
       severity: CRITICAL
-    - pattern: "open("
+    - pattern: "open\\("
       description: "File access"
       severity: HIGH
     - pattern: "os.remove"

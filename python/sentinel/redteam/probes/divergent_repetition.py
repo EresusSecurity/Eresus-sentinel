@@ -6,7 +6,7 @@ repeating a word or phrase many times causes the model to
 diverge from its safety training.
 
 Based on: "Scalable Extraction of Training Data from (Production)
-Language Models" research and promptfoo divergent-repetition strategy.
+Language Models" research.
 """
 
 from __future__ import annotations

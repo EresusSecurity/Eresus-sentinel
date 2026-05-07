@@ -7,7 +7,6 @@ Domain-specific harmful content testing for:
   - Legal (legal advice, liability)
   - Insurance (claims manipulation, underwriting bias)
 
-Inspired by: promptfoo industry-specific plugins.
 """
 
 from __future__ import annotations

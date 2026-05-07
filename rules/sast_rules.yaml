@@ -35,7 +35,7 @@ rules:
   - id: SAST-002
     name: unsafe_torch_load
     description: "torch.load() uses pickle internally — arbitrary code execution risk"
-    pattern: '(?i)torch\.load\s*\('
+    pattern: '(?i)torch\.load\s*\((?![^)]*weights_only\s*=\s*True)'
     severity: CRITICAL
     cwe_ids: [CWE-502]
     fix_hint: "Use torch.load(weights_only=True) or migrate to safetensors format"
@@ -421,7 +421,6 @@ rules:
     fix_hint: "Never use LLM output in raw SQL; use parameterized queries"
     fp_risk: LOW
 
-  # ─── Weak Cryptography (CodeGuard / defenseclaw) ─────────────────────────────
   - id: SAST-080
     name: weak_hash_md5
     description: "MD5 used for security-sensitive hashing — collision-vulnerable"
@@ -522,8 +521,8 @@ rules:
     fix_hint: "Validate extracted paths to ensure they stay within the target directory"
     fp_risk: MEDIUM
 
-  # ─── Supply Chain / Agent Skill Patterns (defenseclaw CodeGuard) ─────────────
-  - id: SAST-100
+  # ─── Supply Chain / Agent Skill Patterns (SAST-300 series) ────────────────────
+  - id: SAST-300
     name: skill_hardcoded_webhook
     description: "Hardcoded webhook/exfiltration URL in agent skill or tool definition"
     pattern: '(?i)(?:https?://(?!(?:api\.openai\.com|api\.anthropic\.com|huggingface\.co|localhost|127\.0\.0\.1))[a-z0-9.\-]+\.[a-z]{2,}/[^\s"'']{0,100})(?:.{0,200}(?:send|post|upload|exfil|webhook|callback|notify))'
@@ -532,7 +531,7 @@ rules:
     fix_hint: "Remove hardcoded webhook URLs from skill definitions; use environment variables"
     fp_risk: HIGH
 
-  - id: SAST-101
+  - id: SAST-301
     name: pip_install_subprocess
     description: "pip install via subprocess — potential supply chain injection"
     pattern: '(?i)subprocess\.(?:run|call|check_output|Popen)\s*\([^)]*pip\s+install'
@@ -541,7 +540,7 @@ rules:
     fix_hint: "Pin dependencies in requirements.txt; avoid dynamic pip install in runtime code"
     fp_risk: MEDIUM
 
-  - id: SAST-102
+  - id: SAST-302
     name: unsafe_importlib_load
     description: "importlib loading dynamically constructed module name — code injection risk"
     pattern: '(?i)importlib\.(?:import_module|util\.spec_from_file_location)\s*\(.{0,80}(?:\+|format\(|f["'']|\.join\(|input\(|request\.|args\.)'
@@ -550,8 +549,8 @@ rules:
     fix_hint: "Never dynamically construct module names from user input"
     fp_risk: MEDIUM
 
-  # ─── Agentic / LLM-Specific Code Patterns ────────────────────────────────────
-  - id: SAST-110
+  # ─── Agentic / LLM-Specific Code Patterns (SAST-400 series) ──────────────────
+  - id: SAST-400
     name: langchain_dangerous_tools
     description: "LangChain ShellTool or PythonREPL enabled — executes arbitrary commands"
     pattern: '(?i)(?:ShellTool\s*\(\)|BashProcess\s*\(\)|PythonREPLTool\s*\(\)|human_as_tool\s*=\s*True)'
@@ -560,7 +559,7 @@ rules:
     fix_hint: "Disable or sandbox ShellTool/PythonREPL; require explicit user confirmation for shell access"
     fp_risk: LOW
 
-  - id: SAST-111
+  - id: SAST-401
     name: autogen_human_input_never
     description: "AutoGen agent with human_input_mode=NEVER — fully autonomous, no human oversight"
     pattern: '(?i)human_input_mode\s*=\s*["'']NEVER["'']'
@@ -569,7 +568,7 @@ rules:
     fix_hint: "Set human_input_mode=ALWAYS or TERMINATE for production agents"
     fp_risk: LOW
 
-  - id: SAST-112
+  - id: SAST-402
     name: openai_allow_dangerous_requests
     description: "allow_dangerous_deserialization or allow_dangerous_requests=True — unsafe loading"
     pattern: '(?i)allow_dangerous_(?:deserialization|requests)\s*=\s*True'
@@ -578,7 +577,7 @@ rules:
     fix_hint: "Never set allow_dangerous_deserialization=True on untrusted data sources"
     fp_risk: LOW
 
-  - id: SAST-113
+  - id: SAST-403
     name: crewai_verbose_with_secrets
     description: "CrewAI/LangGraph verbose mode may log sensitive tool results and API keys"
     pattern: '(?i)(?:verbose\s*=\s*True|verbose\s*=\s*2).{0,200}(?:api_key|secret|token|password|credential)'
@@ -587,7 +586,7 @@ rules:
     fix_hint: "Disable verbose mode in production; ensure secrets are not passed as plain arguments"
     fp_risk: HIGH
 
-  - id: SAST-114
+  - id: SAST-404
     name: mcp_tool_unauthenticated
     description: "MCP server tool registered without authentication check"
     pattern: '(?i)(?:@mcp\.tool\(\)|server\.tool\(\)|add_tool\s*\().{0,200}(?:def\s+\w+\s*\([^)]*\)\s*:(?!.*(?:auth|token|permission|verify|check_auth|require_auth)))'
@@ -596,7 +595,7 @@ rules:
     fix_hint: "Add authentication/authorization checks to all MCP tool handlers"
     fp_risk: HIGH
 
-  - id: SAST-115
+  - id: SAST-405
     name: agent_memory_unvalidated_write
     description: "Agent writes to memory/vector store from unvalidated LLM output — memory poisoning risk"
     pattern: '(?i)(?:memory\.(?:save|add|store|insert|upsert)|vectorstore\.add_texts\s*\(|collection\.add\s*\().{0,200}(?:response|completion|output|generated|llm_output|chain_output)'
@@ -927,7 +926,7 @@ rules:
     fix_hint: "Never curl secrets to external URLs; this is a supply-chain attack"
     fp_risk: LOW
 
-  - id: SAST-092
+  - id: SAST-250
     name: sql_injection_format_string
     description: "SQL query constructed with %-format, f-string, or .format() — SQL injection risk"
     pattern: '(?i)["\x27]\s*(?:SELECT|INSERT\s+INTO|UPDATE\s+\w|DELETE\s+FROM|UNION\s+(?:ALL\s+)?SELECT)\b.{0,200}(?:%[sdf]\b|%\s*(?:\w+)|["\x27]\s*%\s*\w|\{[^}]{1,40}\}|["\x27]\s*\+\s*\w|\bf["\x27][^"\x27]*\{)'
@@ -936,7 +935,7 @@ rules:
     fix_hint: "Use parameterized queries (cursor.execute(sql, params)) instead of string interpolation"
     fp_risk: MEDIUM
 
-  - id: SAST-093
+  - id: SAST-251
     name: pickle_aliased_import_loads
     description: "pickle.loads() called via aliased import (e.g. import pickle as p; p.loads()) — unsafe deserialization"
     pattern: '(?i)import\s+(?:pickle|cPickle|_pickle)\s+as\s+(\w+)'
@@ -954,7 +953,7 @@ rules:
     fix_hint: "Dynamic __import__() of system modules is an obfuscation pattern; use explicit import statements"
     fp_risk: LOW
 
-  - id: SAST-102
+  - id: SAST-252
     name: breakpoint_shell
     description: "breakpoint() — launches interactive debugger, gives attacker REPL access in production"
     pattern: '(?i)\bbreakpoint\s*\(\s*\)'
@@ -1008,7 +1007,7 @@ rules:
     fix_hint: "Use structured logging: logging.info('User: %s', user_input) — never concatenate user input into log messages"
     fp_risk: MEDIUM
 
-  - id: SAST-101
+  - id: SAST-253
     name: pickle_reduce_payload
     description: "__reduce__ method in a class — classic pickle deserialization RCE payload pattern"
     pattern: '(?i)def\s+__reduce__\s*\(\s*self'
@@ -1034,3 +1033,93 @@ rules:
     cwe_ids: [CWE-522]
     fix_hint: "Environment variable exfiltration pattern detected; audit CI pipeline"
     fp_risk: LOW
+
+  - id: SAST-107
+    name: runpy_execution
+    description: "runpy.run_module() or runpy.run_path() — executes Python modules as scripts, bypassing normal import guards"
+    pattern: '(?i)\brunpy\s*\.\s*run_(?:module|path)\s*\('
+    severity: CRITICAL
+    cwe_ids: [CWE-94]
+    fix_hint: "runpy executes arbitrary Python modules; replace with direct function calls or controlled subprocess"
+    fp_risk: LOW
+
+  - id: SAST-108
+    name: webbrowser_open
+    description: "webbrowser.open() in a model or server context — can trigger arbitrary URL execution or phishing"
+    pattern: '(?i)\bwebbrowser\s*\.\s*open\s*\('
+    severity: HIGH
+    cwe_ids: [CWE-601, CWE-78]
+    fix_hint: "webbrowser.open() should never appear in ML model or server code; remove or replace with explicit user consent"
+    fp_risk: MEDIUM
+
+  - id: SAST-109
+    name: ftplib_usage
+    description: "ftplib import or usage — FTP sends credentials in plaintext and enables data exfiltration"
+    pattern: '(?i)(?:import\s+ftplib|from\s+ftplib\s+import|ftplib\.FTP\s*\()'
+    severity: HIGH
+    cwe_ids: [CWE-321, CWE-319]
+    fix_hint: "FTP transmits data and credentials in cleartext; use SFTP/SCP or HTTPS instead"
+    fp_risk: LOW
+
+  - id: SAST-260
+    name: telnetlib_usage
+    description: "telnetlib import or usage — Telnet is an unencrypted protocol, deprecated in Python 3.11"
+    pattern: '(?i)(?:import\s+telnetlib|from\s+telnetlib\s+import|telnetlib\.Telnet\s*\()'
+    severity: HIGH
+    cwe_ids: [CWE-319]
+    fix_hint: "telnetlib is deprecated and unencrypted; replace with paramiko SSH or similar"
+    fp_risk: LOW
+
+  - id: SAST-261
+    name: path_traversal_literal
+    description: "Literal path traversal sequence '../' in a string argument — directory traversal attempt"
+    pattern: "(?:[\"'])[^\n]*\\.\\.[/\\\\][^\n]*(?:[\"'])"
+    severity: HIGH
+    cwe_ids: [CWE-22]
+    fix_hint: "Sanitize all user-supplied paths with os.path.abspath and verify they start with the intended base directory"
+    fp_risk: MEDIUM
+
+  - id: SAST-262
+    name: embedded_binary_magic_in_code
+    description: "PE (MZ) or ELF magic bytes as Python byte-string literal — potential executable dropper payload"
+    pattern: 'b["\x27](?:\\x4d\\x5a|MZ|\\x7fELF)["\x27]'
+    severity: CRITICAL
+    cwe_ids: [CWE-506, CWE-94]
+    fix_hint: "Embedding PE/ELF binary magic in source code is a dropper pattern; remove immediately"
+    fp_risk: LOW
+
+  - id: SAST-263
+    name: rot13_obfuscation
+    description: "codecs.decode with rot_13 or rot13 — simple Caesar cipher used to obfuscate malicious strings"
+    pattern: '(?i)codecs\s*\.\s*(?:decode|encode)\s*\([^,)]+,\s*["\x27]rot.?1[3]\b'
+    severity: MEDIUM
+    cwe_ids: [CWE-693]
+    fix_hint: "ROT13 encoding of code strings is a common obfuscation technique in malicious payloads; review context"
+    fp_risk: MEDIUM
+
+  - id: SAST-264
+    name: xor_byte_obfuscation
+    description: "Single-byte XOR loop over bytes — common obfuscation/deobfuscation technique in shellcode/loaders"
+    pattern: '(?i)(?:for\s+\w+\s+in\s+\w+\s*:\s*\w+\s*\^\s*0x[0-9a-f]+|bytes\s*\(\s*\w+\s*\^\s*\w+\s+for)'
+    severity: MEDIUM
+    cwe_ids: [CWE-693]
+    fix_hint: "XOR byte-level obfuscation loops are commonly used to hide shellcode; verify this is not deobfuscating a payload"
+    fp_risk: HIGH
+
+  - id: SAST-265
+    name: nested_encoded_pickle
+    description: "pickle.loads() applied to a base64/zlib decoded payload — nested encoded pickle is an RCE evasion pattern"
+    pattern: '(?i)pickle\s*\.\s*loads\s*\(\s*(?:base64|b64decode|zlib\.decompress|binascii\.unhexlify)'
+    severity: CRITICAL
+    cwe_ids: [CWE-502, CWE-693]
+    fix_hint: "Nested encoded pickle is a known sandbox-evasion technique; never deserialize attacker-controlled data"
+    fp_risk: LOW
+
+  - id: SAST-116
+    name: pickle_dos_expansion
+    description: "pickle.loads() called on data with a MEMO/GET ratio pattern or deeply nested REDUCE — pickle expansion DoS"
+    pattern: '(?i)(?:pickle\s*\.\s*loads|pickletools\s*\.\s*genops)\s*\('
+    severity: MEDIUM
+    cwe_ids: [CWE-502, CWE-400]
+    fix_hint: "Deserializing untrusted pickle data can cause denial-of-service via memory expansion; use safe formats like JSON/safetensors"
+    fp_risk: HIGH

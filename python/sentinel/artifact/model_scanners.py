@@ -132,7 +132,7 @@ class KerasLayerScanner:
 
         The canonical Keras scanner is deeper and YAML-rule integrated, so this
         compatibility layer delegates to it and keeps ``scan()`` for legacy
-        modelaudit-style callers.
+        callers.
         """
         from sentinel.artifact.keras_scanner import KerasScanner as NativeKerasScanner
 

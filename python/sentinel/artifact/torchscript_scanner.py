@@ -28,6 +28,7 @@ No torch pip dependency required.
 
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 from typing import List, Set, Tuple
@@ -247,21 +248,22 @@ class TorchScriptScanner:
         content_lower = content.lower()
 
         for pattern, desc, severity in DANGEROUS_CODE_PATTERNS:
-            if pattern.lower() in content_lower:
+            literal = re.sub(r'\\(.)', r'\1', pattern)
+            if literal.lower() in content_lower:
                 line_num = 0
                 for i, line in enumerate(content.split("\n"), 1):
-                    if pattern.lower() in line.lower():
+                    if literal.lower() in line.lower():
                         line_num = i
                         break
 
                 self.findings.append(Finding.artifact(
                     rule_id="TS-010",
-                    title=f"Dangerous code pattern: {pattern}",
+                    title=f"Dangerous code pattern: {literal}",
                     description=f"TorchScript code in '{source_file}' contains "
-                                f"'{pattern}' ({desc}). This could enable "
+                                f"'{literal}' ({desc}). This could enable "
                                 "arbitrary code execution during model loading.",
                     severity=severity, target=filepath,
-                    evidence=f"file={source_file}, line={line_num}, pattern={pattern}",
+                    evidence=f"file={source_file}, line={line_num}, pattern={literal}",
                     cwe_ids=["CWE-94"],
                 ))
 

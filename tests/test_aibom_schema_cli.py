@@ -1,6 +1,13 @@
 import json
+import os
 import subprocess
 import sys
+
+
+def _env() -> dict:
+    e = os.environ.copy()
+    e["PYTHONPATH"] = f"python{os.pathsep}{e.get('PYTHONPATH', '')}"
+    return e
 
 from sentinel.aibom.diff import diff_bom, format_diff_json
 from sentinel.aibom.models import (
@@ -90,6 +97,7 @@ def test_aibom_cli_lists_scanners_as_json():
         text=True,
         capture_output=True,
         check=False,
+        env=_env(),
     )
 
     assert result.returncode == 0
@@ -122,6 +130,7 @@ def test_aibom_cli_diff_json(tmp_path):
         text=True,
         capture_output=True,
         check=False,
+        env=_env(),
     )
 
     assert result.returncode == 1

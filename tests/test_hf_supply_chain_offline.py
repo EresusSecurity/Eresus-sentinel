@@ -1,6 +1,14 @@
 import json
+import os
 import subprocess
 import sys
+
+
+def _env() -> dict:
+    e = os.environ.copy()
+    e["PYTHONPATH"] = f"python{os.pathsep}{e.get('PYTHONPATH', '')}"
+    return e
+
 from urllib.error import URLError
 
 from sentinel.artifact.huggingface_scanner import HuggingFaceScanner
@@ -93,6 +101,7 @@ def test_dep_scan_offline_json_stdout(tmp_path):
         text=True,
         capture_output=True,
         check=False,
+        env=_env(),
     )
 
     assert result.returncode in (0, 1)

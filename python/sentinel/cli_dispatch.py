@@ -310,13 +310,23 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
         (".jinja", ".jinja2", ".j2", ".template"): Jinja2InjectionScanner,
     }
 
-    # Model card / README.md — prompt injection and SSTI patterns
-    if suffix == ".md" and path.name.lower() in ("readme.md", "model_card.md", "modelcard.md"):
+    # Model card / README.md — manifest checks + credential/prompt-injection
+    if suffix in (".md", ".rst", ".markdown", ".txt") and path.name.lower() in (
+        "readme.md", "readme.rst", "readme.txt", "readme.markdown",
+        "model_card.md", "model_card.txt", "modelcard.md",
+        "agents.md", "agent_card.md",
+        "system_prompt.md", "system_prompt.txt",
+    ):
         try:
             from sentinel.scanner_selection import ManifestScanner
             findings.extend(_findings_from_artifact_result(ManifestScanner().scan_file(str(path))))
         except Exception as exc:
             logger.warning("ManifestScanner failed on %s: %s", path, exc)
+        try:
+            from sentinel.artifact.model_card_scanner import ModelCardScanner
+            findings.extend(_findings_from_artifact_result(ModelCardScanner().scan_file(str(path))))
+        except Exception as exc:
+            logger.warning("ModelCardScanner failed on %s: %s", path, exc)
         return findings
 
     for extensions, scanner_classes in scanner_map.items():

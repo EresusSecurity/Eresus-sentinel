@@ -344,6 +344,42 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
             cwe_ids=["CWE-502"],
         ))
 
+    # ── SETITEM heap mutation (CVE-2026-24747) ───────────────
+    if analysis.has_setitem_mutation:
+        findings.append(Finding.artifact(
+            rule_id="ARTIFACT-042",
+            title="REDUCE\u2192SETITEM heap mutation detected (CVE-2026-24747)",
+            description=(
+                "The pickle applies SETITEM to the result of a REDUCE/NEWOBJ opcode "
+                "in the presence of a dangerous global import. This pattern mutates "
+                "object attributes post-construction and is associated with "
+                "CVE-2026-24747 (NumpyArrayWrapper SETITEM/SETITEMS heap manipulation)."
+            ),
+            severity=Severity.HIGH,
+            confidence=0.9,
+            target=source,
+            evidence="REDUCE\u2192SETITEM with dangerous global in scope",
+            cwe_ids=["CWE-502"],
+            tags=["cve:CVE-2026-24747", "owasp:llm05"],
+        ))
+
+    if analysis.has_newobj_setitems:
+        findings.append(Finding.artifact(
+            rule_id="ARTIFACT-043",
+            title="NEWOBJ\u2192SETITEMS attribute injection detected (CVE-2026-24747)",
+            description=(
+                "The pickle applies SETITEMS to a freshly constructed NEWOBJ result "
+                "with a dangerous global in scope. SETITEMS calls __setitem__ on a "
+                "non-dict object \u2014 the primary exploitation vector in CVE-2026-24747."
+            ),
+            severity=Severity.CRITICAL,
+            confidence=0.95,
+            target=source,
+            evidence="NEWOBJ\u2192SETITEMS chain with dangerous global in scope",
+            cwe_ids=["CWE-502"],
+            tags=["cve:CVE-2026-24747", "owasp:llm05"],
+        ))
+
     # ── OBJ+POP invisibility ─────────────────────────────────
     if analysis.has_obj_pop_bypass:
         findings.append(Finding.artifact(

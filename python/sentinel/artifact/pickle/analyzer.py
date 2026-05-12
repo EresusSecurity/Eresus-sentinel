@@ -151,6 +151,7 @@ def _walk_opcodes(
     _last_was_newobj_or_reduce = False
     _last_suspicious_global: DangerousImport | None = None
     _suspicious_globals: list[DangerousImport] = []
+    _last_was_newobj = False  # tracks NEWOBJ specifically for SETITEMS pattern
 
     _proto_count = 0
     _get_count = 0
@@ -299,8 +300,10 @@ def _walk_opcodes(
                         analysis.has_setstate_gadget = True
                 if op_name in ("REDUCE", "NEWOBJ", "NEWOBJ_EX"):
                     _last_was_newobj_or_reduce = True
+                    _last_was_newobj = op_name in ("NEWOBJ", "NEWOBJ_EX")
                 else:
                     _last_was_newobj_or_reduce = False
+                    _last_was_newobj = False
                 if last_global is not None:
                     last_global.chain_confirmed = True
                     last_global.confidence = 1.0
@@ -335,6 +338,20 @@ def _walk_opcodes(
                     )
                     _last_suspicious_global.payload_args.extend(recent_strings[-5:])
                     _last_suspicious_global = None
+
+            # ── SETITEM / SETITEMS (CVE-2026-24747) ──────────
+            elif op_name in ("SETITEM", "SETITEMS"):
+                if _last_was_newobj_or_reduce and (
+                    last_global is not None or _last_suspicious_global is not None
+                    or analysis.dangerous_imports
+                ):
+                    if op_name == "SETITEMS" and _last_was_newobj:
+                        analysis.has_newobj_setitems = True
+                    else:
+                        analysis.has_setitem_mutation = True
+                    if last_global is not None:
+                        last_global.chain_confirmed = True
+                        last_global.confidence = 1.0
 
             # ── Memo write ───────────────────────────────────
             elif op_name in MEMO_WRITE_OPS:

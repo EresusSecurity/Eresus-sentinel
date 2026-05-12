@@ -5,6 +5,7 @@ __pycache__/
 # Test / coverage outputs
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 
 # Build artifacts
@@ -66,6 +67,12 @@ docs_generation_prompt.md
 .windsurf/
 .cursor
 .gemini
+.vscode/
+ide/
+
+# Local runtime / infra configs (not part of distributed package)
+config/grafana/
+config/schemas/runtime-approval-span.json
 
 
 # Local runtime configs

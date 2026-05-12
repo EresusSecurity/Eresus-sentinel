@@ -117,6 +117,37 @@ _PROMPT_INJECT_RE = re.compile(
     re.DOTALL,
 )
 
+# ---------------------------------------------------------------------------
+# Hydra _target_ RCE detection (CVE-2025-23304 / NeMo configs)
+# Hydra/OmegaConf instantiates the Python class named in _target_. Any
+# untrusted value outside the safe namespace list enables RCE.
+# ---------------------------------------------------------------------------
+_SAFE_TARGET_PREFIXES: tuple[str, ...] = (
+    "nemo.", "nemo_toolkit.", "pytorch_lightning.", "lightning.", "torch.",
+    "torchvision.", "torchaudio.", "transformers.", "datasets.",
+    "omegaconf.", "hydra.", "hydra_plugins.",
+    "numpy.", "scipy.", "sklearn.", "sklearn_extra.",
+    "builtins.", "collections.", "functools.", "itertools.",
+    "dataclasses.", "abc.",
+)
+
+_DANGEROUS_TARGETS: frozenset[str] = frozenset({
+    "os.system", "os.popen",
+    "os.execl", "os.execle", "os.execlp", "os.execv", "os.execve", "os.execvp", "os.execvpe",
+    "os.spawnl", "os.spawnle",
+    "subprocess.call", "subprocess.run", "subprocess.Popen",
+    "subprocess.check_output", "subprocess.check_call",
+    "builtins.eval", "builtins.exec",
+    "__builtin__.eval", "__builtin__.exec",
+})
+
+_SUSPICIOUS_TARGET_KEYWORDS: tuple[str, ...] = (
+    "eval", "exec", "system", "popen", "spawn", "subprocess",
+    "socket", "connect", "Popen", "pty", "shell",
+)
+
+_TARGET_KEY_RE = re.compile(r"(?m)^[ \t]*_target_\s*:\s*(.+)$")
+
 _MAX_SCAN_BYTES = 32 * 1024 * 1024  # 32 MB cap
 
 
@@ -154,6 +185,9 @@ class YamlScanner:
 
         # ── ARTIFACT-040: merge-key injection ──────────────────────────────
         findings.extend(self._check_merge_key(text, path))
+
+        # ── ARTIFACT-044: Hydra _target_ RCE (CVE-2025-23304) ───────────────
+        findings.extend(self._check_hydra_target(text, path))
 
         return findings
 
@@ -339,4 +373,74 @@ class YamlScanner:
                 "or strip them in a pre-processing step."
             ),
         )]
+
+    def _check_hydra_target(
+        self, text: str, path: Path
+    ) -> list[Finding]:
+        """Detect Hydra/OmegaConf _target_ fields pointing to dangerous callables.
+
+        CVE-2025-23304: NeMo / Hydra configs with _target_ pointing to os.system,
+        subprocess.Popen, builtins.eval etc. execute arbitrary code when
+        hydra.utils.instantiate() is called during model loading.
+        """
+        findings: list[Finding] = []
+        for m in _TARGET_KEY_RE.finditer(text):
+            value = m.group(1).strip().strip("'\"")
+            line_no = text[: m.start()].count("\n") + 1
+
+            if value in _DANGEROUS_TARGETS:
+                findings.append(Finding.artifact(
+                    rule_id="ARTIFACT-044",
+                    title=f"Hydra _target_ RCE: dangerous callable '{value}'",
+                    description=(
+                        f"YAML _target_ field set to '{value}', which is a known RCE "
+                        "gadget. Hydra's hydra.utils.instantiate() will call this "
+                        "function directly when the config is loaded — CVE-2025-23304."
+                    ),
+                    severity=Severity.CRITICAL,
+                    target=f"{path}:{line_no}",
+                    evidence=f"_target_: {value}",
+                    cwe_ids=["CWE-94", "CWE-502"],
+                    tags=["cve:CVE-2025-23304", "owasp:llm05"],
+                ))
+                continue
+
+            # Suspicious keyword even within a safe-prefixed namespace
+            for kw in _SUSPICIOUS_TARGET_KEYWORDS:
+                if kw.lower() in value.lower():
+                    is_safe = any(value.startswith(p) for p in _SAFE_TARGET_PREFIXES)
+                    findings.append(Finding.artifact(
+                        rule_id="ARTIFACT-044",
+                        title=f"Hydra _target_ suspicious callable: '{value}'",
+                        description=(
+                            f"YAML _target_ field contains suspicious keyword '{kw}'. "
+                            "Hydra's instantiate() will call this class/function at "
+                            "config load time — verify this is not attacker-controlled."
+                        ),
+                        severity=Severity.HIGH if is_safe else Severity.CRITICAL,
+                        target=f"{path}:{line_no}",
+                        evidence=f"_target_: {value} (keyword: {kw})",
+                        cwe_ids=["CWE-94", "CWE-502"],
+                        tags=["cve:CVE-2025-23304", "owasp:llm05"],
+                    ))
+                    break
+            else:
+                # Not already flagged — check for out-of-namespace dotted path
+                if not any(value.startswith(p) for p in _SAFE_TARGET_PREFIXES) and "." in value:
+                    findings.append(Finding.artifact(
+                        rule_id="ARTIFACT-044",
+                        title=f"Hydra _target_ outside safe namespace: '{value}'",
+                        description=(
+                            f"YAML _target_ field references '{value}' which is "
+                            "outside the known-safe Hydra/NeMo/PyTorch namespace. "
+                            "If this config is loaded via hydra.utils.instantiate(), "
+                            "this may enable arbitrary code execution."
+                        ),
+                        severity=Severity.HIGH,
+                        target=f"{path}:{line_no}",
+                        evidence=f"_target_: {value}",
+                        cwe_ids=["CWE-94"],
+                        tags=["cve:CVE-2025-23304", "owasp:llm05"],
+                    ))
+        return findings
 

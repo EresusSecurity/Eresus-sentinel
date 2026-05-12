@@ -113,6 +113,63 @@ def build_gateway_event(
     }
 
 
+def build_network_egress_event(
+    *,
+    destination: str,
+    protocol: str,
+    port: int | None = None,
+    method: str = "",
+    status_code: int | None = None,
+    bytes_sent: int = 0,
+    bytes_received: int = 0,
+    allowed: bool = True,
+    policy_rule: str = "",
+) -> dict[str, Any]:
+    """Build a network egress event matching the network-egress-event.json schema."""
+    event: dict[str, Any] = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "destination": destination,
+        "protocol": protocol,
+        "allowed": allowed,
+    }
+    if port is not None:
+        event["port"] = port
+    if method:
+        event["method"] = method
+    if status_code is not None:
+        event["status_code"] = status_code
+    if bytes_sent:
+        event["bytes_sent"] = bytes_sent
+    if bytes_received:
+        event["bytes_received"] = bytes_received
+    if policy_rule:
+        event["policy_rule"] = policy_rule
+    return event
+
+
+def build_approval_event(
+    *,
+    request_id: str = "",
+    action: str,
+    approver: str = "policy-engine",
+    decision: str,
+    reason: str = "",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a runtime approval span event (runtime-approval-span schema)."""
+    return {
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "span_id": uuid.uuid4().hex,
+        "request_id": request_id or uuid.uuid4().hex,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "approver": approver,
+        "decision": decision,
+        "reason": reason,
+        "metadata": metadata or {},
+    }
+
+
 def _type_matches(value: Any, expected: str) -> bool:
     type_map = {
         "string": str,

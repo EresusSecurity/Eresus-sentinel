@@ -31,7 +31,11 @@ _MAGIC_TABLE: list[tuple[bytes, int, str]] = [
     (b'{"', 0, "json"),
     (b"\x08\x00", 0, "protobuf"),  # TF SavedModel / ONNX
     (b"PMML", 0, "pmml"),
+    (b"T7\x00\x00", 0, "torch7"),  # Torch7 legacy Lua serialization
 ]
+
+# ExecuTorch FlatBuffer: bytes[4:6] == b"ET", validated at dispatch time
+_ET_IDENT_OFFSET = 4
 
 # Extension → format name (lower priority than magic)
 _EXT_TABLE: dict[str, str] = {
@@ -62,6 +66,17 @@ _EXT_TABLE: dict[str, str] = {
     ".ubj": "xgboost",
     ".txt": "lightgbm",
     ".cbm": "catboost",
+    ".t7": "torch7",
+    ".th": "torch7",
+    ".net": "torch7",
+    ".md": "model_card",
+    ".rst": "model_card",
+    ".markdown": "model_card",
+    ".engine": "tensorrt",
+    ".plan": "tensorrt",
+    ".trt": "tensorrt",
+    ".pte": "executorch",
+    ".ptl": "executorch",
 }
 
 
@@ -159,6 +174,22 @@ def scan_file(filepath: str) -> list[Finding]:
         # Could be tokenizer.json or other config
         from sentinel.artifact.tokenizer_scanner import TokenizerScanner
         return TokenizerScanner().scan_file(filepath)
+
+    if fmt == "torch7":
+        from sentinel.artifact.torch7_scanner import Torch7Scanner
+        return Torch7Scanner().scan_file(filepath)
+
+    if fmt == "model_card":
+        from sentinel.artifact.model_card_scanner import ModelCardScanner
+        return ModelCardScanner().scan_file(filepath)
+
+    if fmt == "tensorrt":
+        from sentinel.artifact.tensorrt_scanner import TensorRTScanner
+        return TensorRTScanner().scan_file(filepath)
+
+    if fmt == "executorch":
+        from sentinel.artifact.executorch_scanner import ExecuTorchScanner
+        return ExecuTorchScanner().scan_file(filepath)
 
     # Generic fallback: pattern scan
     from sentinel.analysis.integrated import PatternDetector

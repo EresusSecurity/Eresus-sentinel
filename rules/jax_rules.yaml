@@ -153,6 +153,14 @@ dangerous_pickle_globals:
   - [_io, fileio]
   - [_osx_support, _read_output]
   - [_pyrepl.pager, pipe_pager]
+  - [pip._vendor.distlib.scripts, scriptmaker]
+  - [test.support.script_helper, assert_python_ok]
+  - [timeit, repeat]
+  - [timeit, timeit]
+  - [torch.distributed.rpc, remote]
+  - [torch.distributed.rpc, remotemodule]
+  - [torch.distributed.rpc, rpc_async]
+  - [torch.distributed.rpc, rpc_sync]
 
 jax_suspicious_patterns:
   - id: JAX-PAT-001

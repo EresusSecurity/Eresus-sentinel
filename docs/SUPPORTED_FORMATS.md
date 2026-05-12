@@ -43,6 +43,10 @@ Eresus Sentinel includes **70+ registered scanners** covering model, archive, an
 | **R Serialized** | `.rds` `.rda` `.rdata` | `r_serialized` | HIGH | R expression injection, `eval(parse(...))` patterns |
 | **Flax** | `.flax` | `flax` | MEDIUM | Pickle in Flax checkpoint, msgpack anomalies |
 | **Joblib** | `.joblib` | `joblib` | HIGH | Pickle opcode scan (joblib uses pickle internally) |
+| **Torch7** | `.t7` `.th` `.net` | `torch7` | HIGH | Lua execution primitives (os.execute/io.popen/loadstring), dynamic require/ffi.load, network/shell strings, Windows LOLBins |
+| **Model Card / README** | `.md` `.rst` `.markdown` | `model_card` | HIGH | Prompt injection, pipe-to-bash instructions, typosquatted pip packages, trust_remote_code docs, hardcoded credentials, suspicious URLs |
+| **TensorRT** | `.engine` `.plan` `.trt` | `tensorrt` | CRITICAL | Embedded PE/ELF executables, .so/.dll plugin references, LoadLibrary calls, path traversal, exec/eval strings, TRT plugin entry points |
+| **ExecuTorch** | `.pte` `.ptl` | `executorch` | HIGH | FlatBuffer structure validation, eval/exec/import strings in binary, pickle global scanning in ZIP-backed archives |
 
 ---
 

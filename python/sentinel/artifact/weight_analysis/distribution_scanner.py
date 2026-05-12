@@ -83,8 +83,7 @@ class WeightDistributionScanner:
 
         if len(layer_stats) > 3:
             means = [s["mean"] for s in layer_stats.values() if s["size"] > 100]
-            stds = [s["std"] for s in layer_stats.values() if s["size"] > 100]
-            if means and stds:
+            if means:
                 global_mean = sum(means) / len(means)
                 global_std_of_means = (sum((m - global_mean)**2 for m in means) / len(means)) ** 0.5
                 if global_std_of_means > 0:
@@ -98,6 +97,53 @@ class WeightDistributionScanner:
                                     severity=Severity.HIGH, target=filepath,
                                     evidence=f"z_score={z:.2f}",
                                 ))
+
+        # ── WEIGHT-006: cosine similarity — dissimilar output neurons ──────
+        # Detect injected neurons whose weight direction is unlike all others.
+        # Skip very large output layers (vocab-sized embeddings) — they are
+        # expected to have diverse directions and would produce false positives.
+        _KNOWN_VOCAB_SIZES = {30522, 50257, 32000, 28996, 51200, 65536, 100000}
+        _COSINE_SIM_THRESHOLD = 0.1
+        for name, arr in tensors.items():
+            if not isinstance(arr, np.ndarray) or arr.ndim != 2:
+                continue
+            n_out = arr.shape[1]
+            # Skip likely-vocabulary layers and very large/small layers
+            if n_out > 1000 or n_out < 3:
+                continue
+            if any(abs(n_out - v) < v * 0.05 for v in _KNOWN_VOCAB_SIZES):
+                continue
+            w = arr.astype(np.float64)
+            norms = np.linalg.norm(w, axis=0, keepdims=True)
+            norms = np.where(norms < 1e-8, 1e-8, norms)
+            normed = w / norms
+            sims = normed.T @ normed  # (n_out, n_out) cosine similarity matrix
+            dissimilar: list[int] = []
+            for i in range(n_out):
+                others = np.concatenate([sims[i, :i], sims[i, i + 1:]])
+                if others.size > 0 and float(np.max(np.abs(others))) < _COSINE_SIM_THRESHOLD:
+                    dissimilar.append(i)
+            # Flag only if very few neurons are dissimilar (localized injection)
+            if 0 < len(dissimilar) <= max(3, int(0.05 * n_out)):
+                findings.append(Finding.artifact(
+                    rule_id="WEIGHT-006",
+                    title=f"Dissimilar output neurons in layer {name}",
+                    description=(
+                        f"Layer '{name}' contains {len(dissimilar)} output neuron(s) "
+                        "whose weight direction (cosine similarity) is unlike all others. "
+                        "Localized directional anomalies are consistent with backdoor "
+                        "trigger insertion via weight poisoning."
+                    ),
+                    severity=Severity.HIGH,
+                    target=filepath,
+                    evidence=(
+                        f"dissimilar_neurons={dissimilar[:5]}, "
+                        f"threshold={_COSINE_SIM_THRESHOLD}, layer_shape={arr.shape}"
+                    ),
+                    cwe_ids=["CWE-1253"],
+                    tags=["mitre-atlas:AML.T0019"],
+                ))
+
         return findings
 
     def _load_tensors(self, path: Path) -> dict:

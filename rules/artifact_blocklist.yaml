@@ -829,6 +829,12 @@ dangerous_globals:
   torch._inductor:
     - "*"  # code generation and execution
 
+  torch.distributed.rpc:
+    - remote
+    - remotemodule
+    - rpc_async
+    - rpc_sync
+
   torch.jit:
     - "*"  # JIT compilation — arbitrary code execution
 
@@ -840,6 +846,16 @@ dangerous_globals:
 
   distutils:
     - "*"  # build system — code execution
+
+  timeit:
+    - timeit
+    - repeat
+
+  pip._vendor.distlib.scripts:
+    - scriptmaker
+
+  test.support.script_helper:
+    - assert_python_ok
 
 # ─── ALLOWLIST ────────────────────────────────────────────────────────
 # Known-safe module.name pairs in ML model context.

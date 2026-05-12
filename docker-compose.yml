@@ -10,6 +10,7 @@
 #   sentinel-api    — Main API (port 8080)
 #   sentinel-db     — PostgreSQL database (port 5432)
 #   prometheus      — Metrics collection (port 9090)
+#   grafana         — Dashboards (port 3000)
 # ============================================================================
 
 services:
@@ -116,6 +117,28 @@ services:
       sentinel-api:
         condition: service_healthy
 
+  # ── Grafana (Dashboards) ─────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: sentinel-grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-sentinel}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_LOG_LEVEL=warn
+    networks:
+      - sentinel-net
+    depends_on:
+      - prometheus
+
 volumes:
   sentinel-logs:
     driver: local
@@ -124,6 +147,8 @@ volumes:
   sentinel-pgdata:
     driver: local
   prometheus-data:
+    driver: local
+  grafana-data:
     driver: local
 
 networks:

@@ -31,7 +31,7 @@ API_HOST    ?= 0.0.0.0
 API_PORT    ?= 8080
 API_WORKERS ?= 4
 
-COV_MIN     ?= 60
+COV_MIN     ?= 75
 SRC_DIR     := python/sentinel
 TEST_DIR    := tests
 
@@ -157,12 +157,34 @@ security-audit: ## Run security audit on dependencies
 .PHONY: scan-self
 scan-self: ## Run Sentinel on its own codebase (eat your own dog food)
 	@echo "$(BLUE)▸ Self-scanning with Sentinel...$(RESET)"
-	@$(PYTHON) -m sentinel.cli scan $(SRC_DIR) --format table 2>/dev/null || echo "$(YELLOW)⚠ CLI not available$(RESET)"
+	@sentinel scan $(SRC_DIR) --format sarif --output sentinel-self.sarif --fail-on high 2>/dev/null \
+		&& echo "$(GREEN)✓ Self-scan clean — report: sentinel-self.sarif$(RESET)" \
+		|| (echo "$(YELLOW)⚠ Findings above threshold — check sentinel-self.sarif$(RESET)"; exit 0)
 
 .PHONY: validate-rules
-validate-rules: ## Validate all YAML rule files
+validate-rules: ## Validate all YAML rule files and check for duplicate IDs
 	@echo "$(BLUE)▸ Validating rules...$(RESET)"
-	@$(PYTHON) -c "from sentinel.cli_dispatch import dispatch_validate_rules; dispatch_validate_rules()" 2>/dev/null && echo "$(GREEN)✓ Rules valid$(RESET)" || echo "$(YELLOW)⚠ Validation module not callable directly$(RESET)"
+	@$(PYTHON) -c "
+import re, sys
+from pathlib import Path
+ids = []
+for f in sorted(Path('rules').rglob('*.yaml')):
+    for line in f.read_text(errors='ignore').splitlines():
+        m = re.match(r'\s+id:\s+([A-Z0-9_-]+)', line)
+        if m:
+            ids.append((m.group(1), str(f)))
+seen = {}
+dupes = []
+for rule_id, path in ids:
+    if rule_id in seen:
+        dupes.append(f'  DUPLICATE {rule_id}: {seen[rule_id]} vs {path}')
+    seen[rule_id] = path
+if dupes:
+    print('$(RED)Duplicate rule IDs found:$(RESET)')
+    print('\n'.join(dupes))
+    sys.exit(1)
+print(f'$(GREEN)✓ {len(ids)} rule IDs validated — 0 duplicates$(RESET)')
+"
 
 # ============================================================================
 # API Server

@@ -142,6 +142,73 @@ class Finding:
         key = f"{self.rule_id}|{self.target}|{self.evidence[:200]}"
         return hashlib.sha256(key.encode()).hexdigest()[:16]
 
+    @property
+    def semantic_key(self) -> str:
+        """Coarser key for semantic clustering (same rule + same file, ignoring evidence)."""
+        import hashlib
+        key = f"{self.rule_id}|{self.location.file if self.location else self.target}"
+        return hashlib.sha256(key.encode()).hexdigest()[:12]
+
+    @property
+    def risk_score(self) -> float:
+        """
+        CVSS-inspired composite risk score [0.0 – 10.0].
+
+        Formula:
+            base  = severity_weight * 4.0  (up to 4.0)
+            conf  = confidence * 3.0       (up to 3.0)
+            expl  = exploitability_bonus   (up to 2.0)
+            norm  = 0.0 – 1.0 normaliser  (module weight)
+        Total capped at 10.0.
+        """
+        _sev_weight = {
+            Severity.CRITICAL: 1.0,
+            Severity.HIGH: 0.8,
+            Severity.MEDIUM: 0.5,
+            Severity.LOW: 0.25,
+            Severity.INFO: 0.05,
+        }
+        _module_norm = {
+            Module.ARTIFACT.value:       1.0,
+            Module.INPUT_FIREWALL.value: 0.9,
+            Module.OUTPUT_FIREWALL.value: 0.8,
+            Module.RED_TEAM.value:       0.9,
+            Module.SAST.value:           0.85,
+            Module.AGENT_MCP.value:      0.95,
+            Module.SUPPLY_CHAIN.value:   0.85,
+        }
+        base  = _sev_weight.get(self.severity, 0.5) * 4.0
+        conf  = self.confidence * 3.0
+        expl  = 0.0
+        if self.exploitability:
+            expl += {"LOW": 0.5, "MEDIUM": 1.0, "HIGH": 2.0}.get(
+                self.exploitability.complexity, 0.0
+            )
+        norm  = _module_norm.get(self.module, 0.8)
+        return round(min((base + conf + expl) * norm, 10.0), 2)
+
+    @property
+    def is_suppressed(self) -> bool:
+        """True if the finding carries a suppression tag."""
+        return any(t.startswith("suppress:") or t == "suppressed" for t in self.tags)
+
+    def suppress(self, reason: str = "manual", by: str = "") -> "Finding":
+        """Return a copy of this finding with suppression tags applied."""
+        import copy
+        f = copy.copy(self)
+        f.tags = list(self.tags)
+        f.tags.append(f"suppress:{reason}")
+        if by:
+            f.tags.append(f"suppressed-by:{by}")
+        return f
+
+    def with_scan_id(self, scan_id: str) -> "Finding":
+        """Return a copy with the given scan_id set."""
+        import copy
+        f = copy.copy(self)
+        f.scan_id = scan_id
+        return f
+
     def to_dict(self) -> dict:
         """Serialize finding to a dictionary, handling nested dataclasses."""
         data = asdict(self)
@@ -434,16 +501,93 @@ class Finding:
         )
 
 
-def merge_findings(findings: list[Finding], deduplicate: bool = True) -> list[Finding]:
-    """Merge and optionally deduplicate findings from multiple scans."""
-    if not deduplicate:
-        return sorted(findings)
+def merge_findings(
+    findings: list[Finding],
+    deduplicate: bool = True,
+    drop_suppressed: bool = False,
+    min_confidence: float = 0.0,
+    min_severity: Optional[Severity] = None,
+) -> list[Finding]:
+    """Merge, filter, and optionally deduplicate findings from multiple scans.
 
-    seen: set[str] = set()
-    merged: list[Finding] = []
-    for f in sorted(findings):
-        fp = f.fingerprint
-        if fp not in seen:
-            seen.add(fp)
-            merged.append(f)
-    return merged
+    Args:
+        findings: Raw findings list (may come from multiple scanners).
+        deduplicate: Drop exact-fingerprint duplicates (default True).
+        drop_suppressed: Remove findings with suppression tags.
+        min_confidence: Drop findings below this confidence threshold.
+        min_severity: Drop findings below this severity (e.g. Severity.MEDIUM).
+
+    Returns:
+        Sorted list (critical first), deduplicated if requested.
+    """
+    _sev_order = {s: i for i, s in enumerate(
+        [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
+    )}
+    result = list(findings)
+
+    if drop_suppressed:
+        result = [f for f in result if not f.is_suppressed]
+    if min_confidence > 0.0:
+        result = [f for f in result if f.confidence >= min_confidence]
+    if min_severity is not None:
+        cutoff = _sev_order[min_severity]
+        result = [f for f in result if _sev_order.get(f.severity, 99) <= cutoff]
+
+    result = sorted(result)
+
+    if deduplicate:
+        seen: set[str] = set()
+        deduped: list[Finding] = []
+        for f in result:
+            fp = f.fingerprint
+            if fp not in seen:
+                seen.add(fp)
+                deduped.append(f)
+        result = deduped
+
+    return result
+
+
+def cluster_findings(findings: list[Finding]) -> dict[str, list[Finding]]:
+    """Group findings into semantic clusters by (rule_id, file).
+
+    Useful for alert-fatigue reduction: instead of 40 identical SAST-SECRET-001
+    findings across one file, callers can show one representative + a count.
+
+    Returns:
+        dict mapping semantic_key → [Finding, ...] sorted by severity.
+    """
+    from collections import defaultdict
+    clusters: dict[str, list[Finding]] = defaultdict(list)
+    for f in findings:
+        clusters[f.semantic_key].append(f)
+    return {k: sorted(v) for k, v in clusters.items()}
+
+
+def top_findings(
+    findings: list[Finding],
+    n: int = 10,
+    deduplicate: bool = True,
+) -> list[Finding]:
+    """Return the top-n highest-risk findings, deduped by default."""
+    merged = merge_findings(findings, deduplicate=deduplicate)
+    return sorted(merged, key=lambda f: f.risk_score, reverse=True)[:n]
+
+
+def findings_summary(findings: list[Finding]) -> dict:
+    """Return a compact severity-count + risk summary for reporting."""
+    from collections import Counter
+    counts = Counter(f.severity.value for f in findings)
+    total_risk = round(sum(f.risk_score for f in findings), 2)
+    by_module = Counter(f.module for f in findings)
+    return {
+        "total": len(findings),
+        "critical": counts.get("critical", 0),
+        "high": counts.get("high", 0),
+        "medium": counts.get("medium", 0),
+        "low": counts.get("low", 0),
+        "info": counts.get("info", 0),
+        "total_risk_score": total_risk,
+        "avg_risk_score": round(total_risk / len(findings), 2) if findings else 0.0,
+        "by_module": dict(by_module),
+    }

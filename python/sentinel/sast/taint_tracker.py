@@ -235,20 +235,21 @@ class TaintTracker:
         # A variable is tainted if it's assigned from a source pattern
         tainted_vars: dict[str, tuple[int, str]] = {}  # var_name → (line, source_name)
 
+        # func_name → True means "calling this returns tainted data"
+        tainted_funcs: dict[str, tuple[int, str]] = {}
+
         class TaintVisitor(ast.NodeVisitor):
             def __init__(self, sources, sinks):
                 self.sources = sources
                 self.sinks = sinks
 
             def _get_source_text(self, node: ast.AST) -> str:
-                """Get source text for an AST node."""
                 try:
                     return ast.get_source_segment(source_code, node) or ast.dump(node)
                 except Exception:
                     return ast.dump(node)
 
             def _check_is_source(self, node: ast.AST, line: int) -> Optional[str]:
-                """Check if an expression matches any taint source."""
                 text = self._get_source_text(node)
                 for source in self.sources:
                     if source.pattern.search(text):
@@ -256,7 +257,6 @@ class TaintTracker:
                 return None
 
             def _check_is_sink(self, node: ast.AST, line: int) -> Optional[TaintSink]:
-                """Check if a call matches any taint sink."""
                 text = self._get_source_text(node)
                 for sink in self.sinks:
                     if sink.pattern.search(text):
@@ -264,98 +264,215 @@ class TaintTracker:
                 return None
 
             def _is_tainted_expr(self, node: ast.AST) -> Optional[tuple[int, str]]:
-                """Check if an expression is tainted (variable or direct source)."""
-                # Direct source check
-                src = self._check_is_source(node, getattr(node, "lineno", 0))
-                if src:
-                    return (getattr(node, "lineno", 0), src)
+                """Recursively check if any sub-expression is tainted."""
+                line = getattr(node, "lineno", 0)
 
-                # Variable reference
+                # Direct source
+                src = self._check_is_source(node, line)
+                if src:
+                    return (line, src)
+
+                # Name reference
                 if isinstance(node, ast.Name) and node.id in tainted_vars:
                     return tainted_vars[node.id]
 
-                # Attribute on tainted variable: tainted_var.something
+                # Attribute on tainted variable: obj.attr
                 if isinstance(node, ast.Attribute):
                     if isinstance(node.value, ast.Name) and node.value.id in tainted_vars:
                         return tainted_vars[node.value.id]
 
-                # Subscript on tainted variable: tainted_var[key]
+                # Subscript: tainted[key]
                 if isinstance(node, ast.Subscript):
                     if isinstance(node.value, ast.Name) and node.value.id in tainted_vars:
                         return tainted_vars[node.value.id]
 
+                # f-string: f"...{tainted_var}..."  (JoinedStr)
+                if isinstance(node, ast.JoinedStr):
+                    for value in node.values:
+                        if isinstance(value, ast.FormattedValue):
+                            t = self._is_tainted_expr(value.value)
+                            if t:
+                                return t
+
+                # str.format(): "...".format(tainted) or tainted.format(...)
+                if isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+                        # "template".format(tainted_var)
+                        for arg in node.args:
+                            t = self._is_tainted_expr(arg)
+                            if t:
+                                return t
+                        # tainted_var.format(...)
+                        t = self._is_tainted_expr(node.func.value)
+                        if t:
+                            return t
+
+                    # %-formatting: "..." % tainted
+                if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+                    if isinstance(node.left, ast.Constant):
+                        t = self._is_tainted_expr(node.right)
+                        if t:
+                            return t
+
+                # Interprocedural: call to a function we know returns tainted data
+                if isinstance(node, ast.Call):
+                    func_name = None
+                    if isinstance(node.func, ast.Name):
+                        func_name = node.func.id
+                    elif isinstance(node.func, ast.Attribute):
+                        func_name = node.func.attr
+                    if func_name and func_name in tainted_funcs:
+                        return tainted_funcs[func_name]
+                    # Also propagate if any argument is tainted (wrapping function)
+                    for arg in node.args:
+                        t = self._is_tainted_expr(arg)
+                        if t:
+                            return t
+
+                # Tuple/list/set literal containing tainted element
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    for elt in node.elts:
+                        t = self._is_tainted_expr(elt)
+                        if t:
+                            return t
+
+                # BoolOp/BinOp: tainted or clean → propagate taint
+                if isinstance(node, ast.BoolOp):
+                    for val in node.values:
+                        t = self._is_tainted_expr(val)
+                        if t:
+                            return t
+
+                if isinstance(node, ast.BinOp):
+                    for side in (node.left, node.right):
+                        t = self._is_tainted_expr(side)
+                        if t:
+                            return t
+
+                # IfExp (ternary): a if cond else b
+                if isinstance(node, ast.IfExp):
+                    for n in (node.body, node.orelse):
+                        t = self._is_tainted_expr(n)
+                        if t:
+                            return t
+
                 return None
 
-            def visit_Assign(self, node: ast.Assign):
-                """Track assignments: x = source() → x is tainted."""
-                # Check if the RHS is a taint source
-                src = self._check_is_source(node.value, node.lineno)
-                if src:
-                    for target in node.targets:
-                        if isinstance(target, ast.Name):
-                            tainted_vars[target.id] = (node.lineno, src)
+            def _assign_taint_to_targets(
+                self, targets: list[ast.AST], taint_info: tuple[int, str]
+            ) -> None:
+                """Assign taint to one or more assignment targets, handling tuple unpacking."""
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        tainted_vars[target.id] = taint_info
+                    elif isinstance(target, (ast.Tuple, ast.List)):
+                        # a, b = tainted_call() → both a and b are tainted
+                        for elt in target.elts:
+                            if isinstance(elt, ast.Name):
+                                tainted_vars[elt.id] = taint_info
+                    elif isinstance(target, ast.Starred):
+                        if isinstance(target.value, ast.Name):
+                            tainted_vars[target.value.id] = taint_info
 
-                # Check if RHS is a tainted variable (aliasing)
+            def visit_Assign(self, node: ast.Assign):
                 taint_info = self._is_tainted_expr(node.value)
                 if taint_info:
-                    for target in node.targets:
-                        if isinstance(target, ast.Name):
-                            tainted_vars[target.id] = taint_info
-
-                # Also check if RHS is a call of a tainted variable
-                if isinstance(node.value, ast.Call):
-                    func_taint = self._is_tainted_expr(node.value.func)
-                    if func_taint:
-                        for target in node.targets:
-                            if isinstance(target, ast.Name):
-                                tainted_vars[target.id] = func_taint
-
+                    self._assign_taint_to_targets(node.targets, taint_info)
                 self.generic_visit(node)
 
+            def visit_AugAssign(self, node: ast.AugAssign):
+                """x += tainted → x is tainted."""
+                taint_info = self._is_tainted_expr(node.value)
+                if taint_info and isinstance(node.target, ast.Name):
+                    tainted_vars[node.target.id] = taint_info
+                # Also if the variable itself was already tainted
+                elif isinstance(node.target, ast.Name) and node.target.id in tainted_vars:
+                    pass  # stays tainted
+                self.generic_visit(node)
+
+            def visit_AnnAssign(self, node: ast.AnnAssign):
+                """x: str = tainted_source()"""
+                if node.value:
+                    taint_info = self._is_tainted_expr(node.value)
+                    if taint_info and isinstance(node.target, ast.Name):
+                        tainted_vars[node.target.id] = taint_info
+                self.generic_visit(node)
+
+            def visit_NamedExpr(self, node: ast.NamedExpr):
+                """Walrus operator: (x := tainted_source())"""
+                taint_info = self._is_tainted_expr(node.value)
+                if taint_info and isinstance(node.target, ast.Name):
+                    tainted_vars[node.target.id] = taint_info
+                self.generic_visit(node)
+
+            def visit_For(self, node: ast.For):
+                """for x in tainted_iter: → x is tainted."""
+                taint_info = self._is_tainted_expr(node.iter)
+                if taint_info:
+                    self._assign_taint_to_targets([node.target], taint_info)
+                self.generic_visit(node)
+
+            def visit_FunctionDef(self, node: ast.FunctionDef):
+                """Track function return values: if a function returns tainted data, mark it."""
+                # Check return statements for tainted values
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Return) and child.value is not None:
+                        taint_info = self._is_tainted_expr(child.value)
+                        if taint_info:
+                            tainted_funcs[node.name] = taint_info
+                            break
+                self.generic_visit(node)
+
+            visit_AsyncFunctionDef = visit_FunctionDef
+
+            def _emit_flow(self, sink: TaintSink, taint_info: tuple[int, str], sink_line: int) -> None:
+                src_line, src_name = taint_info
+                # Deduplicate by (source, source_line, sink, sink_line)
+                key = (src_name, src_line, sink.name, sink_line)
+                if not any(
+                    (f.source == src_name and f.source_line == src_line
+                     and f.sink == sink.name and f.sink_line == sink_line)
+                    for f in flows
+                ):
+                    flows.append(TaintFlow(
+                        source=src_name,
+                        source_line=src_line,
+                        sink=sink.name,
+                        sink_line=sink_line,
+                        file=filepath,
+                        severity=sink.severity,
+                        cwe=sink.cwe,
+                    ))
+
             def visit_Call(self, node: ast.Call):
-                """Check if a sink is called with tainted arguments."""
                 sink = self._check_is_sink(node, node.lineno)
                 if sink:
-                    # Check all arguments
+                    # Check positional args
                     for arg in node.args:
                         taint_info = self._is_tainted_expr(arg)
                         if taint_info:
-                            src_line, src_name = taint_info
+                            self._emit_flow(sink, taint_info, node.lineno)
+                    # Check keyword args
+                    for kw in node.keywords:
+                        if kw.value:
+                            taint_info = self._is_tainted_expr(kw.value)
+                            if taint_info:
+                                self._emit_flow(sink, taint_info, node.lineno)
+
+                # Indirect call: fn = eval; fn(tainted)
+                if isinstance(node.func, ast.Name) and node.func.id in tainted_vars:
+                    taint_src_line, taint_src_name = tainted_vars[node.func.id]
+                    if any(kw in taint_src_name.lower() for kw in ["eval", "exec", "system", "popen"]):
+                        for _arg in node.args:
                             flows.append(TaintFlow(
-                                source=src_name,
-                                source_line=src_line,
-                                sink=sink.name,
+                                source=f"indirect:{taint_src_name}",
+                                source_line=taint_src_line,
+                                sink=f"indirect_call:{node.func.id}",
                                 sink_line=node.lineno,
                                 file=filepath,
-                                severity=sink.severity,
-                                cwe=sink.cwe,
+                                severity=Severity.HIGH,
+                                cwe="CWE-94",
                             ))
-
-                    # Check if a tainted variable is used as the callable itself
-                    # e.g., fn = eval; fn(data)
-                    func_taint = self._is_tainted_expr(node.func)
-                    if func_taint and not sink:
-                        # The function itself is tainted — potential indirect call
-                        pass
-
-                # Check if a tainted variable calls a dangerous function
-                # e.g., fn = eval; fn(x)
-                if isinstance(node.func, ast.Name) and node.func.id in tainted_vars:
-                    for _s in self.sinks:
-                        # Check if the tainted variable was assigned from a sink-like function
-                        taint_src_line, taint_src_name = tainted_vars[node.func.id]
-                        if any(kw in taint_src_name.lower() for kw in ["eval", "exec", "system", "popen"]):
-                            for _arg in node.args:
-                                flows.append(TaintFlow(
-                                    source=f"indirect:{taint_src_name}",
-                                    source_line=taint_src_line,
-                                    sink=f"indirect_call:{node.func.id}",
-                                    sink_line=node.lineno,
-                                    file=filepath,
-                                    severity=Severity.HIGH,
-                                    cwe="CWE-94",
-                                ))
-                            break
 
                 self.generic_visit(node)
 

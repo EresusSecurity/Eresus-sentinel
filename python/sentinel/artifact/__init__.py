@@ -25,11 +25,15 @@ Comprehensive model file security analysis covering:
 """
 
 import hashlib
+import os
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
 from sentinel.finding import Finding, Severity
+
+_DEFAULT_WORKERS = min(8, (os.cpu_count() or 2))
 
 from ._pickle_ops import DangerousImport, PickleAnalysis
 from .archive_slip import ArchiveSlipDetector
@@ -386,8 +390,15 @@ def scan_directory(
     cache: bool | None = None,
     fail_closed: bool | None = None,
     expected_sha256: str | None = None,
+    max_workers: int | None = None,
 ) -> list[Finding]:
-    """Scan every file under a directory with the public artifact API."""
+    """Scan every file under a directory with the public artifact API.
+
+    Scanning is parallelised across ``max_workers`` threads (default:
+    ``min(8, cpu_count)``).  Thread-safety is guaranteed because each
+    scanner call is independent and the result list is assembled after
+    all futures complete.
+    """
     resolved_options = _coerce_options(
         options,
         include=include,
@@ -402,26 +413,71 @@ def scan_directory(
         return []
 
     iterator = root.rglob("*") if resolved_options.recursive else root.iterdir()
-    findings: list[Finding] = []
-    scanned = 0
+    paths: list[Path] = []
     for path in iterator:
         if not path.is_file():
             continue
-        scanned += 1
-        if scanned > resolved_options.max_files:
-            findings.append(
-                Finding.artifact(
-                    rule_id="ARTIFACT-093",
-                    title="Artifact directory scan budget exceeded",
-                    description="The artifact directory contains more files than the configured scan budget.",
-                    severity=Severity.MEDIUM,
-                    target=str(root),
-                    evidence=f"max_files={resolved_options.max_files}",
-                    confidence=0.9,
-                )
-            )
+        paths.append(path)
+        if len(paths) >= resolved_options.max_files:
             break
-        findings.extend(scan_file(path, resolved_options))
+
+    over_budget = len(paths) >= resolved_options.max_files
+    workers = max_workers or _DEFAULT_WORKERS
+
+    findings: list[Finding] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        future_map = {pool.submit(scan_file, p, resolved_options): p for p in paths}
+        for future in as_completed(future_map):
+            try:
+                findings.extend(future.result())
+            except Exception as exc:
+                findings.extend(_scan_error(future_map[future], exc))
+
+    if over_budget:
+        findings.append(
+            Finding.artifact(
+                rule_id="ARTIFACT-093",
+                title="Artifact directory scan budget exceeded",
+                description="The artifact directory contains more files than the configured scan budget.",
+                severity=Severity.MEDIUM,
+                target=str(root),
+                evidence=f"max_files={resolved_options.max_files}",
+                confidence=0.9,
+            )
+        )
+    return findings
+
+
+def scan_files_parallel(
+    files: Iterable[str | Path],
+    options: ArtifactScanOptions | None = None,
+    max_workers: int | None = None,
+) -> list[Finding]:
+    """Scan an arbitrary list of files in parallel.
+
+    Useful for scanning pre-collected file lists (e.g. git-diff output)
+    without a directory walk.
+
+    Args:
+        files: Iterable of file paths to scan.
+        options: Scan options (include/exclude/strict/cache).
+        max_workers: Thread pool size (default: min(8, cpu_count)).
+
+    Returns:
+        Merged findings list from all files.
+    """
+    resolved_options = options or ArtifactScanOptions()
+    workers = max_workers or _DEFAULT_WORKERS
+    path_list = [Path(f) for f in files if Path(f).is_file()]
+
+    findings: list[Finding] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        future_map = {pool.submit(scan_file, p, resolved_options): p for p in path_list}
+        for future in as_completed(future_map):
+            try:
+                findings.extend(future.result())
+            except Exception as exc:
+                findings.extend(_scan_error(future_map[future], exc))
     return findings
 
 

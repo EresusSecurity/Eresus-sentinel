@@ -424,6 +424,11 @@ dangerous_globals:
     - Pdb
     - run
     - runcall
+    - pm
+    - post_mortem
+    - runeval
+    - runctx
+    - interact
 
   gc:
     - get_objects
@@ -494,8 +499,9 @@ dangerous_globals:
     - partial
 
   operator:
-    - attrgetter
+    - attrgetter   # operator.attrgetter("system")(__import__("os"))("id") — exec-equivalent chain
     - methodcaller
+    - itemgetter   # used in gadget chains to extract callable from containers
 
   itertools:
     - starmap

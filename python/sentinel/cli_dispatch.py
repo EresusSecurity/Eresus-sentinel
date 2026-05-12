@@ -234,7 +234,7 @@ def _scan_single_artifact(path: Path) -> list[Finding]:
                         findings.extend(TorchScriptScanner().scan_file(str(path)))
                     # Scan inner model files for pickle RCE, safetensors SSTI, etc.
                     _PICKLE_EXTS = {".pkl", ".pickle", ".p", ".dill", ".pt", ".pth",
-                                    ".bin", ".ckpt", ".dat", ".joblib"}
+                                    ".bin", ".ckpt", ".dat", ".data", ".joblib"}
                     _SAFE_EXTS = {".safetensors"}
                     _GGUF_EXTS = {".gguf", ".ggml"}
                     for name in zf.namelist():

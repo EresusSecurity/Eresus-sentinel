@@ -24,7 +24,10 @@ _CRITICAL_NAMES = frozenset({
     "spawnv_passfds", "_run_entry_point", "runstring",
     "_load_from_bytes", "add_extension",
     "__subclasses__", "__builtins__",
-    "partial", "attrgetter", "methodcaller",
+    "partial", "attrgetter", "methodcaller", "itemgetter",
+    # pdb code-execution methods
+    "pm", "post_mortem", "runeval", "runctx", "interact",
+    "set_trace",
 })
 
 _CRITICAL_MODULES = frozenset({

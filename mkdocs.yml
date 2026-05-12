@@ -70,13 +70,21 @@ nav:
       - Turkish Quick Start: TR_QUICKSTART.md
       - CLI Reference: CLI_REFERENCE.md
       - Architecture: ARCHITECTURE.md
+      - Compatibility Matrix: COMPATIBILITY.md
+  - Scanners:
+      - Supported Formats: SUPPORTED_FORMATS.md
+      - Scanner Selection: SCANNER_SELECTION.md
+      - False Positive Handling: FALSE_POSITIVES.md
+  - Security:
+      - Security Model & Threat Model: SECURITY_MODEL.md
+      - Security Policy: ../SECURITY.md
   - Reference:
       - CLI Contract: CLI_CONTRACT.md
       - YAML Rules: RULES.md
       - Rule Authoring: RULE_AUTHORING.md
       - Scanner Authoring: SCANNER_AUTHORING.md
-      - False Positive Handling: FALSE_POSITIVES.md
   - Operations:
+      - Offline / Air-Gapped: OFFLINE.md
       - MCP Proxy Deployment: MCP_PROXY_DEPLOYMENT.md
       - CI and Pre-Commit: CI_PRECOMMIT.md
       - Troubleshooting: TROUBLESHOOTING.md
@@ -85,7 +93,6 @@ nav:
       - Community Notes: COMMUNITY.md
       - Good First Issues: GOOD_FIRST_ISSUES.md
       - Contributing: ../CONTRIBUTING.md
-      - Security Policy: ../SECURITY.md
       - Changelog: ../CHANGELOG.md
 
 extra:

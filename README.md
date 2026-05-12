@@ -17,11 +17,60 @@ Sentinel provides deterministic, YAML-driven security scanning across the AI sta
 
 ---
 
+## What It Detects
+
+- **Serialization RCE** — Pickle/joblib/dill `GLOBAL` opcodes against 300+ blocklisted `module.function` pairs
+- **Framework code injection** — Keras Lambda bytecode, TorchScript `code/` backdoor, PMML/Jinja2 SSTI, `auto_map` RCE
+- **Archive exploits** — Zip Slip, path traversal, symlink attacks in ZIP / TAR / 7z / `.mar` / `.nemo`
+- **Embedded secrets** — 2000+ API key patterns, connection strings, hardcoded tokens in model metadata
+- **Network callbacks** — socket/urllib/requests globals in pickle; C2 URLs in GGUF metadata
+- **Supply chain tampering** — missing hash integrity, typosquatting, OSV.dev CVE lookup
+- **Prompt / agent injection** — instruction injection in model cards, MCP tool description hijacking
+- **Backdoored weights** — statistical anomalies, entropy outliers, suspicious weight distributions (heuristic)
+
+## Supported Formats
+
+70+ scanners across model, archive, and configuration formats. **No model is ever loaded or executed.**
+
+| Format | Extensions | Risk |
+|--------|-----------|------|
+| **Pickle / Joblib** | `.pkl` `.pickle` `.p` `.dill` `.dat` `.data` `.joblib` | CRITICAL |
+| **PyTorch** | `.pt` `.pth` `.bin` `.ckpt` | CRITICAL |
+| **TorchScript** | `.torchscript` (ZIP) | HIGH |
+| **TorchServe** | `.mar` | HIGH |
+| **Torch7 (Lua)** | `.t7` `.th` `.net` | HIGH |
+| **NumPy** | `.npy` `.npz` | HIGH |
+| **Keras** | `.keras` `.h5` `.hdf5` | HIGH |
+| **TensorFlow** | `.pb` `.meta` `saved_model/` | HIGH |
+| **Skops** | `.skops` | HIGH |
+| **R Serialized** | `.rds` `.rda` `.rdata` | HIGH |
+| **NeMo** | `.nemo` | HIGH |
+| **CNTK** | `.dnn` `.cmf` | HIGH |
+| **ONNX** | `.onnx` | MEDIUM |
+| **JAX / Orbax / Flax** | `.jax` `.checkpoint` `.orbax` `.msgpack` | MEDIUM |
+| **TFLite** | `.tflite` | MEDIUM |
+| **ExecuTorch** | `.pte` `.ptl` | MEDIUM |
+| **TensorRT** | `.engine` `.plan` `.trt` | MEDIUM |
+| **CoreML** | `.mlmodel` `.mlpackage` | MEDIUM |
+| **CatBoost / XGBoost / LightGBM** | `.cbm` `.bst` `.lgb` | MEDIUM |
+| **PaddlePaddle** | `.pdmodel` `.pdiparams` | MEDIUM |
+| **MXNet** | `*-symbol.json` `*.params` | MEDIUM |
+| **SafeTensors** | `.safetensors` | LOW |
+| **GGUF / GGML** | `.gguf` `.ggml` `.ggmf` `.ggjt` `.ggla` `.ggsa` | LOW |
+| **OpenVINO / PMML** | `.xml` `.pmml` | LOW |
+| **Llamafile** | `.llamafile` | LOW |
+| **ZIP / TAR / 7z** | `.zip` `.tar` `.tar.gz` `.7z` | HIGH (traversal) |
+| **RAR** | `.rar` | Fail-closed |
+| **JSON / YAML manifests** | `config.json` `*.yaml` | HIGH |
+| **Jinja2 templates** | `.j2` `.jinja` `.jinja2` | CRITICAL |
+
+→ [Full format documentation with detection details](docs/SUPPORTED_FORMATS.md)
+
 ## Security Domains
 
 | Domain | Module | Coverage |
 |--------|--------|----------|
-| 🔬 **Artifact** | `artifact/` | 24 scanners — Pickle, Torch, Keras, ONNX, GGUF, Safetensors, TFLite, Archives |
+| 🔬 **Artifact** | `artifact/` | 70+ scanners — Pickle, Torch, Keras, ONNX, GGUF, Safetensors, TFLite, Archives |
 | 🛡️ **Input Firewall** | `firewall/input/` | 22 guardrails — Injection, secrets, PII, encoding attacks, invisible text, toxicity |
 | 🔒 **Output Firewall** | `firewall/output/` | 24 guardrails — Bias, compliance, copyright, watermark, format enforcement |
 | 🔍 **SAST** | `sast/` | Static analysis + 120+ secret patterns + entropy + git history scanning |
@@ -290,18 +339,22 @@ docker compose up
 
 ## Documentation
 
-- [Quick Start](docs/QUICKSTART.md)
-- [Turkish Quick Start](docs/TR_QUICKSTART.md)
-- [CLI Reference](docs/CLI_REFERENCE.md)
-- [Rule Authoring](docs/RULE_AUTHORING.md)
-- [Scanner Authoring](docs/SCANNER_AUTHORING.md)
-- [MCP Proxy Deployment](docs/MCP_PROXY_DEPLOYMENT.md)
-- [CI and Pre-Commit](docs/CI_PRECOMMIT.md)
-- [False Positive Handling](docs/FALSE_POSITIVES.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [FAQ](docs/FAQ.md)
-- [Community Notes](docs/COMMUNITY.md)
-- [Good First Issues](docs/GOOD_FIRST_ISSUES.md)
+**[Full Documentation](https://eresussec.com/docs)** | **[Quick Start](docs/QUICKSTART.md)** | **[Supported Formats](docs/SUPPORTED_FORMATS.md)** | **[Security Model](docs/SECURITY_MODEL.md)**
+
+| Topic | Link |
+|-------|------|
+| Getting started | [Quick Start](docs/QUICKSTART.md) · [Turkish](docs/TR_QUICKSTART.md) |
+| Format coverage | [Supported Formats](docs/SUPPORTED_FORMATS.md) |
+| Scanner control | [Scanner Selection](docs/SCANNER_SELECTION.md) |
+| Threat model | [Security Model](docs/SECURITY_MODEL.md) |
+| Air-gapped deploy | [Offline Usage](docs/OFFLINE.md) |
+| Python/OS compat | [Compatibility Matrix](docs/COMPATIBILITY.md) |
+| CLI flags | [CLI Reference](docs/CLI_REFERENCE.md) · [CLI Contract](docs/CLI_CONTRACT.md) |
+| Write rules | [Rule Authoring](docs/RULE_AUTHORING.md) · [YAML Rules](docs/RULES.md) |
+| Write scanners | [Scanner Authoring](docs/SCANNER_AUTHORING.md) |
+| CI / pre-commit | [CI and Pre-Commit](docs/CI_PRECOMMIT.md) |
+| Reduce noise | [False Positive Handling](docs/FALSE_POSITIVES.md) |
+| Ops | [MCP Proxy](docs/MCP_PROXY_DEPLOYMENT.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [FAQ](docs/FAQ.md) |
 
 ## Authentication & Security
 

@@ -9,6 +9,8 @@
 
 ### Yeni Format Desteği (24 → 28 Format)
 
+![Multi-Format Demo](../demos/multi-format.gif)
+
 | Format | Uzantılar | Ne Tespit Ediyor |
 |---|---|---|
 | **TensorRT** | `.engine` `.plan` `.trt` | Gömülü PE/ELF ikili, `LoadLibrary`, TRT plugin entry point |
@@ -17,6 +19,12 @@
 | **Model Card** | `.md` `.rst` `.txt` | README'lerde credential sızıntısı, injected code (9 kural) |
 
 ### Pickle — 3 Katmanlı Derinlik
+
+![Pickle Chain Demo](../demos/pickle-chain.gif)
+
+![Model Card Credentials Demo](../demos/model-card-creds.gif)
+
+![Adversarial Corpus Demo](../demos/adversarial-corpus.gif)
 
 **Katman 1 — CVE-2026-24747 Object Mutation**
 - `ARTIFACT-042`: `REDUCE→SETITEM` heap mutasyonu
@@ -39,6 +47,8 @@ Blocklist tek opcode'a bakar; bu katman kombinasyonlara bakar:
 
 ### Yeni Scanner'lar
 
+![Torch7 Scan Demo](../demos/torch7-scan.gif)
+
 - `cntk_scanner.py` — CNTK `.dnn`/`.cmf` — 14 kural, %0 FP, 10/10 malicious tespiti
 - `auto_map_ast_analyzer.py` — Auto-mapping RCE
 - `binary_tail_scanner.py` — Dosya sonuna gömülü veri
@@ -56,6 +66,8 @@ Blocklist tek opcode'a bakar; bu katman kombinasyonlara bakar:
 
 ### YAML Scanner — CVE-2025-23304
 
+![Hydra CVE Demo](../demos/hydra-cve.gif)
+
 Hydra/OmegaConf konfigürasyonlarında `_target_` alanı `hydra.utils.instantiate()` tarafından çalıştırılır.  
 `_target_: os.system` gibi değerler → **ARTIFACT-044 CRITICAL**
 
@@ -67,6 +79,8 @@ GPT-2 (50.257), BERT (30.522), LLaMA (32.000) embedding katmanları otomatik atl
 ---
 
 ## 🛡️ Prompt Firewall — Yeni Dedektörler
+
+![Firewall Multi-Turn Demo](../demos/firewall-multiturn.gif)
 
 `MultiTurnTracker`'a eklenenler:
 
@@ -81,6 +95,8 @@ GPT-2 (50.257), BERT (30.522), LLaMA (32.000) embedding katmanları otomatik atl
 ---
 
 ## ⚔️ Red Team / Eval — 2x Büyüdü
+
+![Red Team Probes Demo](../demos/redteam-probes.gif)
 
 ### Yeni Probe Modülleri (20+)
 
@@ -101,6 +117,8 @@ GPT-2 (50.257), BERT (30.522), LLaMA (32.000) embedding katmanları otomatik atl
 
 ## 🔍 SAST — İnterprosedürel Analiz
 
+![SAST Multi-Language Demo](../demos/sast-multilang.gif)
+
 - **10 dil desteği**: Python, Go, Java, JavaScript, TypeScript, PHP, Ruby, Rust, C#, Kotlin
 - **İnterprosedürel taint tracking** — Fonksiyon sınırları arasında kirli veri takibi
 - f-string, walrus operatörü (`:=`), `AugAssign` desteği
@@ -110,6 +128,8 @@ GPT-2 (50.257), BERT (30.522), LLaMA (32.000) embedding katmanları otomatik atl
 ---
 
 ## 🤖 Agent / MCP Güvenliği
+
+![Agent MCP Demo](../demos/agent-mcp.gif)
 
 Yeni modüller:
 

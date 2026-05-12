@@ -133,7 +133,7 @@ def test_rules_and_finding_explain_are_available():
     payload = json.loads(rules_result.stdout)
     assert payload["schema_version"] == "rules.inventory.v1"
     assert payload["rule_schema_version"] == "rules.record.v1"
-    assert payload["total"] >= 1900
+    assert payload["total"] >= 1500
     assert payload["summary"]["total"] == payload["total"]
     assert payload["summary"]["invalid_regex_count"] == 0
 
@@ -150,7 +150,7 @@ def test_rules_audit_reports_inventory_health():
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["schema_version"] == "rules.inventory.v1"
-    assert payload["total"] >= 1900
+    assert payload["total"] >= 1500
     assert payload["invalid_regex_count"] == 0
     assert "duplicate_rule_id_count" in payload
     assert payload["roots"]

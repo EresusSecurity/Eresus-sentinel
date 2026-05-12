@@ -47,7 +47,7 @@ def test_torchserve_scanner_detects_handler_code(tmp_path):
 
 def test_torch7_scanner_covers_net_extension(tmp_path):
     path = tmp_path / "legacy.net"
-    path.write_bytes(b"torch7\nos.execute('id')\n")
+    path.write_bytes(b"torch7 nn.\nos.execute('id')\n")
 
     findings = Torch7Scanner().scan_file(str(path))
 

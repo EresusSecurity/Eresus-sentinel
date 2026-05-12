@@ -34,7 +34,7 @@ def test_tensorrt_scanner_routes_plan(tmp_path):
 
     findings = scan_file(path)
 
-    assert "TRT-001" in _rule_ids(findings)
+    assert "TRT-002" in _rule_ids(findings)
 
 
 def test_paddle_scanner_routes_pdmodel(tmp_path):

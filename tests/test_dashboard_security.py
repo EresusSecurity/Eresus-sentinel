@@ -1,7 +1,14 @@
+import pytest
 from fastapi.testclient import TestClient
 
 import sentinel.web.app as web_app_module
-from sentinel.web.app import create_dashboard_app
+from sentinel.web.app import create_dashboard_app, _DIST_DIR
+
+_FRONTEND_BUILT = _DIST_DIR.is_dir() and (_DIST_DIR / "index.html").is_file()
+_SKIP_IF_NO_FRONTEND = pytest.mark.skipif(
+    not _FRONTEND_BUILT,
+    reason="Frontend not built — run 'cd frontend && npm run build' to populate dist/",
+)
 
 
 def test_dashboard_api_fails_closed_before_login(monkeypatch):
@@ -131,6 +138,7 @@ def test_dashboard_local_cors_allows_localhost(monkeypatch):
     assert response.headers["access-control-allow-origin"] == "http://localhost:8080"
 
 
+@_SKIP_IF_NO_FRONTEND
 def test_dashboard_http_demo_does_not_upgrade_assets(monkeypatch):
     monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
     client = TestClient(create_dashboard_app())
@@ -142,6 +150,7 @@ def test_dashboard_http_demo_does_not_upgrade_assets(monkeypatch):
     assert "strict-transport-security" not in response.headers
 
 
+@_SKIP_IF_NO_FRONTEND
 def test_dashboard_https_proxy_gets_strict_transport_headers(monkeypatch):
     monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
     client = TestClient(create_dashboard_app())

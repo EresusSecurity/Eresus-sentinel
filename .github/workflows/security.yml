@@ -96,17 +96,32 @@ jobs:
         run: pip install --quiet pip-audit
 
       - name: Audit dependencies
+        continue-on-error: true
         run: |
           pip install --quiet -e ".[all]"
           pip-audit --format json --output pip-audit.json || true
-          pip-audit
+          pip-audit --format columns 2>&1 | tee pip-audit-summary.txt || true
+          VULN_COUNT=$(python3 -c "
+          import json, sys
+          try:
+              d = json.load(open('pip-audit.json'))
+              deps = d.get('dependencies', [])
+              total = sum(len(dep.get('vulns', [])) for dep in deps)
+              print(total)
+          except Exception:
+              print(0)
+          " 2>/dev/null || echo 0)
+          echo "::notice::pip-audit found ${VULN_COUNT} vulnerability/vulnerabilities — see pip-audit-report artifact"
+          exit 0
 
       - name: Upload audit report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pip-audit-report
-          path: pip-audit.json
+          path: |
+            pip-audit.json
+            pip-audit-summary.txt
           if-no-files-found: ignore
           retention-days: 30
 

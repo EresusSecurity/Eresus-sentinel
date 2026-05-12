@@ -391,6 +391,11 @@ See [Security Policy](SECURITY.md) for full hardening guide.
 
 > **This is alpha software.** APIs, CLI flags, finding schemas, and rule IDs may change between releases without deprecation notice. Do not depend on output stability in production CI pipelines yet.
 
+## Community
+
+- [Community Notes](docs/COMMUNITY.md) — contribution guidelines and communication channels
+- [Good First Issues](docs/GOOD_FIRST_ISSUES.md) — beginner-friendly tasks
+
 ## License
 
 Proprietary — © 2026 Eresus Security. See [LICENSE](LICENSE).

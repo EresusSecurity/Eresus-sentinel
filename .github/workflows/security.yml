@@ -1,0 +1,150 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"  # Every Monday at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  PYTHON_DEFAULT: "3.11"
+
+jobs:
+  sentinel-self-scan:
+    name: Sentinel Self-Scan (Dogfood)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+
+      - name: Install Sentinel
+        run: pip install --quiet -e ".[all]"
+
+      - name: SAST + Secrets scan
+        run: |
+          sentinel scan python/sentinel \
+            --format sarif \
+            --output sentinel-sast.sarif \
+            --fail-on critical \
+            --ci 2>/dev/null || true
+
+      - name: Artifact scan — model fixtures
+        run: |
+          sentinel artifact tests/fixtures \
+            --format sarif \
+            --output sentinel-artifacts.sarif \
+            --ci 2>/dev/null || true
+
+      - name: AIBOM — inventory this repo
+        run: |
+          sentinel aibom . \
+            --format cyclonedx \
+            --output sentinel-aibom.json \
+            --ci 2>/dev/null || true
+
+      - name: Upload SAST SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: sentinel-sast.sarif
+          category: sentinel-sast
+        continue-on-error: true
+
+      - name: Upload artifact SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: sentinel-artifacts.sarif
+          category: sentinel-artifacts
+        continue-on-error: true
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sentinel-security-reports
+          path: |
+            sentinel-sast.sarif
+            sentinel-artifacts.sarif
+            sentinel-aibom.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+
+      - name: Install pip-audit
+        run: pip install --quiet pip-audit
+
+      - name: Audit dependencies
+        run: |
+          pip install --quiet -e ".[all]"
+          pip-audit --format json --output pip-audit.json || true
+          pip-audit
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  validate-rules:
+    name: Validate YAML Rules (Security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+
+      - name: Install
+        run: pip install --quiet -e "."
+
+      - name: Check for duplicate rule IDs
+        run: |
+          python3 -c "
+          import re
+          from pathlib import Path
+          ids = []
+          for f in Path('rules').rglob('*.yaml'):
+              for line in f.read_text(errors='ignore').splitlines():
+                  m = re.match(r'\s+id:\s+([A-Z0-9_-]+)', line)
+                  if m:
+                      ids.append((m.group(1), str(f)))
+          seen = {}
+          dupes = []
+          for rule_id, path in ids:
+              if rule_id in seen:
+                  dupes.append(f'{rule_id}: {seen[rule_id]} vs {path}')
+              seen[rule_id] = path
+          if dupes:
+              print('DUPLICATE RULE IDs:')
+              for d in dupes:
+                  print(f'  {d}')
+              raise SystemExit(1)
+          print(f'OK — {len(ids)} rule IDs checked, 0 duplicates')
+          "

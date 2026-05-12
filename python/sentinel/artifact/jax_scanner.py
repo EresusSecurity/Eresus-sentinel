@@ -472,10 +472,6 @@ class JAXCheckpointScanner:
 
     def _check_restore_fn(self, restore_fn_value: str, filepath: str) -> list[Finding]:
         findings: list[Finding] = []
-        _, restore_fn_pattern, _, _, _ = next(
-            (t for t in _suspicious_patterns() if "restore_fn_pattern" in (t[0] or "")),
-            (None, None, None, None, None),
-        )
         dangerous_re = re.compile(
             r"\b(?:eval|exec|__import__|os\.system|os\.popen|subprocess\.(?:popen|run|call|check_call|check_output))\b",
             re.IGNORECASE,

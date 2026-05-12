@@ -121,6 +121,13 @@ def deep_analyze(
     _expansion_attack_analysis(ops, analysis)
     _unused_variable_analysis(ops, analysis)
 
+    # ── Sliding-window opcode sequence analysis ───────────────
+    from .opcode_sequence_analyzer import OpcodeSequenceAnalyzer
+    seq_analyzer = OpcodeSequenceAnalyzer()
+    for opcode, arg, _pos in ops:
+        seq_analyzer.feed(opcode.name, arg)
+    analysis.sequence_findings = seq_analyzer.findings(source)
+
     if analysis.dangerous_imports:
         max_conf = max(imp.confidence for imp in analysis.dangerous_imports)
         has_confirmed = any(imp.chain_confirmed for imp in analysis.dangerous_imports)

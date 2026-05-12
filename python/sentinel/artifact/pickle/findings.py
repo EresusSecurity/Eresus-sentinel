@@ -474,4 +474,12 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
                 cwe_ids=["CWE-502", "CWE-94"],
             ))
 
+    # ── Opcode sequence findings (sliding-window analyzer) ───────────────
+    if analysis.sequence_findings:
+        seen_seq = {(f.rule_id, f.target) for f in findings}
+        for sf in analysis.sequence_findings:
+            if (sf.rule_id, sf.target) not in seen_seq:
+                findings.append(sf)
+                seen_seq.add((sf.rule_id, sf.target))
+
     return findings

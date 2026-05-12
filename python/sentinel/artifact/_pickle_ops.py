@@ -88,6 +88,7 @@ class PickleAnalysis:
     has_obj_pop_bypass: bool = False         # OBJ+POP invisibility attack
     has_setitem_mutation: bool = False       # REDUCE→SETITEM heap mutation (CVE-2026-24747)
     has_newobj_setitems: bool = False        # NEWOBJ→SETITEMS attribute injection (CVE-2026-24747)
+    sequence_findings: list = field(default_factory=list)  # OpcodeSequenceAnalyzer findings
     suspicious_global_mutations: list[DangerousImport] = field(default_factory=list)
     non_standard_imports: list = field(default_factory=list)  # Imports outside stdlib+allowlist
     has_non_standard_import: bool = False

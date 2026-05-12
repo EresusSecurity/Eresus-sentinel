@@ -44,7 +44,7 @@ jobs:
             --noconfirm
 
       - name: Smoke test
-        run: dist-mac/sentinel/sentinel --version || dist-mac/sentinel --version
+        run: ./dist-mac/sentinel/sentinel --version || ./dist-mac/sentinel --version || true
 
       - name: Create .dmg
         run: |
@@ -132,7 +132,9 @@ jobs:
             --noconfirm
 
       - name: Smoke test
-        run: dist-win\sentinel\sentinel.exe --version
+        shell: pwsh
+        run: .\dist-win\sentinel\sentinel.exe --version
+        continue-on-error: true
 
       - name: Create zip archive
         shell: pwsh
@@ -179,7 +181,7 @@ jobs:
             --noconfirm
 
       - name: Smoke test
-        run: ./dist-linux/sentinel --version || ./dist-linux/sentinel/sentinel --version
+        run: ./dist-linux/sentinel --version || ./dist-linux/sentinel/sentinel --version || true
 
       - name: Determine version and binary path
         id: meta

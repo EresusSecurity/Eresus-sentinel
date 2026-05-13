@@ -1,32 +1,35 @@
 # Red Team — New Probes & Strategies
 Output demos/redteam-probes.gif
 Set Shell zsh
-Set FontSize 14
-Set Width 1200
-Set Height 700
+Set FontSize 15
+Set Width 1400
+Set Height 1200
 Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 35ms
+
+Type "setopt INTERACTIVE_COMMENTS"
+Enter
+Sleep 200ms
 
 Type "export PYTHONPATH=$PWD/python"
 Enter
 Sleep 300ms
 
-Type "# Red Team — 50+ Probes, 14 Strategies"
+Type "echo '━━━ Red Team — 50+ Probes, 14 Strategies ━━━'"
 Enter
-Sleep 800ms
+Sleep 500ms
 
-Type "sentinel redteam --list-probes"
+Type "sentinel red-team --help"
 Enter
 Sleep 3s
 
-Type "sentinel redteam --list-strategies"
+Type "echo '━━━ Quick Red Team Scan (echo target) ━━━'"
 Enter
-Sleep 2s
+Sleep 500ms
 
-Type ""
-Sleep 1s
-
-Type "# ascii_smuggling, crescendo, skeleton_key, tree_search, gcg, stego..."
+Type "sentinel red-team echo"
 Enter
+Sleep 6s
+
 Sleep 2s

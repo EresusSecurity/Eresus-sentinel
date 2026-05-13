@@ -1,43 +1,35 @@
 # Pickle Opcode Chain Analysis (PICKLE-SEQ-003..008)
 Output demos/pickle-chain.gif
 Set Shell zsh
-Set FontSize 14
-Set Width 1200
-Set Height 700
+Set FontSize 16
+Set Width 1400
+Set Height 1000
 Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 35ms
+
+Type "setopt INTERACTIVE_COMMENTS"
+Enter
+Sleep 200ms
 
 Type "export PYTHONPATH=$PWD/python"
 Enter
 Sleep 300ms
 
-Type "# Pickle Gadget Chain Detection — PICKLE-SEQ-003..008"
+Type "echo '━━━ Pickle Gadget Chain Detection ━━━'"
 Enter
-Sleep 800ms
+Sleep 500ms
 
-Type "sentinel artifact /tmp/gif_fixtures/gadget_chain.pkl"
+Type "sentinel artifact /tmp/gif_fixtures/gadget_chain.pkl 2>&1 | tee /tmp/out.txt"
 Enter
-Sleep 3s
+Sleep 4s
 
-Type ""
-Sleep 1s
-
-Type "# Chained REDUCE→GLOBAL→REDUCE = gadget chain (CRITICAL)"
+Type "echo '━━━ Pickle Object Mutation Detection ━━━'"
 Enter
-Sleep 1s
-
-Type "# STRING→GLOBAL→REDUCE = code injection (CRITICAL)"
-Enter
-Sleep 1s
+Sleep 500ms
 
 Type "sentinel artifact /tmp/gif_fixtures/newobj_mutation.pkl"
 Enter
 Sleep 3s
 
-Type ""
-Sleep 1s
-
-Type "# NEWOBJ→SETITEMS = attribute injection (HIGH)"
-Enter
 Sleep 2s

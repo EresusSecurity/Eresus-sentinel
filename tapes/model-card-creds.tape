@@ -1,20 +1,24 @@
 # Model Card Credential Detection
 Output demos/model-card-creds.gif
 Set Shell zsh
-Set FontSize 14
-Set Width 1200
-Set Height 700
+Set FontSize 16
+Set Width 1400
+Set Height 1000
 Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 35ms
+
+Type "setopt INTERACTIVE_COMMENTS"
+Enter
+Sleep 200ms
 
 Type "export PYTHONPATH=$PWD/python"
 Enter
 Sleep 300ms
 
-Type "# Model Card Credential Scanner — MODELCARD-007"
+Type "echo '━━━ Model Card Credential Detection ━━━'"
 Enter
-Sleep 800ms
+Sleep 500ms
 
 Type "cat /tmp/gif_fixtures/README.md"
 Enter
@@ -22,15 +26,6 @@ Sleep 2s
 
 Type "sentinel artifact /tmp/gif_fixtures/README.md"
 Enter
-Sleep 3s
+Sleep 4s
 
-Type ""
-Sleep 1s
-
-Type "# Anthropic sk-ant-, HuggingFace hf_, GitHub ghp_ → all detected"
-Enter
-Sleep 1s
-
-Type "# Entropy filtering prevents false positives on examples"
-Enter
 Sleep 2s

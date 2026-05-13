@@ -1,36 +1,35 @@
 # Agent / MCP Security Scan
 Output demos/agent-mcp.gif
 Set Shell zsh
-Set FontSize 14
-Set Width 1200
-Set Height 700
+Set FontSize 15
+Set Width 1400
+Set Height 1200
 Set Theme "Catppuccin Mocha"
 Set Padding 20
-Set TypingSpeed 40ms
+Set TypingSpeed 35ms
+
+Type "setopt INTERACTIVE_COMMENTS"
+Enter
+Sleep 200ms
 
 Type "export PYTHONPATH=$PWD/python"
 Enter
 Sleep 300ms
 
-Type "# Agent / MCP Security — Admission Gate, Memory Poisoning, A2A"
+Type "echo '━━━ Sentinel Scanners ━━━'"
 Enter
-Sleep 800ms
+Sleep 500ms
 
 Type "sentinel scanners"
 Enter
-Sleep 2s
+Sleep 3s
 
-Type "sentinel agent --help"
+Type "echo '━━━ MCP Transport Matrix ━━━'"
 Enter
-Sleep 2s
+Sleep 500ms
 
-Type "sentinel mcp --help"
+Type "sentinel mcp transports"
 Enter
-Sleep 2s
+Sleep 3s
 
-Type ""
-Sleep 1s
-
-Type "# a2a, admission_gate, memory_poisoning, cascading_hallucination"
-Enter
 Sleep 2s

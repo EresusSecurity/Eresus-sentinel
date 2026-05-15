@@ -1,5 +1,7 @@
 # Sentinel Plugin Format
 
+For the Sentinel-native `.sntl` authoring format, see [Sentinel File Format](SENTINEL_FILE_FORMAT.md).
+
 Sentinel plugin manifests are declarative. They describe capability, format support, permissions, and rule ownership without executing package code.
 
 Supported manifest extensions:

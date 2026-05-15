@@ -1,0 +1,4 @@
+*.sntl linguist-language=YAML linguist-detectable=true
+*.sentinel linguist-language=YAML linguist-detectable=true
+*.yar linguist-language=YARA linguist-detectable=true
+*.yara linguist-language=YARA linguist-detectable=true

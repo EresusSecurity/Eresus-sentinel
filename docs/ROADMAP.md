@@ -2,7 +2,7 @@
 
 Sentinel is currently alpha. The near-term strategy is reliability first, then larger product expansion. The deterministic scanner core stays primary; AI/judge adapters remain optional.
 
-For the internal platform expansion map, see [Sentinel Platform Architecture](SENTINEL_PLATFORM_ARCHITECTURE.md). For rule pack and plugin authoring, see [Sentinel Plugin Format](SENTINEL_PLUGIN_FORMAT.md).
+For the internal platform expansion map, see [Sentinel Platform Architecture](SENTINEL_PLATFORM_ARCHITECTURE.md). For `.sntl` authoring, see [Sentinel File Format](SENTINEL_FILE_FORMAT.md). For rule pack and plugin authoring, see [Sentinel Plugin Format](SENTINEL_PLUGIN_FORMAT.md).
 
 ## Product Promise
 

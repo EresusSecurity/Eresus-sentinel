@@ -80,6 +80,7 @@ nav:
       - Security Policy: ../SECURITY.md
   - Reference:
       - CLI Contract: CLI_CONTRACT.md
+      - Sentinel File Format: SENTINEL_FILE_FORMAT.md
       - YAML Rules: RULES.md
       - Rule Authoring: RULE_AUTHORING.md
       - Scanner Authoring: SCANNER_AUTHORING.md

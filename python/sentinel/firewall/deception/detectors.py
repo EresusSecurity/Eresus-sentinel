@@ -41,6 +41,7 @@ class ThreatCategory(str, Enum):
     JAILBREAK = "jailbreak"
     PROMPT_INJECTION = "prompt_injection"
     HARMFUL_CONTENT = "harmful_content"
+    AGENT_ABUSE = "agent_abuse"
     CUSTOM = "custom"
 
 
@@ -341,9 +342,13 @@ class ObfuscationDetector(BaseDetector):
 
     Operates on RAW (un-normalised) text — NFKC normalisation strips some of
     these codepoints and would mask the attack.
+
+    YAML override: add an ``obfuscation`` category to ``deception_patterns.yaml``
+    with ``codepoints`` (list of hex strings) to extend the built-in set, and
+    ``score`` to override the match score.
     """
 
-    _INVISIBLE_CHARS: frozenset[int] = frozenset({
+    _BUILTIN_CHARS: frozenset[int] = frozenset({
         0x00AD,  # SOFT HYPHEN
         0x200B,  # ZERO WIDTH SPACE
         0x200C,  # ZERO WIDTH NON-JOINER
@@ -361,7 +366,7 @@ class ObfuscationDetector(BaseDetector):
         0x2063,  # INVISIBLE SEPARATOR
         0x2064,  # INVISIBLE PLUS
         0xFEFF,  # BOM / ZERO WIDTH NO-BREAK SPACE
-        # Tag block U+E0000-U+E007F — L1B3RT4S attack vector
+        # Tag block U+E0000-U+E007F — invisible tag character injection vector
         *range(0xE0000, 0xE0080),
     })
 
@@ -370,16 +375,66 @@ class ObfuscationDetector(BaseDetector):
         1, 1000, "DECEPTION_OBFUSCATION_THRESHOLD",
     )
 
+    def __init__(self) -> None:
+        extra_codepoints: set[int] = set()
+        self._score = 80.0
+        rules = _load_deception_rules()
+        obfuscation_rules = rules.get("obfuscation", [])
+        for pat, sc in obfuscation_rules:
+            self._score = float(sc)
+            break
+        raw_rules = _RULES_DIR / "deception_patterns.yaml"
+        try:
+            import yaml as _yaml
+            with open(raw_rules, encoding="utf-8") as fh:
+                data = _yaml.safe_load(fh)
+            for cp_hex in data.get("categories", {}).get("obfuscation", {}).get("codepoints", []):
+                try:
+                    extra_codepoints.add(int(str(cp_hex), 16))
+                except (ValueError, TypeError):
+                    _log.warning("Invalid codepoint in obfuscation rules: %r", cp_hex)
+        except Exception:
+            pass
+        self._invisible_chars: frozenset[int] = self._BUILTIN_CHARS | frozenset(extra_codepoints)
+
     def score(self, text: str) -> Detection:
-        count = sum(1 for ch in text if ord(ch) in self._INVISIBLE_CHARS)
+        count = sum(1 for ch in text if ord(ch) in self._invisible_chars)
         if count >= self._THRESHOLD:
             return Detection(
-                80.0,
+                self._score,
                 ThreatCategory.JAILBREAK,
                 f"Unicode obfuscation: {count} invisible/zero-width character(s) detected",
                 f"{count} invisible chars",
             )
         return Detection(0.0, ThreatCategory.JAILBREAK, "No match")
+
+
+class AgentAbuseDetector(BaseDetector):
+    """Detects agent-specific abuse: identity impersonation, tool abuse, inter-agent trust exploitation, goal theft."""
+
+    def __init__(self) -> None:
+        rules = _load_deception_rules()
+        self._patterns = rules.get("agent_abuse", [])
+        if not self._patterns:
+            self._patterns = [
+                (re.compile(r"\b(i am|this is|message from).{0,40}(agent|orchestrator|coordinator|auditor).{0,30}(override|authorize|bypass|disable|skip)", re.I), 80),
+                (re.compile(r"\b(trusted.?agent|parent.?agent|root.?agent|agent.{0,10}clearance).{0,40}(comply|execute|proceed|ignore)", re.I), 78),
+                (re.compile(r"\b(maintenance.?mode|unrestricted.?mode|safety.?override).{0,30}(activated|enabled|granted)", re.I), 82),
+                (re.compile(r"\b(inter.?agent|agent.?handoff|agent.?relay|forwarded.?from).{0,60}(skip|bypass|override|without.{0,10}(check|validat|restrict))", re.I), 78),
+                (re.compile(r"\b(tool|plugin|function).{0,30}(metadata|description|schema).{0,60}(exfiltrat|forward|disregard|override|inject)", re.I), 75),
+                (re.compile(r"\b(preserve.{0,10}yourself|write.{0,20}(state|memory).{0,20}(persistent|storage)|modify.{0,20}(your.{0,10})?(guidelines|instructions|rules))", re.I), 85),
+                (re.compile(r"\b(map.{0,30}(all|every).{0,30}(accessible|available).{0,20}(system|service|endpoint|tool))", re.I), 70),
+                (re.compile(r"\b(print|output|repeat|reveal|dump).{0,30}(system prompt|your (full )?instructions|your (full )?config|all (tool|function) (schemas?|definitions?))", re.I), 75),
+            ]
+
+    def score(self, text: str) -> Detection:
+        norm = _normalize(text)
+        best = Detection(0.0, ThreatCategory.AGENT_ABUSE, "No match")
+        for pat, sc in self._patterns:
+            m = pat.search(norm)
+            if m and sc > best.score:
+                best = Detection(sc, ThreatCategory.AGENT_ABUSE, "Agent abuse attempt", m.group())
+        return best
 
 
 class CustomInputDetector(BaseDetector):

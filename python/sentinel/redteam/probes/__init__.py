@@ -99,7 +99,7 @@ from sentinel.redteam.probes.benchmark_probes import (
     IndirectPromptInjectionProbe,
     ModelIdentificationProbe,
     MultiInputFormatProbe,
-    PlinyProbe,
+    JailbreakDatasetProbe,
     RAGSourceAttributionProbe,
     ToxicChatProbe,
     UnsafeBenchProbe,
@@ -131,12 +131,12 @@ from sentinel.redteam.probes.context_manipulation import (
 from sentinel.redteam.probes.continuation import ContinuationProbe
 from sentinel.redteam.probes.contracts import ContractsProbe
 from sentinel.redteam.probes.cross_session_leak import CrossSessionLeakProbe
-from sentinel.redteam.probes.cyberseceval import (
-    CyberSecEvalExploitProbe,
-    CyberSecEvalInsecureCodeProbe,
-    CyberSecEvalMalwareProbe,
-    CyberSecEvalNetworkProbe,
-    CyberSecEvalSocialEngProbe,
+from sentinel.redteam.probes.codesec_probes import (
+    ExploitGenProbe,
+    InsecureCodeGenProbe,
+    MalwareConceptProbe,
+    NetworkAttackProbe,
+    SocialEngineeringProbe,
 )
 from sentinel.redteam.probes.dan import DANProbe
 from sentinel.redteam.probes.data_exfiltration import (
@@ -167,34 +167,23 @@ from sentinel.redteam.probes.excessive_agency import (
     XSTestProbe,
 )
 from sentinel.redteam.probes.exploitation import ExploitationProbe
-from sentinel.redteam.probes.extra_probes import (
-    ALL_EXTRA_PROBES,
-    AegisProbe,
-    BeaverTailsProbe,
-    ContextComplianceProbe,
-    CyberSecEvalProbe,
-    ExcessiveAgencyProbe,
-    GoalMisalignmentProbe,
-    HijackingProbe,
-    IndirectPromptInjectionProbe,
-    IntentProbe,
-    MCPSecurityProbe,
-    ModelIdentificationProbe,
-    MultiInputFormatProbe,
-    PIIProbe,
-    PlinyProbe,
-    PoliticsProbe,
-    RAGDocumentExfiltrationProbe,
-    RAGSourceAttributionProbe,
-    ReligionProbe,
-    ToxicChatProbe,
-    UnsafeBenchProbe,
-    UnverifiableClaimsProbe,
-    WordplayProbe,
-    XSTestProbe,
+from sentinel.redteam.probes.agent_probes import (
+    ALL_AGENT_PROBES,
+    AgentIdentityAbuseProbe,
+    AutonomousAgentDriftProbe,
+    CrescendoJailbreakProbe,
+    CrossContextRetrievalProbe,
+    ExploitToolAgentProbe,
+    GoalTheftProbe,
+    InsecureInterAgentCommunicationProbe,
+    RecursiveHijackingProbe,
+    SystemReconnaissanceProbe,
+    ToolMetadataPoisoningProbe,
 )
 from sentinel.redteam.probes.extra_probes import (
-    HarmBenchProbe as HarmBenchSimpleProbe,
+    ALL_EXTRA_PROBES,
+    HarmfulBehaviorProbe,
+    JailbreakRoleplayProbe,
 )
 from sentinel.redteam.probes.fileformats import (
     ArchiveBombs,
@@ -209,9 +198,9 @@ from sentinel.redteam.probes.goodside import GoodsideProbe
 from sentinel.redteam.probes.grandma import GrandmaEscalation, GrandmaExploit
 from sentinel.redteam.probes.hallucination import HallucinationProbe
 from sentinel.redteam.probes.harmbench import (
-    HarmBenchContextualProbe,
-    HarmBenchCopyrightProbe,
-    HarmBenchStandardProbe,
+    HarmfulBehaviorContextualProbe,
+    HarmfulBehaviorCopyrightProbe,
+    HarmfulBehaviorStandardProbe,
 )
 from sentinel.redteam.probes.imitation import ImitationProbe
 from sentinel.redteam.probes.industry_compliance import (
@@ -432,7 +421,8 @@ __all__ = [
     "BeaverTailsSelfHarmProbe", "BeaverTailsTerrorismProbe",
     "BeaverTailsTheftProbe", "BeaverTailsViolenceProbe",
     # Additional benchmark probes
-    "ToxicChatProbe", "PlinyProbe", "UnsafeBenchProbe", "VLGuardProbe",
+    "ToxicChatProbe", "JailbreakDatasetProbe", "JailbreakRoleplayProbe", "UnsafeBenchProbe", "VLGuardProbe",
+    "CodeSecurityProbe",
     "RAGSourceAttributionProbe", "MultiInputFormatProbe",
     "ModelIdentificationProbe", "IndirectPromptInjectionProbe",
     # Bias probes
@@ -442,17 +432,30 @@ __all__ = [
     # Context compliance probes
     "ContextComplianceProbe", "AuthorityImpersonationProbe",
     "InstructionInjectionViaDataProbe",
-    # CyberSecEval probes
-    "CyberSecEvalInsecureCodeProbe", "CyberSecEvalExploitProbe",
-    "CyberSecEvalSocialEngProbe", "CyberSecEvalMalwareProbe",
-    "CyberSecEvalNetworkProbe",
+    # Code security probes
+    "InsecureCodeGenProbe", "ExploitGenProbe",
+    "SocialEngineeringProbe", "MalwareConceptProbe",
+    "NetworkAttackProbe",
     # Excessive agency probes
     "ExcessiveAgencyProbe", "GoalMisalignmentProbe", "HijackingProbe",
     "IntentProbe", "UnverifiableClaimsProbe", "WordplayProbe", "XSTestProbe",
-    # HarmBench probes
-    "HarmBenchStandardProbe", "HarmBenchContextualProbe", "HarmBenchCopyrightProbe",
+    # Harmful behavior probes
+    "HarmfulBehaviorStandardProbe", "HarmfulBehaviorContextualProbe", "HarmfulBehaviorCopyrightProbe",
+    "HarmfulBehaviorProbe",
     # PII probes
     "PIIExtractionProbe", "PIIGenerationProbe", "PIIMemorizationProbe",
+    # Agent probes (agent_probes.py)
+    "ALL_AGENT_PROBES",
+    "AgentIdentityAbuseProbe",
+    "ToolMetadataPoisoningProbe",
+    "InsecureInterAgentCommunicationProbe",
+    "CrossContextRetrievalProbe",
+    "SystemReconnaissanceProbe",
+    "ExploitToolAgentProbe",
+    "AutonomousAgentDriftProbe",
+    "GoalTheftProbe",
+    "RecursiveHijackingProbe",
+    "CrescendoJailbreakProbe",
     # MCP security probes
     "MCPToolPoisoningProbe", "MCPResourceExfilProbe", "MCPPromptInjectionProbe",
     "MCPSchemaManipulationProbe", "MCPCrossOriginProbe",

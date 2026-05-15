@@ -44,9 +44,17 @@ from sentinel.sntl.convert import (
     to_toml,
     wrap_imported,
 )
-from sentinel.sntl.ops import diff, merge, redact
+from sentinel.sntl._interpolate import (
+    cartesian_matrix,
+    expand_matrix,
+    extract_variables,
+    interpolate,
+    interpolate_document,
+    render_prompt,
+)
+from sentinel.sntl.ops import diff, flatten, merge, patch, redact, select
 from sentinel.sntl.parser import parse, parse_document
-from sentinel.sntl.path import get_path, query, set_path, walk
+from sentinel.sntl.path import get_path, query, set_path, walk, wildcard_query
 from sentinel.sntl.schemas import KNOWN_SCHEMAS, json_schema, validate, write_json_schema
 from sentinel.sntl.types import SntlBundle, SntlDocument, SntlIssue, SntlParseError, SntlValidationError
 from sentinel.sntl.writer import dump, dumps, format_value

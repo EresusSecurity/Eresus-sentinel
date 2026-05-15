@@ -5,8 +5,6 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 
 STRUCTURED_SUFFIXES = {".json", ".toml", ".yaml", ".yml", ".sntl", ".sentinel"}
 
@@ -19,7 +17,13 @@ def load_structured(path: str | Path) -> Any:
         return json.loads(text)
     if suffix == ".toml":
         return tomllib.loads(text)
-    if suffix in {".yaml", ".yml", ".sntl", ".sentinel"}:
+    if suffix in {".sntl", ".sentinel"}:
+        from sentinel.sntl.parser import parse_document
+
+        return parse_document(text)
+    if suffix in {".yaml", ".yml"}:
+        import yaml
+
         loaded = yaml.safe_load(text)
         return {} if loaded is None else loaded
     raise ValueError(f"unsupported structured file: {p}")

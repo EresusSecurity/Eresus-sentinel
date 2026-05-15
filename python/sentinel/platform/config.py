@@ -15,6 +15,13 @@ SCHEMAS = {
     "sentinel.provider.v1",
     "sentinel.run.v1",
     "sentinel.trace.v1",
+    "sentinel.plugin.v1",
+    "sentinel.rulepack.v1",
+    "sentinel.redteam.v1",
+    "sentinel.runtime.v1",
+    "sentinel.policy.v1",
+    "sentinel.baseline.v1",
+    "sentinel.report.v1",
 }
 
 

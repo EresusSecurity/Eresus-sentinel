@@ -1,4 +1,6 @@
 import json
+import inspect
+from pathlib import Path
 
 import pytest
 
@@ -78,3 +80,71 @@ assertions:
     )
 
     assert any(issue.path == "assertions[1].id" for issue in document.issues)
+
+
+def test_sntl_parser_supports_native_features():
+    document = sntl.loads(
+        """
+%sntl 1
+schema: sentinel.eval.v1
+name: parser-suite
+providers:
+  - id: local
+    type: mock
+    capabilities: {streaming: true, json: true}
+prompts:
+  - id: block
+    template: |
+      Review {{input}}
+      Return a decision.
+variables:
+  - input: alpha
+    tags: [baseline, smoke]
+assertions:
+  - id: marker
+    type: contains
+    expected: result:
+""".lstrip()
+    ).require()
+
+    assert document.data["providers"][0]["capabilities"]["streaming"] is True
+    assert document.data["prompts"][0]["template"].startswith("Review")
+    assert sntl.query(document.data, "variables[0].tags[1]") == "smoke"
+
+
+def test_sntl_writer_round_trips_without_yaml():
+    data = {
+        "schema": "sentinel.runtime.v1",
+        "name": "runtime",
+        "policies": [{"id": "block-shell", "action": "block", "enabled": True}],
+    }
+
+    rendered = sntl.dumps(data)
+    parsed = sntl.loads(rendered).require()
+
+    assert "policies:" in rendered
+    assert parsed.data == data
+
+
+def test_sntl_examples_are_valid():
+    for path in sorted(Path("examples").glob("*.sntl")) + sorted(Path("examples").glob("*.sentinel")):
+        assert sntl.load(path).require().ok is True
+
+
+def test_sntl_diff_redact_and_set_path():
+    left = {"schema": "sentinel.config.v1", "auth": {"api_key": "secret"}, "count": 1}
+    right = sntl.set_path(left, "count", 2)
+
+    assert sntl.diff(left, right)[0]["op"] == "replace"
+    assert sntl.redact(left)["auth"]["api_key"] == "[redacted]"
+
+
+def test_sntl_runtime_does_not_depend_on_yaml_loader():
+    import sentinel.sntl.parser as parser
+    import sentinel.sntl.writer as writer
+    import sentinel.sntl.api as api
+
+    combined = inspect.getsource(parser) + inspect.getsource(writer) + inspect.getsource(api)
+
+    assert "safe_load" not in combined
+    assert "import yaml" not in combined

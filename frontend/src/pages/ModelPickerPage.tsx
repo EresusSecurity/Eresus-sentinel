@@ -19,7 +19,11 @@ import {
   Zap,
   Eye,
   FolderOpen,
+  Cloud,
+  Bot,
+  Brain,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { ArtifactEntry, PathScanResult } from '../types'
 
@@ -137,21 +141,21 @@ const HF_MODEL_FAMILIES: { family: string; color: string; models: { label: strin
   },
 ]
 
-const AI_BACKENDS = [
+const AI_BACKENDS: { id: string; label: string; icon: LucideIcon; models: string[] }[] = [
   {
-    id: 'openai', label: 'OpenAI', icon: '⬡',
+    id: 'openai', label: 'OpenAI', icon: Bot,
     models: ['gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4-pro', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1'],
   },
   {
-    id: 'anthropic', label: 'Anthropic', icon: '◈',
+    id: 'anthropic', label: 'Anthropic', icon: Brain,
     models: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5'],
   },
   {
-    id: 'ollama', label: 'Ollama (Local)', icon: '⬡',
+    id: 'ollama', label: 'Ollama (Local)', icon: HardDrive,
     models: ['llama3.3', 'gemma4:27b', 'qwen3.6:27b', 'qwen3.5:27b', 'phi4', 'deepseek-r1', 'devstral-small-2', 'lfm2:24b', 'ministral:8b', 'glm-4.7-flash', 'lfm2.5-thinking', 'codestral', 'mistral-small3.1'],
   },
   {
-    id: 'ollama-cloud', label: 'Ollama (Cloud)', icon: '☁',
+    id: 'ollama-cloud', label: 'Ollama (Cloud)', icon: Cloud,
     models: ['kimi-k2.6', 'deepseek-v4-pro', 'deepseek-v4-flash', 'glm-5.1', 'qwen3-coder-next', 'nemotron-3-super', 'nemotron-cascade-2'],
   },
 ]
@@ -597,7 +601,7 @@ export default function ModelPickerPage() {
                         : 'border-sentinel-border text-gray-500 hover:border-gray-500 hover:text-gray-300'
                     )}
                   >
-                    <p className="text-[14px] mb-0.5">{b.icon}</p>
+                    <b.icon className="w-4 h-4 mb-0.5 mx-auto" />
                     <p className="font-medium">{b.label}</p>
                     <p className="text-[9px] text-gray-600 mt-0.5">{b.models.length} models</p>
                   </button>

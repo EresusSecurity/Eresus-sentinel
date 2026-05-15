@@ -53,6 +53,45 @@ def walk(data: Any, prefix: str = "$") -> Iterable[tuple[str, Any]]:
             yield from walk(value, f"{prefix}[{idx}]")
 
 
+def wildcard_query(data: Any, path: str) -> list[Any]:
+    if path.startswith("$**."):
+        field = path[4:]
+        return _recursive_field(data, field)
+    if path.startswith("**."):
+        field = path[3:]
+        return _recursive_field(data, field)
+    if "[*]" in path:
+        return _wildcard_index(data, path)
+    return [query(data, path)]
+
+
+def _recursive_field(data: Any, field: str) -> list[Any]:
+    results: list[Any] = []
+    if isinstance(data, dict):
+        if field in data:
+            results.append(data[field])
+        for value in data.values():
+            results.extend(_recursive_field(value, field))
+    elif isinstance(data, list):
+        for item in data:
+            results.extend(_recursive_field(item, field))
+    return results
+
+
+def _wildcard_index(data: Any, path: str) -> list[Any]:
+    star_pos = path.index("[*]")
+    prefix = path[:star_pos]
+    suffix = path[star_pos + 3:]
+    collection = query(data, prefix) if prefix and prefix != "$" else data
+    if not isinstance(collection, list):
+        return []
+    results: list[Any] = []
+    for idx in range(len(collection)):
+        sub_path = f"[{idx}]{suffix}"
+        results.append(query(collection, sub_path))
+    return results
+
+
 def _parts(path: str) -> list[str | int]:
     if path in {"", "$"}:
         return []

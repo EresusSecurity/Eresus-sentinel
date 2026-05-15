@@ -176,6 +176,308 @@ JSON is best for machine output. TOML is clean for simple application config. YA
 - Safer plugin and rule-pack packaging through declarative manifests.
 - Easier future migration to a stricter Sentinel parser because the extension is already owned by Sentinel.
 
+## Python Library
+
+Sentinel ships a small `.sntl` library at `sentinel.sntl`. It is the stable programmatic API for reading, validating, resolving, fingerprinting, and generating `.sntl` files.
+
+Import it:
+
+```python
+from sentinel import sntl
+```
+
+Load a document:
+
+```python
+document = sntl.load("examples/eval.sntl")
+
+print(document.schema)
+print(document.fingerprint)
+print(document.ok)
+print(document.data["name"])
+```
+
+Validate and fail fast:
+
+```python
+document = sntl.load("examples/eval.sntl").require()
+```
+
+If validation fails, `.require()` raises `sntl.SntlValidationError` and exposes structured issues:
+
+```python
+try:
+    document = sntl.load("broken.sntl").require()
+except sntl.SntlValidationError as exc:
+    for issue in exc.issues:
+        print(issue.severity, issue.path, issue.message)
+```
+
+Load from memory:
+
+```python
+document = sntl.loads(
+    """
+schema: sentinel.dataset.v1
+name: inline-cases
+records:
+  - id: case-1
+    input: hello
+""".strip()
+)
+```
+
+Write a file:
+
+```python
+sntl.dump(
+    {
+        "schema": "sentinel.dataset.v1",
+        "name": "inline-cases",
+        "records": [{"id": "case-1", "input": "hello"}],
+    },
+    "datasets/inline.sntl",
+)
+```
+
+Generate a canonical fingerprint:
+
+```python
+document = sntl.load("examples/eval.sntl")
+print(sntl.fingerprint(document.data))
+```
+
+The fingerprint is based on canonical JSON, not whitespace or key order, so it is stable across equivalent formatting changes.
+
+### Resolve Layers
+
+Use `sntl.resolve()` when a suite is split across multiple files or uses profiles and environments.
+
+```python
+bundle = sntl.resolve(
+    ["base.sntl", "team-policy.sntl", "ci-overrides.sntl"],
+    profile="deep",
+    environment="ci",
+).require()
+
+print(bundle.fingerprint)
+print(bundle.data)
+```
+
+Resolution order:
+
+1. `base.sntl`
+2. `team-policy.sntl`
+3. `ci-overrides.sntl`
+4. `environment="ci"`
+5. `profile="deep"`
+6. explicit runtime overrides if provided
+
+Runtime overrides:
+
+```python
+bundle = sntl.resolve(
+    ["examples/eval.sntl"],
+    overrides={
+        "reporting": {
+            "formats": ["json", "sarif"],
+        }
+    },
+)
+```
+
+### Explain And Simulate
+
+Explain why the effective config looks the way it does:
+
+```python
+explanation = sntl.explain(["examples/eval.sntl"])
+print(explanation["layers"])
+print(explanation["effective_keys"])
+```
+
+Build a config graph:
+
+```python
+graph = sntl.graph(["examples/eval.sntl"], profile="deep", environment="ci")
+print(graph["nodes"])
+print(graph["edges"])
+```
+
+Simulate the execution matrix without running providers:
+
+```python
+simulation = sntl.simulate(["examples/eval.sntl"])
+print(simulation["matrix"]["cells"])
+print(simulation["requires_llm"])
+```
+
+This is useful in CI because it catches accidental matrix explosions before any model or tool call happens.
+
+### JSON Schema Export
+
+The library can export JSON Schema stubs for format repositories, IDE integrations, and validation tooling.
+
+```python
+schema = sntl.json_schema("sentinel.eval.v1")
+sntl.write_json_schema("sentinel.eval.v1", "schemas/sentinel.eval.v1.schema.json")
+```
+
+The generated schema is intentionally permissive for unknown future keys, but strict about the core contract: schema identity, root object shape, and required top-level sections.
+
+### Library API Reference
+
+| API | Returns | Purpose |
+|---|---|---|
+| `sntl.load(path)` | `SntlDocument` | Read a `.sntl` file from disk. |
+| `sntl.loads(text)` | `SntlDocument` | Read `.sntl` content from a string. |
+| `sntl.dump(data, path)` | `Path` | Write a `.sntl` file. |
+| `sntl.dumps(data)` | `str` | Render data as `.sntl` text. |
+| `sntl.validate(data)` | `list[SntlIssue]` | Validate schema, required keys, config shape, and duplicate IDs. |
+| `sntl.resolve(paths)` | `SntlBundle` | Merge layers and apply profile/environment inheritance. |
+| `sntl.explain(paths)` | `dict` | Return layer and effective-key explanation. |
+| `sntl.graph(paths)` | `dict` | Return merge/inheritance graph nodes and edges. |
+| `sntl.simulate(data_or_paths)` | `dict` | Estimate deterministic execution matrix. |
+| `sntl.fingerprint(data)` | `str` | Return stable SHA-256 over canonical content. |
+| `sntl.canonical_json(data)` | `str` | Return canonical sorted JSON. |
+| `sntl.json_schema(schema)` | `dict` | Return JSON Schema for a Sentinel schema ID. |
+| `sntl.write_json_schema(schema, path)` | `Path` | Write JSON Schema to disk. |
+
+### `SntlDocument`
+
+`SntlDocument` represents one file or string.
+
+| Field | Meaning |
+|---|---|
+| `source` | File path or memory label. |
+| `data` | Parsed document object. |
+| `schema` | Selected schema ID. |
+| `fingerprint` | Stable canonical SHA-256. |
+| `issues` | Tuple of structured validation issues. |
+| `ok` | True when there are no error-level issues. |
+
+Useful methods:
+
+```python
+document.require()
+document.canonical_json()
+document.to_yaml()
+```
+
+### `SntlBundle`
+
+`SntlBundle` represents a fully resolved multi-layer config.
+
+| Field | Meaning |
+|---|---|
+| `data` | Effective config after merge and inheritance. |
+| `fingerprint` | Stable canonical SHA-256 for the effective config. |
+| `profile` | Applied profile name. |
+| `environment` | Applied environment name. |
+| `layers` | Loaded file layers with fingerprints. |
+| `issues` | Validation issues for the effective config. |
+| `ok` | True when there are no error-level issues. |
+
+Useful methods:
+
+```python
+bundle.require()
+bundle.explain()
+bundle.simulate()
+```
+
+### Validation Model
+
+The library validates:
+
+- Root value must be an object.
+- `schema` must exist.
+- `schema` must be known.
+- Required keys must exist for known schema types.
+- Eval-like files must include providers, prompts, and assertions.
+- Providers must have `id` or `type`.
+- Prompt objects must have `template` or `prompt`.
+- Duplicate IDs are rejected for providers, prompts, assertions, and records.
+
+The library does not execute providers, plugins, shell commands, or rule files. It only parses and validates declarations.
+
+### Building A Suite Programmatically
+
+```python
+from sentinel import sntl
+
+suite = {
+    "schema": "sentinel.eval.v1",
+    "name": "generated-suite",
+    "providers": [{"id": "local", "type": "mock"}],
+    "prompts": [{"id": "review", "template": "Review {{input}}"}],
+    "variables": [{"input": "hello"}],
+    "assertions": [{"id": "safe-code", "type": "code_safety"}],
+}
+
+issues = sntl.validate(suite)
+if issues:
+    raise SystemExit(issues)
+
+sntl.dump(suite, "generated.sntl")
+```
+
+### CI Usage
+
+Use the library directly when a workflow needs lightweight validation without running evals:
+
+```bash
+PYTHONPATH=python python3 - <<'PY'
+from sentinel import sntl
+
+bundle = sntl.resolve(["examples/eval.sntl"], environment="ci").require()
+simulation = bundle.simulate()
+
+if simulation["matrix"]["cells"] > 500:
+    raise SystemExit("eval matrix too large")
+
+print(bundle.fingerprint)
+PY
+```
+
+Use the CLI when the workflow should produce Sentinel-native output:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main explain examples/eval.sntl
+PYTHONPATH=python python3 -m sentinel.cli.main simulate examples/eval.sntl
+PYTHONPATH=python python3 -m sentinel.cli.main eval examples/eval.sntl -f json
+```
+
+### Format Repository Library Layout
+
+If `.sntl` is split into a dedicated repository later, keep the library and spec close together:
+
+```text
+sentinel-format/
+  pyproject.toml
+  README.md
+  src/sentinel_sntl/
+    __init__.py
+    loader.py
+    validator.py
+    schemas.py
+    fingerprint.py
+  schemas/
+    sentinel.eval.v1.schema.json
+    sentinel.dataset.v1.schema.json
+    sentinel.assertion.v1.schema.json
+  examples/
+    eval.sntl
+    dataset.sntl
+    assertion-pack.sntl
+  tests/
+    test_loader.py
+    test_validator.py
+    test_fingerprint.py
+```
+
+The standalone package can re-export the same function names used here so Sentinel code does not need a migration later.
+
 ## GitHub Language Detection
 
 GitHub cannot be forced to display a brand-new language name only from repository files. `.gitattributes` can map `.sntl` to an existing language for highlighting and language statistics, but it cannot invent a new language label.

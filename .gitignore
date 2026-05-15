@@ -78,6 +78,7 @@ config/schemas/runtime-approval-span.json
 # Local runtime configs
 sandbox.yaml
 policy.yaml
+.sentinel/
 
 # Generated adversarial test corpus (contains intentional fake secrets)
 tests/adversarial_corpus/generated/

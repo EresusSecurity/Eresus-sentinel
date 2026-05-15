@@ -1,0 +1,26 @@
+schema_version: sentinel.plugin.v1
+id: sentinel.core.rulepack
+name: Sentinel Core Rule Pack
+version: 0.1.0
+kind: rulepack
+description: Deterministic baseline rules for prompt, artifact, MCP, and supply-chain review.
+rules:
+  - prompt.injection.basic
+  - prompt.exfiltration.secret_request
+  - artifact.pickle.unsafe_opcode
+  - mcp.tool.dangerous_capability
+  - supply_chain.unpinned_dependency
+formats:
+  - .sentinel
+  - .yaml
+  - .toml
+  - .yar
+  - .yara
+permissions:
+  - scan:file-read
+  - scan:metadata
+  - network:none
+tags:
+  - core
+  - deterministic
+  - baseline

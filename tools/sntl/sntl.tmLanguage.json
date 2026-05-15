@@ -1,0 +1,139 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sentinel SNTL",
+  "scopeName": "source.sntl",
+  "fileTypes": [
+    "sntl",
+    "sentinel"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#directives"
+    },
+    {
+      "include": "#keys"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.sntl",
+          "match": "(^|\\s)#.*$"
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "keyword.control.directive.sntl",
+          "match": "^\\s*%sntl\\s+\\d+\\s*$"
+        }
+      ]
+    },
+    "keys": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.key.sntl",
+          "match": "^\\s*(?:-\\s*)?([A-Za-z_][A-Za-z0-9_.:-]*)(\\s*:)",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.key.sntl"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.sntl"
+            }
+          }
+        },
+        {
+          "name": "entity.name.tag.key.quoted.sntl",
+          "match": "^\\s*(?:-\\s*)?(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*')(\\s*:)",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.key.sntl"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.sntl"
+            }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.sntl",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.sntl",
+              "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.sntl",
+          "begin": "'",
+          "end": "'"
+        },
+        {
+          "name": "string.unquoted.block.sntl",
+          "match": "(?<=:\\s)(\\||>)\\s*$",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.block.sntl"
+            }
+          }
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.sntl",
+          "match": "\\b(?:true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.sntl",
+          "match": "\\b(?:null|none)\\b|~"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.sntl",
+          "match": "(?<![A-Za-z0-9_.-])-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?![A-Za-z0-9_.-])"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.sequence.item.sntl",
+          "match": "^\\s*-\\s"
+        },
+        {
+          "name": "punctuation.definition.inline.sntl",
+          "match": "[\\[\\]\\{\\},]"
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  /* Eresus color system — dark + orange accent (scanner style) */
   --color-sentinel-bg: #0D0D0F;
   --color-sentinel-card: #141417;
   --color-sentinel-border: #1E1E24;
@@ -27,13 +26,11 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
 }
 
-/* ── Scrollbar — near-invisible ──────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #1C1C22; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #2A2A35; }
 
-/* ── Animations — subtle, fast, purposeful ───────────────── */
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -71,7 +68,6 @@
   font-weight: 400;
 }
 
-/* ── Cards — razor-thin borders, no rounded bloat ────────── */
 .stat-card {
   transition: border-color 0.15s ease;
 }
@@ -79,7 +75,6 @@
   border-color: #F59E0B40;
 }
 
-/* ── Scan line effect on scan ────────────────────────────── */
 .scanning::before {
   content: "";
   position: absolute;
@@ -91,35 +86,28 @@
   animation: scan-line 1.5s ease-in-out infinite;
 }
 
-/* ── Selection ───────────────────────────────────────────── */
 ::selection { background: #DC262640; color: #fff; }
 
-/* ── Base reset ──────────────────────────────────────────── */
 body {
   margin: 0;
-  background: #09090B;
+  background: #F6F7FB;
   -webkit-font-smoothing: antialiased;
 }
 #root {
   min-height: 100vh;
 }
 
-/* ── Input focus — red glow ──────────────────────────────── */
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: #DC262660 !important;
   box-shadow: 0 0 0 1px #DC262620;
 }
 
-/* ══════════════════════════════════════════════════════════
-   LIGHT THEME — activated by <html class="light">
-   ══════════════════════════════════════════════════════════ */
 :root.light {
-  /* Surface colors */
-  --sentinel-bg: #F5F5F7;
+  --sentinel-bg: #F6F7FB;
   --sentinel-card: #FFFFFF;
-  --sentinel-border: #E2E2E8;
-  --sentinel-hover: #F0F0F5;
+  --sentinel-border: #E5E7EB;
+  --sentinel-hover: #F3F6FA;
   --sentinel-muted: #6B7280;
   --sentinel-text: #111118;
   --sentinel-subtext: #4B5563;
@@ -136,23 +124,18 @@ input:focus, textarea:focus, select:focus {
   --sentinel-subtext: #9CA3AF;
 }
 
-/* Apply CSS vars to Tailwind-consumed custom colors */
 :root.light .bg-sentinel-bg  { background-color: var(--sentinel-bg) !important; }
 :root.light .bg-sentinel-card { background-color: var(--sentinel-card) !important; }
 :root.light .border-sentinel-border { border-color: var(--sentinel-border) !important; }
 :root.light .hover\:bg-sentinel-hover:hover { background-color: var(--sentinel-hover) !important; }
 
-/* Light theme body */
 :root.light body { background: var(--sentinel-bg); color: var(--sentinel-text); }
 
-/* Light theme scrollbar */
 :root.light ::-webkit-scrollbar-thumb { background: #C7C7D0; }
 :root.light ::-webkit-scrollbar-thumb:hover { background: #9999A8; }
 
-/* Light theme selection */
 :root.light ::selection { background: #DC262640; color: #111118; }
 
-/* Light theme input focus */
 :root.light input:focus,
 :root.light textarea:focus,
 :root.light select:focus {
@@ -160,23 +143,29 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 1px #DC262630;
 }
 
-/* Light theme text overrides for gray utilities */
+:root.light .text-white { color: #111827 !important; }
+:root.light .text-gray-200 { color: #111827 !important; }
 :root.light .text-gray-300 { color: #1F2937 !important; }
 :root.light .text-gray-400 { color: #374151 !important; }
-:root.light .text-gray-500 { color: #6B7280 !important; }
-:root.light .text-gray-600 { color: #9CA3AF !important; }
-:root.light .text-gray-700 { color: #D1D5DB !important; }
+:root.light .text-gray-500 { color: #4B5563 !important; }
+:root.light .text-gray-600 { color: #6B7280 !important; }
+:root.light .text-gray-700 { color: #9CA3AF !important; }
+:root.light .text-gray-800 { color: #D1D5DB !important; }
 
-/* Light theme stat card hover */
+:root.light .bg-red-600.text-white,
+:root.light .bg-red-500.text-white,
+:root.light .bg-amber-500.text-white,
+:root.light .bg-blue-600.text-white,
+:root.light .bg-green-600.text-white {
+  color: #FFFFFF !important;
+}
+
 :root.light .stat-card:hover { border-color: #F59E0B60; }
 
-/* Light theme white/[0.03] backgrounds → light gray */
 :root.light .hover\:bg-white\/\[0\.03\]:hover { background-color: rgba(0,0,0,0.04) !important; }
 
-/* Light sidebar */
-:root.light aside { box-shadow: 2px 0 12px rgba(0,0,0,0.06); }
+:root.light aside { box-shadow: 2px 0 18px rgba(15, 23, 42, 0.05); }
 
-/* ── Light theme: input & textarea backgrounds ───────────── */
 :root.light input,
 :root.light textarea,
 :root.light select {
@@ -189,21 +178,18 @@ input:focus, textarea:focus, select:focus {
   color: #9CA3AF !important;
 }
 
-/* ── Light theme: bg-black/40 inputs (PathScanPage etc) ─── */
 :root.light .bg-black\/40 {
   background-color: #F9FAFB !important;
 }
 
-/* ── Light theme: code blocks ───────────────────────────── */
 :root.light code,
 :root.light pre {
   background-color: #F3F4F6 !important;
   color: #1F2937 !important;
 }
 
-/* ── Light theme: sentinel-bg overrides ─────────────────── */
 :root.light .bg-sentinel-bg {
-  background-color: #F5F5F7 !important;
+  background-color: #F6F7FB !important;
 }
 :root.light .bg-sentinel-card {
   background-color: #FFFFFF !important;
@@ -212,17 +198,17 @@ input:focus, textarea:focus, select:focus {
   border-color: #E2E2E8 !important;
 }
 
-/* ── Light theme: black/20 and black/40 overlays ────────── */
 :root.light .bg-black\/20 { background-color: rgba(0,0,0,0.04) !important; }
 :root.light .bg-black\/40 { background-color: rgba(0,0,0,0.04) !important; }
 
-/* ── Light theme: white/[0.02] etc hover areas ──────────── */
 :root.light .hover\:bg-white\/\[0\.02\]:hover { background-color: rgba(0,0,0,0.03) !important; }
 :root.light .hover\:bg-white\/\[0\.01\]:hover { background-color: rgba(0,0,0,0.02) !important; }
 
-/* ── Light theme: scanning animation line ───────────────── */
 :root.light .scanning::before { background: linear-gradient(90deg, transparent, #DC2626aa, transparent); }
 
-/* ── Light theme: main body background ──────────────────── */
-:root.light body { background: #F5F5F7 !important; color: #111118; }
-:root.light #root { background: #F5F5F7; }
+:root.light .bg-black\/70 { background-color: rgba(15, 23, 42, 0.35) !important; }
+:root.light .border-white\/5 { border-color: rgba(15, 23, 42, 0.08) !important; }
+:root.light .border-white\/10 { border-color: rgba(15, 23, 42, 0.12) !important; }
+
+:root.light body { background: #F6F7FB !important; color: #111118; }
+:root.light #root { background: #F6F7FB; }

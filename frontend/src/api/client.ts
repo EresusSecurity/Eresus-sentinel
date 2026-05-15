@@ -63,7 +63,6 @@ export async function fetchHistory(): Promise<{ scans: ScanEntry[]; artifacts: A
   return data
 }
 
-// ── New parity endpoints ──────────────────────────────────────
 
 export async function scanSast(path: string): Promise<PathScanResult> {
   const { data } = await api.post<PathScanResult>('/sast/scan', { path })
@@ -124,8 +123,6 @@ export async function fetchPolicy(): Promise<PolicyInfo> {
   const { data } = await api.get<PolicyInfo>('/policy')
   return data
 }
-
-// ── New CLI-parity endpoints ──────────────────────────────────
 
 export async function scanMCP(target: string, manifest?: string): Promise<PathScanResult> {
   const { data } = await api.post<PathScanResult>('/mcp/scan', { target, manifest: manifest || '' })

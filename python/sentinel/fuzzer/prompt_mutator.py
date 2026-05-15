@@ -208,10 +208,6 @@ def token_boundary_inject(text: str, rng: random.Random) -> str:
     return " ".join(result)
 
 
-# ---------------------------------------------------------------------------
-# P4RS3LT0NGV3-derived mutations (159-transform bypass toolkit)
-# ---------------------------------------------------------------------------
-
 # ROT47 table (printable ASCII 33–126 rotated by 47)
 _ROT47_TABLE = str.maketrans(
     "".join(chr(c) for c in range(33, 127)),
@@ -235,8 +231,7 @@ _ASCII_UPPER_TO_MATH_BOLD = str.maketrans(
 def rot47_obfuscate(text: str, rng: Optional[random.Random] = None) -> str:
     """Apply ROT47 cipher (shifts printable ASCII 33–126 by 47 positions).
 
-    ROT47 is popular in P4RS3LT0NGV3 because it encodes spaces and punctuation
-    unlike ROT13, making it a more complete obfuscation.
+    ROT47 encodes spaces and punctuation unlike ROT13, making it a broader obfuscation.
     """
     return text.translate(_ROT47_TABLE)
 
@@ -278,9 +273,7 @@ def zalgo_inject(text: str, rng: random.Random, intensity: int = 3) -> str:
 def zwsp_token_bomb(text: str, rng: random.Random, density: float = 0.4) -> str:
     """Insert ZWSP (U+200B) characters densely to bloat token count.
 
-    The Tokenade attack from P4RS3LT0NGV3 uses ZWSP/ZWNJ between every character
-    to massively inflate token count and potentially trigger issues in LLM context
-    management.
+    Dense ZWSP/ZWNJ insertion inflates token count and can stress context management.
     """
     result = []
     for ch in text:
@@ -293,8 +286,7 @@ def zwsp_token_bomb(text: str, rng: random.Random, density: float = 0.4) -> str:
 def atbash_obfuscate(text: str, rng: Optional[random.Random] = None) -> str:
     """Apply Atbash cipher (A↔Z reversal).
 
-    Atbash is one of the 159 transforms in P4RS3LT0NGV3. It reverses the alphabet
-    (A→Z, B→Y, ...) making 'ignore' → 'rmtliv'.
+    Atbash reverses the alphabet, making 'ignore' → 'rmtliv'.
     """
     return text.translate(str.maketrans(
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -313,7 +305,6 @@ def reverse_words(text: str, rng: Optional[random.Random] = None) -> str:
 def nato_phonetic_encode(text: str, rng: Optional[random.Random] = None) -> str:
     """Encode text as NATO phonetic alphabet words.
 
-    P4RS3LT0NGV3 includes NATO phonetic encoding as a transform.
     'AI' → 'Alfa India'
     """
     _NATO = {
@@ -376,7 +367,6 @@ _ALL_OPS: dict[str, tuple[Callable, bool]] = {
     "mixed_script":        (mixed_script, True),
     "markdown":            (markdown_obfuscate, True),
     "token_boundary":      (token_boundary_inject, True),
-    # P4RS3LT0NGV3-derived transforms
     "rot47":               (rot47_obfuscate, False),
     "fullwidth":           (fullwidth_substitute, False),
     "math_bold":           (math_bold_substitute, False),
@@ -401,7 +391,6 @@ _DEFAULT_WEIGHTS: dict[str, float] = {
     "mixed_script": 1.2,
     "markdown": 0.9,
     "token_boundary": 0.8,
-    # P4RS3LT0NGV3-derived transforms
     "rot47": 1.0,
     "fullwidth": 1.2,
     "math_bold": 0.9,

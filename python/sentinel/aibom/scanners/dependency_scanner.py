@@ -15,7 +15,7 @@ _AI_PKGS = {
     "jax", "flax", "peft", "bitsandbytes", "vllm", "tgi",
     "chromadb", "faiss", "faiss-cpu", "faiss-gpu", "pinecone-client",
     "weaviate-client", "qdrant-client", "milvus", "redis",
-    "guardrails-ai", "nemo-guardrails", "promptfoo", "litellm",
+    "guardrails-ai", "nemo-guardrails", "litellm",
     "instructor", "dspy", "crewai", "autogen", "agno",
 }
 

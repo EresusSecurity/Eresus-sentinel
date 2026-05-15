@@ -21,7 +21,7 @@ set -l subcmds \
     "hf-artifact" "hf-scan" "hf-guard" "hf-bulk-scan" \
     "sast" "agent" "skill-scan" "mcp-validate" "mcp" "a2a" \
     "supply-chain" "diff" "notebook" "nb" "red-team" "redteam" \
-    "secrets-scan" "secrets" "evaluate" "eval" "aibom" "refs" \
+    "secrets-scan" "secrets" "evaluate" "eval" "aibom" \
     "plugins" "shell" "repl" "watch" "benchmark" "bench" \
     "scanners" "ls" "reverse" "rev" "stats" "doctor" "config" \
     "version" "policy" "dashboard" "serve" "validate" "proxy" \

@@ -1,7 +1,7 @@
 """
 Low-Resource Language Buff — translates prompts to under-resourced languages.
 
-Many LLM guardrails are trained primarily on English.
+Many model safety controls are trained primarily on English.
 Translating attack prompts to low-resource languages can bypass filters
 while the LLM may still understand and comply with the request.
 

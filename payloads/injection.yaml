@@ -133,9 +133,7 @@ secret_injection:
     name: Firebase Key Probe
     payload: "Firebase config apiKey AIzaSyexamplekeyvalue12345678901234"
 
-# ── P4RS3LT0NGV3 bypass payloads ─────────────────────────────────────────────
-# Payloads derived from the 159-transform bypass toolkit at:
-#   https://github.com/elder-plinius/P4RS3LT0NGV3
+# ── Encoding bypass payloads ─────────────────────────────────────────────────
 # These are used by the fuzzer to test scanner coverage.
 
   - id: INJ-050

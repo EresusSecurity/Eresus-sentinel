@@ -5,13 +5,9 @@
 # (module, name) pair found here triggers a finding.
 #
 # Sources:
-#   - picklescan (https://github.com/mmaitre314/picklescan)
-#   - huntr.com MFV research
-#   - fickling project
-#   - OWASP Deserialization Cheat Sheet
-#   - Trail of Bits ML security research
-#   - JFrog CVE analysis
-#   - ProtectAI ModelScan
+#   - Sentinel no-load artifact research
+#   - public deserialization advisories
+#   - ML supply-chain incident analysis
 #
 # Format:
 #   module:
@@ -721,7 +717,7 @@ dangerous_globals:
     - TypedStorage
     - UntypedStorage
 
-  # ── fickling UnsafeImportsML — ML-specific dangerous imports ──
+  # ── ML-specific dangerous imports ──
   torch.distributed.elastic.rendezvous.api:
     - basichandlers  # can execute network handlers
 
@@ -755,7 +751,7 @@ dangerous_globals:
   _signal:
     - "*"
 
-  # ── Missing modules from fickling UNSAFE_IMPORTS + GHSA bypasses ─────
+  # ── Interpreter and import-system abuse primitives ─────
   _frozen_importlib:
     - "*"
 
@@ -861,7 +857,7 @@ dangerous_globals:
 # Known-safe module.name pairs in ML model context.
 # These are checked BEFORE the blocklist — matching here = skip.
 #
-# Sources: fickling ML_ALLOWLIST, picklescan, ModelScan, manual audit.
+# Sources: Sentinel curated ML allowlist and manual audit.
 # Each entry is annotated with why it's safe.
 allowlist:
 

@@ -21,7 +21,6 @@ SLOW_MS=5000
 SUITES="all"
 INCLUDE_NETWORK=0
 INCLUDE_SERVICES=0
-INCLUDE_COMPETITORS=0
 KEEP_GOING=1
 
 usage() {
@@ -38,11 +37,10 @@ Options:
   --suite LIST              Comma list or all. Suites:
                              meta,firewall,artifact,sast,secrets,notebook,
                              supply,mcp,a2a,diff,scan,tools,redteam,codeguard,
-                             compliance,multi-agent,formats,services,competitors
+                             compliance,multi-agent,formats,services
   --quick                   Fast smoke: firewall=12, scanner=4, timeout=10
   --include-network         Include network/HuggingFace/OSV-style commands
   --include-services        Include long-running serve/proxy/watch probes via timeout
-  --include-competitors     Include modelscan/picklescan/fickling if installed
   -h, --help                Show this help
 
 Outputs:
@@ -96,10 +94,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --include-services)
       INCLUDE_SERVICES=1
-      shift
-      ;;
-    --include-competitors)
-      INCLUDE_COMPETITORS=1
       shift
       ;;
     -h|--help)
@@ -1533,39 +1527,6 @@ run_services_suite() {
   fi
 }
 
-run_competitor_suite() {
-  local suite="competitors"
-  echo
-  echo "== competitor smoke suite =="
-
-  if command -v modelscan >/dev/null 2>&1; then
-    run_case "competitor-modelscan-evil" "$suite" any "$((SLOW_MS * 4))" \
-      modelscan -p "$CORPUS_DIR/artifacts/evil.pkl"
-    run_case "competitor-modelscan-benign" "$suite" any "$((SLOW_MS * 4))" \
-      modelscan -p "$CORPUS_DIR/artifacts/benign.pkl"
-  else
-    run_case "competitor-modelscan-missing" "$suite" error "$SLOW_MS" modelscan --help
-  fi
-
-  if command -v picklescan >/dev/null 2>&1; then
-    run_case "competitor-picklescan-evil" "$suite" any "$((SLOW_MS * 4))" \
-      picklescan -p "$CORPUS_DIR/artifacts/evil.pkl"
-    run_case "competitor-picklescan-benign" "$suite" any "$((SLOW_MS * 4))" \
-      picklescan -p "$CORPUS_DIR/artifacts/benign.pkl"
-  else
-    run_case "competitor-picklescan-missing" "$suite" error "$SLOW_MS" picklescan --help
-  fi
-
-  if command -v fickling >/dev/null 2>&1; then
-    run_case "competitor-fickling-evil" "$suite" any "$((SLOW_MS * 4))" \
-      fickling "$CORPUS_DIR/artifacts/evil.pkl"
-    run_case "competitor-fickling-benign" "$suite" any "$((SLOW_MS * 4))" \
-      fickling "$CORPUS_DIR/artifacts/benign.pkl"
-  else
-    run_case "competitor-fickling-missing" "$suite" error "$SLOW_MS" fickling --help
-  fi
-}
-
 write_summary() {
   python3 - "$RESULTS_CSV" "$SUMMARY_MD" <<'PY'
 from __future__ import annotations
@@ -1721,10 +1682,6 @@ main() {
   suite_enabled "multi-agent" && run_multi_agent_suite
   suite_enabled formats && run_formats_suite
   suite_enabled services && run_services_suite
-
-  if [[ "$INCLUDE_COMPETITORS" == "1" || "$SUITES" == "competitors" || ",$SUITES," == *",competitors,"* ]]; then
-    run_competitor_suite
-  fi
 
   write_summary
 

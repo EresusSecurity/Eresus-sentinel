@@ -50,7 +50,7 @@ Eresus Sentinel — Production-grade AI/LLM Security Platform.
 - Invisible text scanner (zero-width characters)
 - Encoding attack scanner (base64, hex, unicode escapes)
 - Secret detection (API keys, tokens, credentials)
-- Layered defense orchestrator (4-layer Rebuff pattern)
+- Layered defense orchestrator
 - Canary injection system (4 strategies)
 - Vector similarity scanner (TF-IDF)
 - Toxicity scanner (6 categories)

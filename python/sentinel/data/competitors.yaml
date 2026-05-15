@@ -60,20 +60,11 @@ competitors:
     - Vercel
 
   security_tools:
-    - Garak
-    - LLM Guard
-    - Rebuff
-    - NeMo Guardrails
-    - Guardrails AI
-    - LangChain Guard
-    - Arthur AI
-    - Patronus AI
-    - Lakera
-    - HiddenLayer
-    - Robust Intelligence
-    - CalypsoAI
-    - Protect AI
-    - Pikescan
+    - External AI Security Platform
+    - External Model Firewall
+    - External Prompt Gateway
+    - External Red Team Toolkit
+    - External Guardrail Platform
 
 # Brand aliases → canonical parent company
 aliases:

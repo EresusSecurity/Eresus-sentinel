@@ -87,6 +87,9 @@ class UserStore:
     def list_users(self) -> list[User]:
         return list(self._users.values())
 
+    def user_count(self) -> int:
+        return len(self._users)
+
     def delete_user(self, user_id: str) -> bool:
         user = self._users.pop(user_id, None)
         if user:

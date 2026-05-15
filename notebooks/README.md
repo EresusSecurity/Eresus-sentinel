@@ -19,9 +19,8 @@ attack surfaces. **Model file formats are the new frontier** — under-audited,
 widely deployed, and increasingly targeted through supply-chain attacks
 on model hubs like HuggingFace and Ollama.
 
-This lab mirrors the structure of [protectai/modelscan](https://github.com/protectai/modelscan/tree/main/notebooks)
-notebooks, but goes deeper with GGUF-specific and archive-slip attacks
-that ModelScan doesn't cover.
+This lab uses Sentinel-native no-load artifact checks for pickle, GGUF,
+archive-slip, and model supply-chain attack surfaces.
 
 ---
 
@@ -221,10 +220,8 @@ for f in notebooks/*.py; do echo "=== $f ==="; python "$f"; echo; done
 - **[MITRE ATLAS: AML.T0010 ML Supply Chain Compromise](https://atlas.mitre.org/techniques/AML.T0010)** — Taxonomy for ML attacks
 - **[AVID: AI Vulnerability Database](https://avidml.org/)** — S0403: Model Supply Chain
 
-### Tools & Related Projects
+### Safe Formats
 
-- **[protectai/modelscan](https://github.com/protectai/modelscan)** — ProtectAI's open-source model scanner (our notebooks follow their demo structure)
-- **[mmaitre314/picklescan](https://github.com/mmaitre314/picklescan)** — Pickle opcode scanner (Sentinel's pickle scanner is based on similar opcode analysis but adds STACK_GLOBAL + chain confirmation)
 - **[HuggingFace Safetensors](https://huggingface.co/docs/safetensors/)** — The safe alternative to pickle-based formats
 
 ### Academic & Industry Research

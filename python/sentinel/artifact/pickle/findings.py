@@ -415,7 +415,7 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
             cwe_ids=["CWE-502"],
         ))
 
-    # ── Interpretation errors (fickling parity) ─────────────
+    # ── Interpretation errors ─────────────
     if analysis.interpretation_errors:
         for err in analysis.interpretation_errors[:5]:
             findings.append(Finding.artifact(
@@ -432,7 +432,7 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
                 cwe_ids=["CWE-502"],
             ))
 
-    # ── Non-standard imports (fickling parity) ──────────────
+    # ── Non-standard imports ──────────────
     if analysis.has_non_standard_import and analysis.non_standard_imports:
         for imp_info in analysis.non_standard_imports[:5]:
             findings.append(Finding.artifact(
@@ -450,7 +450,7 @@ def build_findings(analysis: PickleAnalysis, source: str) -> list[Finding]:
                 cwe_ids=["CWE-502", "CWE-829"],
             ))
 
-    # ── Bad calls: exec/eval/compile/open (fickling parity) ──
+    # ── Bad calls: exec/eval/compile/open ──
     if analysis.has_reduce and any(
         imp.name in ("exec", "eval", "compile", "open", "__import__")
         and imp.chain_confirmed

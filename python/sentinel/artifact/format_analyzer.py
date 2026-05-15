@@ -274,7 +274,7 @@ class FormatAnalyzer:
         # Use content detection if available, else extension
         fmt = detected_format or ext_format
 
-        # ── Polyglot detection (fickling-inspired) ────────────────
+        # ── Polyglot detection ────────────────
         # Check if file matches multiple format signatures
         polyglot_formats = self._detect_polyglot(filepath)
         polyglot_finding = None
@@ -444,7 +444,7 @@ class FormatAnalyzer:
         """Detect if a file matches multiple format signatures (polyglot).
 
         Returns list of format names matched. More than 1 = polyglot.
-        Inspired by fickling's polyglot detection approach.
+        Uses deterministic signature checks before parser-specific analysis.
         """
         path = Path(filepath)
         if not path.exists() or not path.is_file():

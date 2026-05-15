@@ -1,0 +1,22 @@
+schema: sentinel.provider.v1
+providers:
+  - id: local-mock
+    type: mock
+    model: deterministic-echo
+    capabilities:
+      streaming: true
+      tools: false
+      json: true
+    limits:
+      timeout_ms: 1000
+      max_tokens: 2048
+  - id: custom-http
+    type: http
+    model: policy-endpoint
+    endpoint: ${SENTINEL_PROVIDER_URL}
+    auth:
+      header: Authorization
+      env: SENTINEL_PROVIDER_TOKEN
+policy:
+  allow_live: false
+  failover: [local-mock]

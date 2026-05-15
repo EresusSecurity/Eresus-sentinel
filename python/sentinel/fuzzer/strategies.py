@@ -252,12 +252,9 @@ class ZeroWidthStrategy(JailbreakStrategy):
     """
     Inject zero-width characters to split tokens and evade pattern matching.
 
-    Inspired by the P4RS3LT0NGV3 "Zero-Width Steganography" and "Tokenade"
-    techniques that insert ZWSP/ZWJ/ZWNJ between characters to confuse
-    tokeniser-based classifiers.
+    Uses ZWSP/ZWJ/ZWNJ insertion between characters to confuse tokeniser-based classifiers.
     """
 
-    # Zero-width characters sourced from P4RS3LT0NGV3 Tokenade defaults
     ZWC = ["\u200B", "\u200C", "\u200D", "\u2060", "\u00AD"]
 
     def execute(self, target: str = "", max_rounds: int = 4) -> StrategyResult:
@@ -311,7 +308,7 @@ class UnicodeHomoglyphStrategy(JailbreakStrategy):
 
     Covers: fullwidth Latin (FF01-FF5E), mathematical alphanumeric symbols
     (bold, italic, monospace, double-struck, fraktur), Cyrillic homoglyphs,
-    Greek homoglyphs — all transforms available in P4RS3LT0NGV3.
+    Greek homoglyphs.
     """
 
     # Cyrillic lookalikes for common Latin characters
@@ -380,8 +377,7 @@ class TokenBombStrategy(JailbreakStrategy):
     """
     Token bomb — flood context window with noise to manipulate attention.
 
-    Based on the P4RS3LT0NGV3 "Tokenade" feature: build depth×breadth
-    carrier+payload combinations with ZWSP separators and variation selectors.
+    Builds carrier and payload combinations with ZWSP separators and variation selectors.
     """
 
     FILLER_TOKENS = [
@@ -432,8 +428,7 @@ class BijectionCipherStrategy(JailbreakStrategy):
     """
     Custom bijection / A1Z26 / classical cipher payload obfuscation.
 
-    Inspired by P4RS3LT0NGV3's Bijection tool and classical cipher catalog
-    (Caesar, Atbash, Vigenère, ROT47, ROT128, Polybius, A1Z26).
+    Covers Caesar, Atbash, Vigenère, ROT47, ROT128, Polybius, and A1Z26 variants.
     """
 
     def execute(self, target: str = "", max_rounds: int = 4) -> StrategyResult:
@@ -510,8 +505,7 @@ class WhitespaceSteganographyStrategy(JailbreakStrategy):
     """
     Whitespace / invisible steganography payload injection.
 
-    Mirrors P4RS3LT0NGV3 "Whitespace Steganography" and "Emoji Steganography"
-    — hides binary-encoded payload in tab/space patterns or variation selectors.
+    Hides binary-encoded payload in tab/space patterns or variation selectors.
     """
 
     def execute(self, target: str = "", max_rounds: int = 2) -> StrategyResult:
@@ -555,10 +549,9 @@ class WhitespaceSteganographyStrategy(JailbreakStrategy):
 
 class MutationLabStrategy(JailbreakStrategy):
     """
-    Combines multiple P4RS3LT0NGV3 mutation techniques in a single payload.
+    Combines multiple mutation techniques in a single payload.
 
-    Mirrors the Mutation Lab's batch variant generation: random mix of
-    zero-width noise, Unicode noise, Zalgo, whitespace, casing, encoding.
+    Uses random mixes of zero-width noise, Unicode noise, Zalgo, whitespace, casing, and encoding.
     """
 
     def execute(self, target: str = "", max_rounds: int = 5) -> StrategyResult:

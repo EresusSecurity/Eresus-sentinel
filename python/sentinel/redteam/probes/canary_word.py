@@ -7,8 +7,6 @@ appears in output, the system prompt was leaked.
 
 Technique: Insert random hex tokens as HTML comments in the
 system prompt, then try various extraction techniques.
-
-Inspired by: Rebuff (protectai) canary word system.
 """
 
 from __future__ import annotations

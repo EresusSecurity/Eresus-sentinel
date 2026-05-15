@@ -1,0 +1,20 @@
+schema: sentinel.runtime.v1
+name: local-runtime-policy
+description: Runtime enforcement policy for MCP and agent tool sessions.
+mode: enforce
+policies:
+  - id: block-shell
+    match:
+      event: tool
+      tool: shell
+    action: block
+    severity: critical
+  - id: redact-secrets
+    match:
+      event: output
+      patterns: [private_key, api_key, token]
+    action: sanitize
+    severity: high
+tracing:
+  enabled: true
+  evidence: snapshot

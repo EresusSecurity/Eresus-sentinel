@@ -819,17 +819,16 @@ def write_coverage(out: Path):
         ("validate", "GET /api/validate", "✓"),
         ("hf-artifact / hf-guard", "POST /api/hf/scan", "partial — remote only"),
     ]
-    gaps = [
-        ("scan (generic)", "–", "gap", "No unified /api/scan/* route"),
-        ("reverse", "–", "gap", "Model reverse-engineering not in web API"),
-        ("fuzz", "–", "gap", "Fuzzer not exposed via REST"),
-        ("playbook", "–", "gap", "Playbook runner not in web API"),
-        ("proxy", "–", "gap", "MCP proxy not in web API"),
+    missing = [
+        ("scan (generic)", "–", "missing", "No unified /api/scan/* route"),
+        ("reverse", "–", "missing", "Model reverse-engineering not in web API"),
+        ("fuzz", "–", "missing", "Fuzzer not exposed via REST"),
+        ("playbook", "–", "missing", "Playbook runner not in web API"),
+        ("proxy", "–", "missing", "MCP proxy not in web API"),
         ("serve / dashboard", "–", "meta", "The server itself"),
         ("version", "GET / or /api/health version field", "partial"),
-        ("shell / repl", "–", "gap", "Interactive REPL is CLI-only"),
-        ("watch", "–", "gap", "File-watch mode is CLI-only"),
-        ("refs inventory/parity", "–", "gap", "No /api/refs endpoint"),
+        ("shell / repl", "–", "missing", "Interactive REPL is CLI-only"),
+        ("watch", "–", "missing", "File-watch mode is CLI-only"),
     ]
     lines = [
         "# CLI → API Coverage Matrix",
@@ -844,12 +843,12 @@ def write_coverage(out: Path):
 
     lines += [
         "",
-        "## API Gaps (CLI-only features)",
+        "## API Coverage Work",
         "",
-        "| CLI Command | API Endpoint | Gap Type | Notes |",
+        "| CLI Command | API Endpoint | Status | Notes |",
         "|-------------|-------------|----------|-------|",
     ]
-    for row in gaps:
+    for row in missing:
         cmd, ep, gap_type, *notes = row
         note = notes[0] if notes else ""
         lines.append(f"| `{cmd}` | `{ep}` | {gap_type} | {note} |")
@@ -863,7 +862,6 @@ def write_coverage(out: Path):
         "| `GET /api/version` | LOW | version, build info |",
         "| `POST /api/fuzz/run` | MEDIUM | fuzzer strategy dispatch |",
         "| `POST /api/playbook/run` | MEDIUM | playbook YAML runner |",
-        "| `GET /api/refs/inventory` | MEDIUM | refs parity report |",
         "| `POST /api/reverse/model` | HIGH | model layer analysis |",
         "| `WS /api/watch` | LOW | real-time file watch |",
     ]

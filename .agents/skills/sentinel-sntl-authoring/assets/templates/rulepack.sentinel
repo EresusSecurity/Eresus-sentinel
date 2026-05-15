@@ -1,0 +1,9 @@
+schema: sentinel.rulepack.v1
+name: local-rules
+rules:
+  - id: unsafe-tool-call
+    type: runtime
+    severity: high
+    match:
+      tool: shell
+      args_contains_any: [curl, token, password]

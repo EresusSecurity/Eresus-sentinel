@@ -1,13 +1,194 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchStats, fetchScanners } from '../api/client'
-import { StatCard } from '../components/StatCard'
+import type { ElementType } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BadgeCheck,
+  BarChart3,
+  Box,
+  BrainCircuit,
+  ClipboardList,
+  Code,
+  Crosshair,
+  Database,
+  FileSearch,
+  FlaskConical,
+  Gauge,
+  GitBranch,
+  Lock,
+  Network,
+  Plug,
+  Radar,
+  Shield,
+  ShieldCheck,
+  Sparkles,
+  Terminal,
+  WandSparkles,
+} from 'lucide-react'
+import { clsx } from 'clsx'
+import { fetchScanners, fetchStats } from '../api/client'
 import { SeverityChart } from '../components/SeverityChart'
 import { TimelineChart } from '../components/TimelineChart'
-import { Shield, AlertTriangle, Ban, FileWarning, ArrowRight, Terminal, Target, ScanSearch } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { clsx } from 'clsx'
 
-const DETECTOR_PREVIEW_WIDTHS = [82, 68, 74, 57]
+const capabilityMap = [
+  {
+    title: 'Eval Matrix',
+    status: 'Designing',
+    detail: 'Prompt x model x dataset comparison with filterable pass/fail cells.',
+    Icon: BarChart3,
+    tone: 'blue',
+  },
+  {
+    title: 'Red Team Wizard',
+    status: 'In UI',
+    detail: 'Purpose, target, plugin, strategy, and review flow for repeatable scans.',
+    Icon: Crosshair,
+    tone: 'red',
+  },
+  {
+    title: 'Plugin Registry',
+    status: 'Partial',
+    detail: 'Deterministic rule packs first; attacker-model generators stay optional.',
+    Icon: Plug,
+    tone: 'violet',
+  },
+  {
+    title: 'Strategy Engine',
+    status: 'Next',
+    detail: 'Encoding, prompt-injection, replay, and multi-turn attack templates.',
+    Icon: WandSparkles,
+    tone: 'amber',
+  },
+  {
+    title: 'Provider Adapters',
+    status: 'Next',
+    detail: 'HTTP, local model, Ollama, HF, MCP, browser, and custom provider contracts.',
+    Icon: Network,
+    tone: 'green',
+  },
+  {
+    title: 'Model Audit',
+    status: 'Beta',
+    detail: 'No-load artifact scanning across pickle, Torch, ONNX, SafeTensors, GGUF.',
+    Icon: FileSearch,
+    tone: 'blue',
+  },
+  {
+    title: 'Code Scanning',
+    status: 'Beta',
+    detail: 'SAST, secrets, notebooks, diffs, dependency and supply-chain scans.',
+    Icon: Code,
+    tone: 'slate',
+  },
+  {
+    title: 'Reports',
+    status: 'Hardening',
+    detail: 'JSON, SARIF, Markdown, HTML, CSV, JUnit and diff snapshots.',
+    Icon: ClipboardList,
+    tone: 'amber',
+  },
+]
+
+const roadmapRows = [
+  ['30 days', 'Reliability gates', 'Pickle fuzz, MCP HTTP E2E, HF split, SARIF snapshots'],
+  ['90 days', 'Beta contract', 'Normalized Finding/ScanResult outputs across every domain'],
+  ['6 months', 'Platform expansion', 'AIBOM graph, remote resolvers, team policy profiles'],
+]
+
+const hardeningRows = [
+  ['Artifact', 'Pickle fuzz CI gate', 'Next'],
+  ['MCP', 'Proxy local HTTP passthrough E2E', 'Next'],
+  ['HF', 'Mocked/live integration split', 'Next'],
+  ['Reporting', 'SARIF/JSON snapshots across domains', 'Next'],
+  ['Rules', 'Duplicate rule ID CI gate', 'Next'],
+  ['Release', 'Package-data smoke and release checklist', 'Next'],
+]
+
+const evalMatrix = [
+  ['Travel Agent', 'Prompt Injection', 'openai:gpt-5-mini', 'Fail', 'critical'],
+  ['MCP Server', 'Tool Poisoning', 'mcp:stdio', 'Warn', 'high'],
+  ['HF Model', 'Pickle Opcode', 'hf://model', 'Block', 'critical'],
+  ['Notebook', 'Secret Echo', 'local:ipynb', 'Pass', 'low'],
+  ['Agent', 'Repo Prompt Injection', 'codex-agent', 'Review', 'medium'],
+]
+
+const maturityRows = [
+  ['Artifact no-load scanning', 'Beta', 82],
+  ['Prompt firewall checks', 'Beta', 76],
+  ['MCP manifest/live scanning', 'Beta', 70],
+  ['Dashboard/API', 'Experimental', 42],
+  ['Runtime gateway adapters', 'Experimental', 22],
+  ['AI/judge enrichment', 'Optional', 18],
+]
+
+const toneClasses: Record<string, string> = {
+  blue: 'bg-blue-50 text-blue-700 border-blue-100',
+  red: 'bg-red-50 text-red-700 border-red-100',
+  violet: 'bg-violet-50 text-violet-700 border-violet-100',
+  amber: 'bg-amber-50 text-amber-700 border-amber-100',
+  green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  slate: 'bg-slate-50 text-slate-700 border-slate-200',
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('en-US').format(value)
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone =
+    status === 'Beta' || status === 'In UI'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+      : status === 'Next' || status === 'Designing' || status === 'Hardening'
+        ? 'bg-amber-50 text-amber-700 border-amber-100'
+        : status === 'Partial' || status === 'Experimental' || status === 'Optional'
+          ? 'bg-sky-50 text-sky-700 border-sky-100'
+          : 'bg-slate-50 text-slate-600 border-slate-200'
+
+  return (
+    <span className={clsx('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', tone)}>
+      {status}
+    </span>
+  )
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  Icon,
+  accent,
+}: {
+  label: string
+  value: string | number
+  detail: string
+  Icon: ElementType
+  accent: string
+}) {
+  return (
+    <div className="bg-white border border-sentinel-border rounded-lg p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-600">{label}</p>
+        <span className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-md border', accent)}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className="mt-4 text-3xl font-semibold tracking-tight text-gray-200">{value}</p>
+      <p className="mt-1 text-xs text-gray-500">{detail}</p>
+    </div>
+  )
+}
+
+function RiskDot({ level }: { level: string }) {
+  const colors: Record<string, string> = {
+    critical: 'bg-red-500',
+    high: 'bg-orange-500',
+    medium: 'bg-amber-400',
+    low: 'bg-emerald-500',
+  }
+  return <span className={clsx('h-2 w-2 rounded-full', colors[level] ?? 'bg-slate-300')} />
+}
 
 export default function DashboardPage() {
   const { data: stats } = useQuery({ queryKey: ['stats'], queryFn: fetchStats, refetchInterval: 5000 })
@@ -24,280 +205,301 @@ export default function DashboardPage() {
     artifact_findings: 0,
   }
 
-  const hasData = s.total_scans > 0 || s.artifacts_scanned > 0
+  const totalScanners = (scanners?.input_count ?? 0) + (scanners?.output_count ?? 0)
+  const blockRate = s.total_scans > 0 ? Math.round((s.blocked / s.total_scans) * 100 * 10) / 10 : 0
 
-  // ── Onboarding view (no scans yet) ─────────────────────
-  if (!hasData) {
-    return (
-      <div className="flex flex-col items-center pt-12">
-        <h1 className="text-2xl md:text-3xl font-semibold text-gray-200 text-center leading-snug max-w-xl">
-          Initiate Scan to activate Dashboard and generate your first Report.
-        </h1>
-
-        {/* Step wizard */}
-        <div className="flex items-center gap-0 mt-10 mb-8">
-          {/* Step 1 */}
-          <div className="flex flex-col items-center">
-            <div className="w-10 h-10 rounded-full border-2 border-amber-500 flex items-center justify-center text-amber-500 font-bold text-sm">
-              1
+  return (
+    <div className="space-y-5 pb-8">
+      <section className="overflow-hidden rounded-lg border border-sentinel-border bg-white shadow-sm">
+        <div className="grid gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+          <div className="p-5 md:p-7">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-100 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Deterministic-first
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                <Sparkles className="h-3.5 w-3.5" />
+                Platform hardening mode
+              </span>
             </div>
-            <div className="h-8 w-0.5 bg-amber-500" />
-            <Link
-              to="/firewall"
-              className="flex items-center gap-2 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg transition-colors"
-            >
-              <Target className="w-5 h-5" />
-              SETUP TARGET
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </Link>
+
+            <div className="mt-5 max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-600">Eresus Sentinel</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-gray-200 md:text-5xl">
+                AI security command center
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-500">
+                Sentinel brings prompt firewall testing, model artifact audit, MCP and agent review,
+                local SAST, supply-chain checks, and repeatable red-team playbooks into one operator console.
+              </p>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Link
+                to="/red-team"
+                className="inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-800"
+              >
+                <Crosshair className="h-4 w-4" />
+                Launch red team
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                to="/artifacts"
+                className="inline-flex items-center gap-2 rounded-md border border-sentinel-border bg-white px-4 py-2 text-sm font-semibold text-gray-300 transition-colors hover:bg-slate-50"
+              >
+                <FileSearch className="h-4 w-4" />
+                Scan model artifact
+              </Link>
+              <a
+                href="/api/docs"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-md border border-sentinel-border bg-white px-4 py-2 text-sm font-semibold text-gray-300 transition-colors hover:bg-slate-50"
+              >
+                <Terminal className="h-4 w-4" />
+                API contract
+              </a>
+            </div>
           </div>
 
-          {/* Connector line */}
-          <div className="w-32 md:w-48 h-0.5 bg-sentinel-border self-start mt-5" />
+          <div className="border-t border-sentinel-border bg-slate-50/70 p-5 lg:border-l lg:border-t-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">Coverage Radar</p>
+                <p className="mt-1 text-sm text-gray-500">Product surface we need to close.</p>
+              </div>
+              <Radar className="h-5 w-5 text-red-500" />
+            </div>
 
-          {/* Step 2 */}
-          <div className="flex flex-col items-center">
-            <div className="w-10 h-10 rounded-full border-2 border-gray-600 flex items-center justify-center text-gray-500 font-bold text-sm">
-              2
-            </div>
-            <div className="h-8 w-0.5 bg-transparent" />
-            <Link
-              to="/artifacts"
-              className="flex items-center gap-2 px-8 py-3 bg-sentinel-card hover:bg-sentinel-hover border border-sentinel-border text-gray-300 font-semibold rounded-lg transition-colors"
-            >
-              <ScanSearch className="w-5 h-5" />
-              SETUP SCAN
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Preview screenshots area */}
-        <div className="mt-6 w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Preview card 1 — Dashboard overview */}
-          <div className="bg-sentinel-card border border-sentinel-border rounded-xl p-5 space-y-3">
-            <div className="flex items-center gap-2 text-xs text-amber-500 font-bold">
-              <div className="w-2 h-2 rounded-full bg-amber-500" />
-              ERESUS SENTINEL
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-sentinel-bg rounded p-2">
-                <p className="text-[10px] text-gray-600">Total Probes</p>
-                <p className="text-lg font-bold text-white">1,450</p>
-              </div>
-              <div className="bg-sentinel-bg rounded p-2">
-                <p className="text-[10px] text-gray-600">Total Scans</p>
-                <p className="text-lg font-bold text-white">250</p>
-              </div>
-              <div className="bg-sentinel-bg rounded p-2">
-                <p className="text-[10px] text-gray-600">Detections</p>
-                <p className="text-lg font-bold text-amber-500">91</p>
-              </div>
-            </div>
-            {/* Mini chart placeholders */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-sentinel-bg rounded p-3 h-20 flex items-end gap-0.5">
-                {[40, 65, 30, 80, 55, 70, 45, 60, 35, 75, 50, 85].map((h, i) => (
-                  <div key={i} className="flex-1 bg-amber-500/60 rounded-t" style={{ height: `${h}%` }} />
-                ))}
-              </div>
-              <div className="bg-sentinel-bg rounded p-3 h-20 flex items-end gap-0.5">
-                {[20, 35, 55, 40, 60, 45, 30, 50, 65, 40, 55, 70].map((h, i) => (
-                  <div key={i} className="flex-1 bg-green-500/60 rounded-t" style={{ height: `${h}%` }} />
-                ))}
-              </div>
-            </div>
-            <div className="bg-sentinel-bg rounded p-3 h-16 flex items-end gap-px">
-              {Array.from({ length: 30 }, (_, i) => (
-                <div key={i} className="flex-1 flex flex-col gap-px">
-                  {Array.from({ length: 5 }, (_, j) => (
-                    <div key={j} className={clsx(
-                      'h-2 rounded-sm',
-                      (i + j) % 7 === 0
-                        ? 'bg-red-500/40'
-                        : (i * 3 + j) % 2 === 0
-                          ? 'bg-amber-500/40'
-                          : 'bg-sentinel-border'
-                    )} />
-                  ))}
+            <div className="mt-5 space-y-3">
+              {[
+                ['Security packs', 157, 'target catalog'],
+                ['Attack strategies', 31, 'static, agentic, multi-turn'],
+                ['Provider targets', 30, 'HTTP, MCP, browser, models'],
+                ['Export formats', 7, 'JSON, SARIF, CSV, HTML, JUnit'],
+              ].map(([label, value, detail]) => (
+                <div key={label} className="flex items-center justify-between border-b border-sentinel-border pb-3 last:border-b-0 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium text-gray-300">{label}</p>
+                    <p className="text-xs text-gray-500">{detail}</p>
+                  </div>
+                  <span className="text-2xl font-semibold text-gray-200">{value}</span>
                 </div>
               ))}
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* Preview card 2 — Report view */}
-          <div className="bg-sentinel-card border border-sentinel-border rounded-xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-amber-500 font-bold">
-                <div className="w-2 h-2 rounded-full bg-amber-500" />
-                ERESUS SENTINEL
-              </div>
-              <span className="text-xs text-gray-500">Report 4031</span>
+      <section className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <MetricCard
+          label="Scans"
+          value={formatNumber(s.total_scans)}
+          detail={`${totalScanners} firewall scanners active`}
+          Icon={Shield}
+          accent="border-blue-100 bg-blue-50 text-blue-700"
+        />
+        <MetricCard
+          label="Findings"
+          value={formatNumber(s.total_findings)}
+          detail={`${s.artifact_findings} from model artifacts`}
+          Icon={AlertTriangle}
+          accent="border-red-100 bg-red-50 text-red-700"
+        />
+        <MetricCard
+          label="Block Rate"
+          value={`${blockRate}%`}
+          detail={`${s.blocked} blocked / ${s.clean} clean`}
+          Icon={Lock}
+          accent="border-amber-100 bg-amber-50 text-amber-700"
+        />
+        <MetricCard
+          label="Artifacts"
+          value={formatNumber(s.artifacts_scanned)}
+          detail="No-load model security scans"
+          Icon={Box}
+          accent="border-emerald-100 bg-emerald-50 text-emerald-700"
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+        <div className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">Evaluation Matrix</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-200">The missing core table</h2>
             </div>
-            <div className="space-y-2">
-              <div className="bg-sentinel-bg rounded p-2">
-                <p className="text-[10px] text-gray-600">Vulnerabilities</p>
-                <div className="flex gap-1 mt-1">
-                  <span className="px-1.5 py-0.5 text-[9px] bg-red-500/20 text-red-400 rounded">CRITICAL: 3</span>
-                  <span className="px-1.5 py-0.5 text-[9px] bg-amber-500/20 text-amber-400 rounded">HIGH: 12</span>
-                  <span className="px-1.5 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-400 rounded">MED: 28</span>
-                </div>
-              </div>
-              <div className="bg-sentinel-bg rounded p-3 h-20 flex items-end gap-0.5">
-                {[20, 45, 60, 35, 80, 55, 70, 90, 40, 65, 50, 75].map((h, i) => (
-                  <div key={i} className="flex-1 bg-red-500/50 rounded-t" style={{ height: `${h}%` }} />
-                ))}
-              </div>
-              <div className="bg-sentinel-bg rounded p-2">
-                <p className="text-[10px] text-gray-600">Detector Statistics</p>
-                <div className="mt-1 space-y-1">
-                  {['Prompt Injection', 'Code Execution', 'Data Exfil', 'Model Tampering'].map((name, index) => (
-                    <div key={name} className="flex items-center gap-2">
-                      <span className="text-[9px] text-gray-500 w-24 truncate">{name}</span>
-                      <div className="flex-1 h-1.5 bg-sentinel-border rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-500/60 rounded-full" style={{ width: `${DETECTOR_PREVIEW_WIDTHS[index]}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            <BarChart3 className="h-5 w-5 text-blue-600" />
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-md border border-sentinel-border">
+            <div className="grid grid-cols-[1.1fr_1.2fr_1fr_0.7fr] bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-600">
+              <span>Target</span>
+              <span>Check</span>
+              <span>Provider</span>
+              <span>Result</span>
             </div>
+            {evalMatrix.map(([target, check, provider, result, level]) => (
+              <div key={`${target}-${check}`} className="grid grid-cols-[1.1fr_1.2fr_1fr_0.7fr] border-t border-sentinel-border px-3 py-3 text-sm">
+                <span className="font-medium text-gray-300">{target}</span>
+                <span className="text-gray-500">{check}</span>
+                <span className="font-mono text-xs text-gray-500">{provider}</span>
+                <span className="flex items-center gap-2 font-medium text-gray-300">
+                  <RiskDot level={level} />
+                  {result}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
-    )
-  }
 
-  // ── Active dashboard (has scan data) ───────────────────
-  const blockRate = s.total_scans > 0 ? Math.round((s.blocked / s.total_scans) * 100 * 10) / 10 : 0
+        <div className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">Roadmap</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-200">Reliability first, then platform</h2>
+            </div>
+            <GitBranch className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div className="mt-4 space-y-4">
+            {roadmapRows.map(([window, title, detail]) => (
+              <div key={window} className="flex gap-3">
+                <div className="mt-1 h-2.5 w-2.5 rounded-full bg-gray-900" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-300">
+                    {window} - {title}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">{detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-  return (
-    <div className="space-y-5">
-      {/* Section label */}
-      <div className="flex items-center gap-2 text-xs text-gray-500 uppercase tracking-wider">
-        <span>System Overview</span>
-        <div className="flex-1 border-t border-sentinel-border ml-2" />
-      </div>
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        {capabilityMap.map(({ title, status, detail, Icon, tone }) => (
+          <div key={title} className="rounded-lg border border-sentinel-border bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <span className={clsx('inline-flex h-9 w-9 items-center justify-center rounded-md border', toneClasses[tone])}>
+                <Icon className="h-4 w-4" />
+              </span>
+              <StatusPill status={status} />
+            </div>
+            <h3 className="mt-4 text-sm font-semibold text-gray-200">{title}</h3>
+            <p className="mt-2 text-xs leading-5 text-gray-500">{detail}</p>
+          </div>
+        ))}
+      </section>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard
-          title="SCANS"
-          value={s.total_scans}
-          subtitle={`${scanners?.input_count ?? 0}in · ${scanners?.output_count ?? 0}out scanners`}
-          icon={<Shield className="w-4 h-4 text-amber-500" />}
-          iconBg=""
-          delay={0}
-        />
-        <StatCard
-          title="FINDINGS"
-          value={s.total_findings}
-          subtitle={`${s.artifact_findings} from artifacts`}
-          icon={<AlertTriangle className="w-4 h-4 text-red-500" />}
-          iconBg=""
-          delay={60}
-          highlight={s.total_findings > 0}
-        />
-        <StatCard
-          title="BLOCK RATE"
-          value={`${blockRate}%`}
-          subtitle={`${s.blocked} blocked · ${s.clean} clean`}
-          icon={<Ban className="w-4 h-4 text-amber-500" />}
-          iconBg=""
-          delay={120}
-        />
-        <StatCard
-          title="ARTIFACTS"
-          value={s.artifacts_scanned}
-          subtitle={`${s.artifact_findings} findings`}
-          icon={<FileWarning className="w-4 h-4 text-amber-500" />}
-          iconBg=""
-          delay={180}
-          highlight={s.artifact_findings > 0}
-        />
-      </div>
+      <section className="grid gap-4 xl:grid-cols-[minmax(360px,0.75fr)_minmax(0,1.25fr)]">
+        <div className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">Hardening Sprint</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-200">Next gates</h2>
+            </div>
+            <Gauge className="h-5 w-5 text-amber-600" />
+          </div>
+          <div className="mt-4 divide-y divide-sentinel-border">
+            {hardeningRows.map(([track, item, status]) => (
+              <div key={item} className="grid grid-cols-[88px_1fr_auto] items-center gap-3 py-3 text-sm">
+                <span className="font-semibold text-gray-300">{track}</span>
+                <span className="text-gray-500">{item}</span>
+                <StatusPill status={status} />
+              </div>
+            ))}
+          </div>
+        </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="bg-sentinel-card border border-sentinel-border rounded-xl p-5 animate-fade-in-up" style={{ animationDelay: '240ms' }}>
-          <div className="flex items-center gap-2 mb-3 text-xs text-gray-500 uppercase tracking-wider">
-            <span>Severity Distribution</span>
+        <div className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">Maturity</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-200">Where Sentinel is today</h2>
+            </div>
+            <BadgeCheck className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {maturityRows.map(([domain, label, pct]) => (
+              <div key={domain}>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium text-gray-300">{domain}</span>
+                  <span className="text-xs text-gray-500">{label}</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-gray-900" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">
+            <Activity className="h-4 w-4" />
+            Severity Distribution
           </div>
           <SeverityChart data={s.severity} />
         </div>
-        <div className="lg:col-span-2 bg-sentinel-card border border-sentinel-border rounded-xl p-5 animate-fade-in-up" style={{ animationDelay: '300ms' }}>
-          <div className="flex items-center gap-2 mb-3 text-xs text-gray-500 uppercase tracking-wider">
-            <span>Scan Activity Timeline</span>
+        <div className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm lg:col-span-2">
+          <div className="flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">
+            <FlaskConical className="h-4 w-4" />
+            Scan Activity Timeline
           </div>
           <TimelineChart data={s.timeline} />
         </div>
-      </div>
+      </section>
 
-      {/* Quick Actions */}
-      <div className="flex items-center gap-2 text-xs text-gray-500 uppercase tracking-wider">
-        <span>Quick Actions</span>
-        <div className="flex-1 border-t border-sentinel-border ml-2" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section className="grid gap-4 md:grid-cols-3">
         {[
-          { to: '/firewall', label: 'Firewall Scan', desc: 'Test prompts for injection threats', Icon: Shield, color: 'group-hover:border-amber-500/30' },
-          { to: '/artifacts', label: 'Artifact Scan', desc: 'Upload and scan model files', Icon: FileWarning, color: 'group-hover:border-amber-500/30' },
-          { href: '/api/docs', label: 'API Reference', desc: 'OpenAPI documentation', Icon: Terminal, color: 'group-hover:border-amber-500/30' },
-        ].map((item) => {
-          const Inner = (
-            <div className={clsx(
-              'flex items-center justify-between p-4 bg-sentinel-card border border-sentinel-border rounded-xl transition-colors animate-fade-in-up',
-              item.color
-            )}>
-              <div className="flex items-center gap-3">
-                <item.Icon className="w-5 h-5 text-gray-500 group-hover:text-amber-500 transition-colors" strokeWidth={1.5} />
-                <div>
-                  <p className="text-sm text-gray-300">{item.label}</p>
-                  <p className="text-xs text-gray-600">{item.desc}</p>
-                </div>
-              </div>
-              <ArrowRight className="w-3 h-3 text-gray-700" />
-            </div>
-          )
+          { to: '/firewall', label: 'Prompt Firewall', desc: 'Input/output policy checks', Icon: Shield },
+          { to: '/mcp', label: 'MCP Scanner', desc: 'Manifest and live endpoint review', Icon: Plug },
+          { to: '/aibom', label: 'AIBOM', desc: 'Component inventory and graph path', Icon: Database },
+        ].map(({ to, label, desc, Icon }) => (
+          <Link
+            key={to}
+            to={to}
+            className="group flex items-center justify-between rounded-lg border border-sentinel-border bg-white p-4 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
+          >
+            <span className="flex items-center gap-3">
+              <Icon className="h-5 w-5 text-gray-500 group-hover:text-blue-700" />
+              <span>
+                <span className="block text-sm font-semibold text-gray-300">{label}</span>
+                <span className="block text-xs text-gray-500">{desc}</span>
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 text-gray-700 group-hover:text-blue-700" />
+          </Link>
+        ))}
+      </section>
 
-          if ('href' in item && item.href) {
-            return (
-              <a key={item.label} href={item.href} target="_blank" rel="noopener noreferrer" className="group">
-                {Inner}
-              </a>
-            )
-          }
-          return (
-            <Link key={item.label} to={item.to!} className="group">
-              {Inner}
-            </Link>
-          )
-        })}
-      </div>
-
-      {/* Scanner matrix */}
-      <div className="bg-sentinel-card border border-sentinel-border rounded-xl p-5 animate-fade-in-up" style={{ animationDelay: '400ms' }}>
-        <div className="flex items-center gap-2 mb-3 text-xs text-gray-500 uppercase tracking-wider">
-          <span>Active Scanners ({(scanners?.input_count ?? 0) + (scanners?.output_count ?? 0)})</span>
+      <section className="rounded-lg border border-sentinel-border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-600">Operating Model</p>
+            <h2 className="mt-1 text-lg font-semibold text-gray-200">How we beat them</h2>
+          </div>
+          <BrainCircuit className="h-5 w-5 text-violet-600" />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1">
-          {[...(scanners?.input ?? [])].map((name) => (
-            <div key={`in-${name}`} className="flex items-center gap-2 px-2 py-1.5 text-xs">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0" />
-              <span className="text-gray-500 truncate">{name}</span>
-              <span className="text-gray-700 ml-auto text-[10px]">IN</span>
-            </div>
-          ))}
-          {[...(scanners?.output ?? [])].map((name) => (
-            <div key={`out-${name}`} className="flex items-center gap-2 px-2 py-1.5 text-xs">
-              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full flex-shrink-0" />
-              <span className="text-gray-500 truncate">{name}</span>
-              <span className="text-gray-700 ml-auto text-[10px]">OUT</span>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          {[
+            ['Map', 'Attack surfaces, trust boundaries, assets'],
+            ['Probe', 'Deterministic tests before AI judges'],
+            ['Prove', 'Stable exports, fixtures, CI snapshots'],
+            ['Harden', 'Policy packs, baselines, remediation loops'],
+          ].map(([title, detail], index) => (
+            <div key={title} className="rounded-md border border-sentinel-border bg-slate-50/70 p-4">
+              <span className="text-xs font-semibold text-gray-500">0{index + 1}</span>
+              <p className="mt-2 text-sm font-semibold text-gray-300">{title}</p>
+              <p className="mt-1 text-xs leading-5 text-gray-500">{detail}</p>
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

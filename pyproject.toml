@@ -209,9 +209,7 @@ markers = [
 source = ["python/sentinel"]
 omit = [
     "tests/*",
-    "*/refs/*",
     "*/notebooks/*",
-    "python/sentinel/parity.py",
 ]
 
 [tool.coverage.report]
@@ -226,4 +224,3 @@ exclude_lines = [
     "pass",
     "except ImportError",
 ]
-

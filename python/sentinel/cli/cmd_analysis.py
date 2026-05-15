@@ -301,6 +301,12 @@ def cmd_mcp(args):
     return 1 if findings else 0
 
 
+def cmd_mcp_server(args):
+    from sentinel.mcp.secure_server import serve_stdio
+
+    return serve_stdio(getattr(args, "workspace", "."))
+
+
 def cmd_a2a(args):
     """A2A agent-card/source scanner."""
     from sentinel.agent.a2a_scanner import A2AScanner

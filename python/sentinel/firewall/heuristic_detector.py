@@ -8,8 +8,6 @@ Three-layer detection:
   1. Combinatorial heuristic (pure keyword, no ML)
   2. Canary word leak detection
   3. Shannon entropy analysis
-
-Inspired by: Rebuff (protectai) heuristic detection approach.
 """
 
 from __future__ import annotations

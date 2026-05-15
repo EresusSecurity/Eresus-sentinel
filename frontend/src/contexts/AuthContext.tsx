@@ -2,15 +2,10 @@ import { useState, useCallback, useEffect, type ReactNode } from 'react'
 import axios from 'axios'
 import { AuthContext, type AuthState } from './auth-context'
 
-// Token stored in sessionStorage (cleared on tab close; harder to steal via XSS
-// than localStorage because it is not persisted across sessions and is isolated
-// per tab).  Non-sensitive auth state (user, role) kept in localStorage for UX.
 const TOKEN_KEY = 'sentinel_token'
 const AUTH_KEY = 'sentinel_auth'
 
 function getToken(): string | null {
-  // Prefer sessionStorage; fall back to localStorage for backwards compat then
-  // migrate it to sessionStorage immediately.
   let token = sessionStorage.getItem(TOKEN_KEY)
   if (!token) {
     const legacy = localStorage.getItem(TOKEN_KEY)
@@ -25,7 +20,7 @@ function getToken(): string | null {
 
 function setToken(token: string): void {
   sessionStorage.setItem(TOKEN_KEY, token)
-  localStorage.removeItem(TOKEN_KEY) // ensure no stale copy
+  localStorage.removeItem(TOKEN_KEY)
 }
 
 function clearToken(): void {
@@ -35,14 +30,18 @@ function clearToken(): void {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(() => {
+    const token = getToken()
+    if (!token) {
+      localStorage.removeItem(AUTH_KEY)
+      return { authenticated: false, user: '', role: '' }
+    }
     const saved = localStorage.getItem(AUTH_KEY)
     if (saved) {
-      try { return JSON.parse(saved) } catch { /* ignore */ }
+      try { return JSON.parse(saved) } catch { return { authenticated: false, user: '', role: '' } }
     }
     return { authenticated: false, user: '', role: '' }
   })
 
-  // Set default auth header on mount if token exists
   useEffect(() => {
     const token = getToken()
     if (token) {
@@ -50,8 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
-    const { data } = await axios.post('/api/auth/login', { username, password })
+  const applyAuthPayload = useCallback((data: { token: string; user: string; role: string }) => {
     const token = data.token as string
     const user = data.user as string
     const role = data.role as string
@@ -61,7 +59,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ authenticated: true, user, role })
   }, [])
 
+  const login = useCallback(async (username: string, password: string) => {
+    const { data } = await axios.post('/api/auth/login', { username, password })
+    applyAuthPayload(data)
+  }, [applyAuthPayload])
+
+  const signup = useCallback(async (username: string, password: string) => {
+    const { data } = await axios.post('/api/auth/signup', { username, password })
+    applyAuthPayload(data)
+  }, [applyAuthPayload])
+
   const logout = useCallback(() => {
+    if (getToken()) {
+      void axios.post('/api/auth/logout').catch(() => undefined)
+    }
     clearToken()
     localStorage.removeItem(AUTH_KEY)
     delete axios.defaults.headers.common['Authorization']
@@ -69,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   )

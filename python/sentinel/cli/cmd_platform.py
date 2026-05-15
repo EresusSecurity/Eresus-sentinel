@@ -14,6 +14,7 @@ from sentinel.platform.reports import render_report
 from sentinel.platform.runtime import RuntimePolicyEngine
 from sentinel.platform.runner import EvalRunner
 from sentinel.platform.store import RunStore
+from sentinel.sntl.convert import compare_formats, convert_file, detect_format, inspect_file, load_any, migrate_tree, plan_conversion, roundtrip_file
 
 
 def _emit(payload: dict | list | str, output: str | None = None) -> int:
@@ -25,6 +26,66 @@ def _emit(payload: dict | list | str, output: str | None = None) -> int:
         stream.write(text + "\n")
         stream.flush()
     return 0
+
+
+def _issues(issues):
+    return [issue.__dict__ for issue in issues]
+
+
+def _migration_item(item):
+    return {
+        "source": item.source,
+        "target": item.target,
+        "source_format": item.source_format,
+        "target_format": item.target_format,
+        "schema": item.schema,
+        "fingerprint": item.fingerprint,
+        "valid": item.valid,
+        "issues": _issues(item.issues),
+    }
+
+
+def _migration_plan(plan):
+    return {
+        "schema_version": "sentinel.sntl.migration.v1",
+        "source_root": plan.source_root,
+        "target_root": plan.target_root,
+        "target_format": plan.target_format,
+        "valid": plan.ok,
+        "items": [_migration_item(item) for item in plan.items],
+        "skipped": list(plan.skipped),
+    }
+
+
+def _inspection_payload(inspection):
+    return {
+        "schema_version": "sentinel.sntl.inspect.v1",
+        "source": inspection.source,
+        "format": inspection.format,
+        "schema": inspection.schema,
+        "inferred_schema": inspection.inferred_schema,
+        "fingerprint": inspection.fingerprint,
+        "valid": inspection.valid,
+        "top_level_keys": list(inspection.top_level_keys),
+        "item_count": inspection.item_count,
+        "capabilities": inspection.capabilities,
+        "issues": _issues(inspection.issues),
+    }
+
+
+def _roundtrip_payload(result):
+    return {
+        "schema_version": "sentinel.sntl.roundtrip.v1",
+        "source": result.source,
+        "source_format": result.source_format,
+        "target_format": result.target_format,
+        "return_format": result.return_format,
+        "stable": result.stable,
+        "source_fingerprint": result.source_fingerprint,
+        "rendered_fingerprint": result.rendered_fingerprint,
+        "returned_fingerprint": result.returned_fingerprint,
+        "issues": _issues(result.issues),
+    }
 
 
 def cmd_platform(args):
@@ -67,6 +128,74 @@ def cmd_platform(args):
                 "explain": explain_config(resolved),
                 "graph": config_graph(resolved),
                 "simulation": simulate_config(resolved.data),
+            },
+            getattr(args, "output", None),
+        )
+    if action == "convert":
+        if getattr(args, "capabilities", False):
+            return _emit(compare_formats(), getattr(args, "output", None))
+        if not getattr(args, "input", None):
+            raise ValueError("input is required")
+        if getattr(args, "inspect", False):
+            inspection = inspect_file(args.input, source_format=getattr(args, "source_format", None), schema=getattr(args, "schema", None), name=getattr(args, "name", None))
+            _emit(_inspection_payload(inspection), getattr(args, "output", None))
+            return 0 if inspection.valid else 1
+        if getattr(args, "check", False):
+            result = roundtrip_file(
+                args.input,
+                source_format=getattr(args, "source_format", None),
+                target_format=getattr(args, "target_format", "sntl"),
+                return_format=getattr(args, "return_format", "json"),
+                schema=getattr(args, "schema", None),
+                name=getattr(args, "name", None),
+            )
+            _emit(_roundtrip_payload(result), getattr(args, "output", None))
+            return 0 if result.stable else 1
+        if getattr(args, "plan", False):
+            plan = plan_conversion(
+                args.input,
+                getattr(args, "target", None),
+                source_formats=getattr(args, "source_formats", None),
+                target_format=getattr(args, "target_format", "sntl"),
+                schema=getattr(args, "schema", None),
+            )
+            _emit(_migration_plan(plan), getattr(args, "output", None))
+            return 0 if plan.ok else 1
+        if getattr(args, "recursive", False):
+            recursive_target = getattr(args, "target", None)
+            if recursive_target is None:
+                source_root = Path(args.input)
+                recursive_target = str(source_root.parent / f"{source_root.name}-sntl")
+            plan = migrate_tree(
+                args.input,
+                recursive_target,
+                source_formats=getattr(args, "source_formats", None),
+                target_format=getattr(args, "target_format", "sntl"),
+                schema=getattr(args, "schema", None),
+            )
+            _emit(_migration_plan(plan), getattr(args, "output", None))
+            return 0 if plan.ok else 1
+        source = Path(args.input)
+        output = convert_file(
+            source,
+            getattr(args, "target", None),
+            source_format=getattr(args, "source_format", None),
+            target_format=getattr(args, "target_format", "sntl"),
+            schema=getattr(args, "schema", None),
+            name=getattr(args, "name", None),
+        )
+        target_format = detect_format(path=output)
+        document = load_any(output) if target_format in {"sntl", "sentinel"} else None
+        return _emit(
+            {
+                "schema_version": "sentinel.sntl.convert.v1",
+                "source": str(source),
+                "source_format": detect_format(path=source, source_format=getattr(args, "source_format", None)),
+                "target": str(output),
+                "target_format": target_format,
+                "fingerprint": document.fingerprint if document else None,
+                "valid": document.ok if document else True,
+                "issues": [issue.__dict__ for issue in document.issues] if document else [],
             },
             getattr(args, "output", None),
         )

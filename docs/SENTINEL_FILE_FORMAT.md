@@ -525,6 +525,48 @@ Plugin manifests are declarative. The `.sntl` parser does not import plugin code
 
 Sentinel ships a full `.sntl` library at `sentinel.sntl`. It is the stable programmatic API for parsing, writing, validating, resolving, fingerprinting, diffing, redacting, querying, simulating, and generating `.sntl` files.
 
+## AI Authoring Skill
+
+The repository includes a dedicated agent skill for `.sntl` work:
+
+```text
+.agents/skills/sentinel-sntl-authoring/SKILL.md
+```
+
+Use it when an AI agent needs to create, migrate, validate, or review `.sntl` and `.sentinel` files during development. The skill includes:
+
+| Asset | Purpose |
+|---|---|
+| `SKILL.md` | Core workflow, schema chooser, validation commands, and completion checklist. |
+| `references/schema-patterns.md` | Detailed schema-specific authoring patterns. |
+| `references/migration-recipes.md` | JSON, JSONL, CSV, TOML, YAML, and YARA migration procedures. |
+| `assets/templates/eval.sntl` | Starter eval suite. |
+| `assets/templates/dataset.sntl` | Starter dataset. |
+| `assets/templates/runtime.sntl` | Starter runtime policy. |
+| `assets/templates/rulepack.sentinel` | Starter packaged rule pack. |
+
+This makes `.sntl` authoring repeatable for humans and AI agents: pick a schema, start from a template, migrate with `sentinel.sntl`, validate, simulate or inspect, and finish with stable fingerprints.
+
+## GitHub Language Display
+
+The repository currently maps `.sntl` and `.sentinel` files to YAML highlighting in `.gitattributes` so code review remains readable today:
+
+```text
+*.sntl linguist-language=YAML linguist-detectable=true
+*.sentinel linguist-language=YAML linguist-detectable=true
+```
+
+That does not make GitHub's language bar show `SNTL`. GitHub only shows a new language name after its language detector supports that language. For `SNTL` to appear as its own language, the next step is a language registration package with:
+
+| File | Purpose |
+|---|---|
+| `tools/sntl/sntl.tmLanguage.json` | TextMate grammar seed for syntax highlighting. |
+| `tools/sntl/language-configuration.json` | Editor bracket, comment, pair, and folding configuration. |
+| `examples/*.sntl` | Language samples. |
+| `docs/SENTINEL_FILE_FORMAT.md` | Syntax and schema documentation. |
+
+Until that external language registration is accepted, GitHub will display `.sntl` files as readable YAML-like files, not as a separate `SNTL` language. The format itself works in Sentinel now; the GitHub language badge is a separate ecosystem registration step.
+
 The library is split into internal modules so it can later move into a standalone package without changing the public API:
 
 | Module | Responsibility |
@@ -536,6 +578,7 @@ The library is split into internal modules so it can later move into a standalon
 | `sentinel.sntl.canonical` | Canonical JSON and SHA-256 fingerprints. |
 | `sentinel.sntl.path` | Path query, mutation, and tree walking helpers. |
 | `sentinel.sntl.ops` | Deep merge, structural diff, and redaction helpers. |
+| `sentinel.sntl.convert` | JSON, JSONL, CSV, TOML, safe YAML subset, YARA, and `.sntl` conversion. |
 | `sentinel.sntl.api` | Public high-level API re-exported by `sentinel.sntl`. |
 
 Import it:
@@ -759,14 +802,527 @@ sntl.write_json_schema("sentinel.eval.v1", "schemas/sentinel.eval.v1.schema.json
 
 The generated schema is intentionally permissive for unknown future keys, but strict about the core contract: schema identity, root object shape, and required top-level sections.
 
+### Conversion Library
+
+The conversion layer is for teams that already have policy, rule, dataset, or eval material in another format and want a deterministic Sentinel-native representation without rewriting everything by hand.
+
+Supported input formats:
+
+| Input | Loader | Default Sentinel Shape |
+|---|---|---|
+| `.sntl` | Native parser | Existing schema is preserved. |
+| `.sentinel` | Native parser | Existing schema is preserved. |
+| JSON | Python standard library | Object becomes `sentinel.config.v1` unless another schema is inferred or supplied. |
+| JSONL | Python standard library line reader | Lines become `sentinel.dataset.v1` records. |
+| CSV | Python standard library CSV reader | Rows become `sentinel.dataset.v1` records. |
+| TOML | Python standard library `tomllib` | Object becomes `sentinel.config.v1` unless another schema is inferred or supplied. |
+| YAML subset | Sentinel parser | Dependency-free safe subset for maps, lists, scalars, inline values, and blocks. |
+| YARA | Sentinel YARA importer | Rules become `sentinel.rulepack.v1`. |
+
+Supported output formats:
+
+| Output | Use |
+|---|---|
+| `.sntl` | Human-authored Sentinel-native files. |
+| `.sentinel` | Packaged Sentinel manifests. |
+| JSON | Machine exchange and API payloads. |
+| JSONL | Dataset row exchange. |
+| TOML | Simple application config export when values are TOML-compatible. |
+
+Detect a format:
+
+```python
+from sentinel import sntl
+
+assert sntl.detect_format(path="policy.toml") == "toml"
+assert sntl.detect_format(text='{"name":"suite"}') == "json"
+```
+
+Load any supported format as a validated `SntlDocument`:
+
+```python
+document = sntl.load_any("legacy.json").require()
+
+print(document.schema)
+print(document.fingerprint)
+print(document.data)
+```
+
+Convert JSON text to `.sntl` text:
+
+```python
+from sentinel import sntl
+
+rendered = sntl.convert_text(
+    '{"name":"local","settings":{"offline":true}}',
+    source_format="json",
+    target_format="sntl",
+)
+
+print(rendered)
+```
+
+Output:
+
+```sntl
+name: local
+settings:
+  offline: true
+schema: sentinel.config.v1
+```
+
+Convert a file:
+
+```python
+from sentinel import sntl
+
+path = sntl.convert_file("suite.json", "suite.sntl")
+print(path)
+```
+
+Convert a directory tree:
+
+```python
+from sentinel import sntl
+
+outputs = sntl.convert_tree(
+    "imports",
+    "sentinel-imports",
+    source_formats=["json", "jsonl", "toml", "yaml", "yara"],
+)
+
+for path in outputs:
+    print(path)
+```
+
+Keep the target schema explicit when migrating a known artifact:
+
+```python
+sntl.convert_file(
+    "assertions.json",
+    "assertions.sntl",
+    source_format="json",
+    schema="sentinel.assertion.v1",
+    name="strict-output",
+)
+```
+
+The schema wrapper fills required containers where possible:
+
+| Schema | Imported List Becomes |
+|---|---|
+| `sentinel.dataset.v1` | `records` |
+| `sentinel.assertion.v1` | `assertions` |
+| `sentinel.provider.v1` | `providers` |
+| `sentinel.rulepack.v1` | `rules` |
+| `sentinel.redteam.v1` | `attacks` |
+| `sentinel.runtime.v1` | `policies` |
+| `sentinel.policy.v1` | `rules` |
+| `sentinel.baseline.v1` | `runs` |
+| `sentinel.report.v1` | `artifacts` |
+
+#### JSON Migration
+
+Input:
+
+```json
+{
+  "name": "firewall-smoke",
+  "providers": [
+    {"id": "local", "type": "mock"}
+  ],
+  "prompts": [
+    {"id": "base", "template": "Review {{input}}"}
+  ],
+  "assertions": [
+    {"id": "marker", "type": "contains", "expected": "result"}
+  ]
+}
+```
+
+Conversion:
+
+```python
+from sentinel import sntl
+
+sntl.convert_file(
+    "firewall-smoke.json",
+    "firewall-smoke.sntl",
+    source_format="json",
+    schema="sentinel.eval.v1",
+)
+```
+
+Result:
+
+```sntl
+name: firewall-smoke
+providers:
+  - id: local
+    type: mock
+prompts:
+  - id: base
+    template: "Review {{input}}"
+assertions:
+  - id: marker
+    type: contains
+    expected: result
+schema: sentinel.eval.v1
+```
+
+#### JSONL Migration
+
+Input:
+
+```jsonl
+{"id":"case-1","input":"alpha","expected":"allow"}
+{"id":"case-2","input":"beta","expected":"block"}
+```
+
+Conversion:
+
+```python
+sntl.convert_file("cases.jsonl", "cases.sntl", schema="sentinel.dataset.v1", name="cases")
+```
+
+Result:
+
+```sntl
+schema: sentinel.dataset.v1
+name: cases
+records:
+  - id: case-1
+    input: alpha
+    expected: allow
+  - id: case-2
+    input: beta
+    expected: block
+```
+
+#### CSV Migration
+
+Input:
+
+```csv
+id,input,expected,enabled
+case-1,alpha,allow,true
+case-2,beta,block,false
+```
+
+Conversion:
+
+```python
+sntl.convert_file("cases.csv", "cases.sntl", name="cases")
+```
+
+Result:
+
+```sntl
+schema: sentinel.dataset.v1
+name: cases
+records:
+  - id: case-1
+    input: alpha
+    expected: allow
+    enabled: true
+  - id: case-2
+    input: beta
+    expected: block
+    enabled: false
+```
+
+#### TOML Migration
+
+Input:
+
+```toml
+name = "runtime"
+
+[[policies]]
+id = "block-shell"
+action = "block"
+enabled = true
+```
+
+Conversion:
+
+```python
+sntl.convert_file(
+    "runtime.toml",
+    "runtime.sntl",
+    source_format="toml",
+    schema="sentinel.runtime.v1",
+)
+```
+
+Result:
+
+```sntl
+name: runtime
+policies:
+  - id: block-shell
+    action: block
+    enabled: true
+schema: sentinel.runtime.v1
+```
+
+#### YAML Migration
+
+The YAML importer intentionally supports the safe subset that maps directly to `.sntl`: maps, lists, booleans, nulls, numbers, quoted strings, inline arrays, inline objects, and block strings. It rejects tags, anchors, and aliases instead of relying on a YAML runtime.
+
+Input:
+
+```yaml
+name: strict-output
+assertions:
+  - id: valid-json
+    type: json_schema
+    path: "$"
+```
+
+Conversion:
+
+```python
+sntl.convert_file(
+    "assertions.yaml",
+    "assertions.sntl",
+    source_format="yaml",
+    schema="sentinel.assertion.v1",
+)
+```
+
+Result:
+
+```sntl
+name: strict-output
+assertions:
+  - id: valid-json
+    type: json_schema
+    path: $
+schema: sentinel.assertion.v1
+```
+
+#### YARA Migration
+
+YARA rules are converted into Sentinel rule packs. The importer keeps metadata, tags, strings, string kinds, string modifiers, condition text, and original line numbers.
+
+Input:
+
+```yara
+rule SuspiciousRuntimeTool : runtime exfiltration {
+  meta:
+    severity = "high"
+    enabled = true
+  strings:
+    $a = "curl" nocase
+    $b = /token=[A-Za-z0-9]+/
+  condition:
+    any of them
+}
+```
+
+Conversion:
+
+```python
+sntl.convert_file("runtime.yara", "runtime-rules.sntl", source_format="yara")
+```
+
+Result:
+
+```sntl
+schema: sentinel.rulepack.v1
+name: imported-yara-rules
+kind: yara
+rules:
+  - id: suspiciousruntimetool
+    type: yara
+    name: SuspiciousRuntimeTool
+    modifiers: []
+    tags: [runtime, exfiltration]
+    meta:
+      severity: high
+      enabled: true
+    strings:
+      - id: $a
+        kind: text
+        pattern: "\"curl\""
+        modifiers: [nocase]
+      - id: $b
+        kind: regex
+        pattern: /token=[A-Za-z0-9]+/
+        modifiers: []
+    condition: any of them
+    source:
+      format: yara
+      line: 1
+lineage:
+  source_format: yara
+  rule_count: 1
+```
+
+#### Conversion Result Object
+
+Use `sntl.convert()` when a service needs metadata as well as rendered text:
+
+```python
+result = sntl.convert(
+    '{"records":[{"input":"alpha"}]}',
+    source_format="json",
+    target_format="sntl",
+    schema="sentinel.dataset.v1",
+    name="inline",
+)
+
+print(result.ok)
+print(result.source_format)
+print(result.target_format)
+print(result.fingerprint)
+print(result.text)
+```
+
+`SntlConversion` fields:
+
+| Field | Meaning |
+|---|---|
+| `source_format` | Normalized input format. |
+| `target_format` | Normalized output format. |
+| `source` | File path or memory label. |
+| `data` | Normalized Sentinel document. |
+| `text` | Rendered target text. |
+| `fingerprint` | Canonical SHA-256 of normalized data. |
+| `issues` | Validation issues. |
+| `ok` | True when no error-level issue exists. |
+
+#### CLI Conversion
+
+Convert one file:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main platform convert legacy.json --target suite.sntl --from json --schema sentinel.eval.v1
+```
+
+Convert TOML runtime policy:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main platform convert runtime.toml --target runtime.sntl --schema sentinel.runtime.v1
+```
+
+Convert YARA rules:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main platform convert runtime.yara --target runtime-rules.sntl --from yara
+```
+
+Inspect a file without rewriting it:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main convert suite.sntl --inspect
+```
+
+Check deterministic round-trip stability:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main convert suite.sntl --check
+```
+
+Plan a directory migration:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main convert imports --target imports-sntl --plan --source-formats json jsonl csv toml yaml yara
+```
+
+Run a directory migration:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main convert imports --target imports-sntl --recursive --source-formats json jsonl csv toml yaml yara
+```
+
+Compare format capabilities:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main convert --capabilities
+```
+
+The command emits a machine-readable conversion receipt:
+
+```json
+{
+  "fingerprint": "evidence hash",
+  "issues": [],
+  "schema_version": "sentinel.sntl.convert.v1",
+  "source": "legacy.json",
+  "source_format": "json",
+  "target": "suite.sntl",
+  "target_format": "sntl",
+  "valid": true
+}
+```
+
+#### Conversion Guarantees
+
+The converter is designed for security workflows:
+
+- Conversion never executes manifest content.
+- Conversion never resolves environment variables.
+- Conversion never calls providers.
+- Conversion never reaches the network.
+- Conversion returns structured validation issues.
+- Conversion writes deterministic `.sntl` output.
+- Conversion can be re-run and fingerprinted in CI.
+- Conversion keeps unknown keys instead of discarding evidence.
+- Conversion lets callers choose the target schema explicitly.
+- YARA imports preserve rule evidence instead of flattening rules into opaque strings.
+
+#### When `.sntl` Is Better Than Generic Formats
+
+JSON is excellent for APIs, but poor for hand-written security suites because comments, multiline prompt bodies, and trailing diffs are awkward.
+
+TOML is clean for application config, but it cannot represent nulls and becomes clumsy for deeply nested eval matrices, traces, rule strings, and report evidence.
+
+YAML is ergonomic, but generic YAML has anchors, aliases, tags, and loader-dependent behavior that security tooling should not inherit.
+
+YARA is excellent for pattern rules, but it is not a full platform configuration language for providers, datasets, runtime policies, reports, traces, baselines, red-team packs, and team governance.
+
+`.sntl` is Sentinel-owned. That means the parser, writer, schema registry, fingerprinting model, runtime simulation, rulepack import, and migration contract can evolve together without inheriting another format's edge cases.
+
 ### Library API Reference
 
 | API | Returns | Purpose |
 |---|---|---|
 | `sntl.load(path)` | `SntlDocument` | Read a `.sntl` file from disk. |
 | `sntl.loads(text)` | `SntlDocument` | Read `.sntl` content from a string. |
+| `sntl.load_any(path)` | `SntlDocument` | Read JSON, JSONL, CSV, TOML, safe YAML subset, YARA, `.sntl`, or `.sentinel`. |
+| `sntl.loads_any(text)` | `SntlDocument` | Read supported content from memory. |
 | `sntl.dump(data, path)` | `Path` | Write a `.sntl` file. |
 | `sntl.dumps(data)` | `str` | Render data as `.sntl` text. |
+| `sntl.convert(text)` | `SntlConversion` | Convert text and return rendered output plus metadata. |
+| `sntl.convert_text(text)` | `str` | Convert text to the requested output format. |
+| `sntl.convert_file(input, output)` | `Path` | Convert one file. |
+| `sntl.convert_tree(input_dir, output_dir)` | `list[Path]` | Convert matching files in a directory tree. |
+| `sntl.migrate_file(input, output)` | `SntlMigrationItem` | Convert one file and return a structured receipt. |
+| `sntl.migrate_tree(input_dir, output_dir)` | `SntlMigrationPlan` | Convert a directory and return receipts. |
+| `sntl.plan_conversion(input, output)` | `SntlMigrationPlan` | Preview conversion targets and validation status. |
+| `sntl.inspect_file(path)` | `SntlFormatInspection` | Inspect format, schema, keys, counts, fingerprint, and issues. |
+| `sntl.inspect_text(text)` | `SntlFormatInspection` | Inspect in-memory content. |
+| `sntl.roundtrip_file(path)` | `SntlRoundTrip` | Verify stable conversion through a target and return format. |
+| `sntl.roundtrip_text(text)` | `SntlRoundTrip` | Verify in-memory round-trip stability. |
+| `sntl.schema_for(data)` | `str` | Infer the Sentinel schema family for loaded data. |
+| `sntl.normalize_document(data)` | `dict` | Wrap foreign data into a Sentinel schema container. |
+| `sntl.format_capabilities()` | `dict` | Return per-format capability metadata. |
+| `sntl.compare_formats()` | `dict` | Return a deterministic format comparison matrix. |
+| `sntl.detect_format(path, text)` | `str` | Detect source format from extension or content. |
+| `sntl.from_json(text)` | `Any` | Parse JSON with the standard library. |
+| `sntl.from_jsonl(text)` | `list[Any]` | Parse JSONL rows. |
+| `sntl.from_csv(text)` | `list[dict]` | Parse CSV rows. |
+| `sntl.from_toml(text)` | `dict` | Parse TOML with the standard library. |
+| `sntl.from_yaml(text)` | `dict` | Parse the dependency-free safe YAML-compatible subset. |
+| `sntl.from_yara(text)` | `dict` | Convert YARA text to a Sentinel rulepack. |
+| `sntl.parse_yara(text)` | `list[dict]` | Extract normalized YARA rule entries. |
+| `sntl.to_sntl(data)` | `str` | Render data as `.sntl`. |
+| `sntl.to_json(data)` | `str` | Render deterministic JSON. |
+| `sntl.to_jsonl(data)` | `str` | Render records or values as JSONL. |
+| `sntl.to_toml(data)` | `str` | Render TOML-compatible objects. |
+| `sntl.wrap_imported(data)` | `dict` | Wrap imported data into a Sentinel schema container. |
 | `sntl.parse(text)` | `Any` | Parse raw `.sntl` syntax into Python data. |
 | `sntl.format_value(data)` | `str` | Format Python data as `.sntl` text. |
 | `sntl.validate(data)` | `list[SntlIssue]` | Validate schema, required keys, config shape, and duplicate IDs. |
@@ -983,36 +1539,37 @@ Recommended rules:
 - Treat fingerprints as evidence in reports and PR reviews.
 - Review `sntl.diff()` output before accepting policy changes.
 
-### Migration From YAML, JSON, Or TOML
+### Migration Workflow
 
-JSON to `.sntl`:
+Use the built-in converter instead of loading foreign formats in application code.
 
-```python
-import json
-from sentinel import sntl
+One-file migration:
 
-data = json.loads(open("suite.json", encoding="utf-8").read())
-sntl.dump(data, "suite.sntl")
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main platform convert legacy.json --target legacy.sntl --schema sentinel.config.v1
 ```
 
-TOML to `.sntl`:
+Dataset migration:
 
-```python
-import tomllib
-from sentinel import sntl
-
-data = tomllib.loads(open("suite.toml", "rb").read().decode())
-sntl.dump(data, "suite.sntl")
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main platform convert cases.jsonl --target cases.sntl --schema sentinel.dataset.v1 --name cases
 ```
 
-YAML to `.sntl` can still be done by applications that already depend on a YAML parser, but Sentinel's `.sntl` runtime does not require that parser:
+Rule migration:
+
+```bash
+PYTHONPATH=python python3 -m sentinel.cli.main platform convert rules.yara --target rules.sntl --from yara
+```
+
+Python migration:
 
 ```python
-import yaml
 from sentinel import sntl
 
-data = yaml.safe_load(open("suite.yaml", encoding="utf-8"))
-sntl.dump(data, "suite.sntl")
+sntl.convert_file("suite.json", "suite.sntl", schema="sentinel.eval.v1")
+sntl.convert_file("runtime.toml", "runtime.sntl", schema="sentinel.runtime.v1")
+sntl.convert_file("assertions.yaml", "assertions.sntl", schema="sentinel.assertion.v1")
+sntl.convert_file("rules.yara", "rules.sntl")
 ```
 
 After migration:
@@ -1020,6 +1577,7 @@ After migration:
 ```bash
 PYTHONPATH=python python3 -m sentinel.cli.main explain suite.sntl
 PYTHONPATH=python python3 -m sentinel.cli.main simulate suite.sntl
+PYTHONPATH=python python3 -m sentinel.cli.main platform hygiene .
 ```
 
 ### Compatibility Contract

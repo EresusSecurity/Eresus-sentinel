@@ -1,0 +1,10 @@
+schema: sentinel.runtime.v1
+name: runtime-default
+mode: simulate
+policies:
+  - id: block-secret-exfiltration
+    action: block
+    enabled: true
+    match:
+      event: tool_call
+      contains_any: [token, secret, password]

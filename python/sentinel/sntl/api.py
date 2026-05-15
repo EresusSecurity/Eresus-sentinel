@@ -5,6 +5,45 @@ from typing import Any
 
 from sentinel.platform.config import config_graph, explain_config, resolve_config, simulate_config
 from sentinel.sntl.canonical import canonical_json, fingerprint
+from sentinel.sntl.convert import (
+    INPUT_FORMATS,
+    OUTPUT_FORMATS,
+    SntlConversion,
+    SntlFormatInspection,
+    SntlMigrationItem,
+    SntlMigrationPlan,
+    SntlRoundTrip,
+    compare_formats,
+    convert,
+    convert_file,
+    convert_text,
+    convert_tree,
+    detect_format,
+    format_capabilities,
+    from_csv,
+    from_json,
+    from_jsonl,
+    from_toml,
+    from_yaml,
+    from_yara,
+    inspect_file,
+    inspect_text,
+    load_any,
+    loads_any,
+    migrate_file,
+    migrate_tree,
+    normalize_document,
+    plan_conversion,
+    parse_yara,
+    roundtrip_file,
+    roundtrip_text,
+    schema_for,
+    to_json,
+    to_jsonl,
+    to_sntl,
+    to_toml,
+    wrap_imported,
+)
 from sentinel.sntl.ops import diff, merge, redact
 from sentinel.sntl.parser import parse, parse_document
 from sentinel.sntl.path import get_path, query, set_path, walk

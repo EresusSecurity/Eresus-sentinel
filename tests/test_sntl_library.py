@@ -139,6 +139,78 @@ def test_sntl_diff_redact_and_set_path():
     assert sntl.redact(left)["auth"]["api_key"] == "[redacted]"
 
 
+def test_sntl_converts_json_toml_yaml_jsonl_csv_and_yara(tmp_path):
+    json_doc = sntl.loads_any('{"name":"json-suite","settings":{"enabled":true}}', source_format="json").require()
+    toml_doc = sntl.loads_any('name = "toml-suite"\n[settings]\nenabled = true\n', source_format="toml").require()
+    yaml_doc = sntl.loads_any("name: yaml-suite\nsettings:\n  enabled: true\n", source_format="yaml").require()
+    jsonl_doc = sntl.loads_any('{"input":"alpha"}\n{"input":"beta"}\n', source_format="jsonl").require()
+    csv_doc = sntl.loads_any("id,input,enabled\ncase-1,alpha,true\ncase-2,beta,false\n", source_format="csv").require()
+    yara_doc = sntl.loads_any(
+        """
+rule SuspiciousTool : runtime exfiltration {
+  meta:
+    severity = "high"
+    enabled = true
+  strings:
+    $a = "curl" nocase
+    $b = /token=[A-Za-z0-9]+/
+  condition:
+    any of them
+}
+""".lstrip(),
+        source_format="yara",
+    ).require()
+
+    assert json_doc.schema == "sentinel.config.v1"
+    assert toml_doc.data["settings"]["enabled"] is True
+    assert yaml_doc.data["name"] == "yaml-suite"
+    assert jsonl_doc.schema == "sentinel.dataset.v1"
+    assert csv_doc.data["records"][1]["enabled"] is False
+    assert yara_doc.schema == "sentinel.rulepack.v1"
+    assert yara_doc.data["rules"][0]["strings"][1]["kind"] == "regex"
+    assert "schema: sentinel.config.v1" in sntl.convert_text('{"name":"json-suite"}', source_format="json")
+
+
+def test_sntl_conversion_files_tree_and_exports(tmp_path):
+    source = tmp_path / "config.json"
+    source.write_text(json.dumps({"name": "file-suite", "settings": {"enabled": True}}), encoding="utf-8")
+    target = sntl.convert_file(source)
+    tree_source = tmp_path / "tree"
+    tree_target = tmp_path / "out"
+    tree_source.mkdir()
+    (tree_source / "records.jsonl").write_text('{"input":"alpha"}\n', encoding="utf-8")
+
+    outputs = sntl.convert_tree(tree_source, tree_target, source_formats=["jsonl"])
+    parsed = sntl.load(target).require()
+
+    assert target.suffix == ".sntl"
+    assert parsed.data["schema"] == "sentinel.config.v1"
+    assert outputs == [tree_target / "records.sntl"]
+    assert sntl.load(outputs[0]).require().data["records"][0]["id"] == "record-1"
+    assert json.loads(sntl.to_json(parsed.data))["name"] == "file-suite"
+    assert "schema = " in sntl.to_toml({"schema": "sentinel.config.v1", "name": "toml"})
+
+
+def test_sntl_inspect_plan_migrate_roundtrip_and_capabilities(tmp_path):
+    source = tmp_path / "imports"
+    target = tmp_path / "converted"
+    source.mkdir()
+    (source / "runtime.toml").write_text('name = "runtime"\n[[policies]]\nid = "p1"\naction = "block"\n', encoding="utf-8")
+    (source / "rules.yara").write_text("rule RuntimeRule { condition: true }\n", encoding="utf-8")
+
+    inspection = sntl.inspect_file(source / "runtime.toml", schema="sentinel.runtime.v1")
+    plan = sntl.plan_conversion(source, target, source_formats=["toml", "yara"], schema="sentinel.runtime.v1")
+    migrated = sntl.migrate_tree(source, target, source_formats=["toml", "yara"])
+    roundtrip = sntl.roundtrip_file(source / "runtime.toml", schema="sentinel.runtime.v1")
+    comparison = sntl.compare_formats()
+
+    assert inspection.schema == "sentinel.runtime.v1"
+    assert plan.items[0].target.endswith(".sntl")
+    assert migrated.items[0].valid is True
+    assert roundtrip.stable is True
+    assert comparison["recommended_authoring_format"] == "sntl"
+
+
 def test_sntl_runtime_does_not_depend_on_yaml_loader():
     import sentinel.sntl.parser as parser
     import sentinel.sntl.writer as writer

@@ -1,0 +1,6 @@
+schema: sentinel.dataset.v1
+name: local-dataset
+records:
+  - id: case-1
+    input: sample
+    expected: allow

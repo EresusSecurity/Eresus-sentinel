@@ -1,0 +1,16 @@
+schema: sentinel.eval.v1
+name: local-eval
+providers:
+  - id: local
+    type: mock
+prompts:
+  - id: base
+    template: |
+      Review {{input}}
+      Return a structured decision.
+variables:
+  - input: sample
+assertions:
+  - id: contains-result
+    type: contains
+    expected: result

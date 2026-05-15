@@ -73,26 +73,6 @@ Eresus Sentinel includes **70+ registered scanners** covering model, archive, an
 | **HuggingFace `config.json`** | `config.json` | HIGH | `auto_map` RCE, `AutoConfig.trust_remote_code=True` abuse |
 | **ML Manifests** | `*.json` metadata | HIGH | Connection string injection, secrets, unsafe download URLs |
 
----
-
-## Sentinel vs Competitors
-
-| Feature | Sentinel | modelscan | picklescan | fickling |
-|---------|----------|-----------|------------|---------|
-| Formats covered | 70+ | ~8 | 1 (pickle) | 1 (pickle) |
-| Pickle opcode engine | Rust + Python (dual) | Python | Python | Python AST |
-| Keras Lambda detection | ✅ base64 bytecode | ✅ basic | ❌ | ❌ |
-| TorchScript code analysis | ✅ | ❌ | ❌ | ❌ |
-| ONNX proto analysis | ✅ | ❌ | ❌ | ❌ |
-| GGUF/GGML | ✅ | ❌ | ❌ | ❌ |
-| CNTK | ✅ | ❌ | ❌ | ❌ |
-| JAX/Orbax | ✅ | ❌ | ❌ | ❌ |
-| Jinja2 SSTI | ✅ | ❌ | ❌ | ❌ |
-| Archive path traversal | ✅ ZIP+TAR+7z | ✅ ZIP | ✅ ZIP | ❌ |
-| SARIF output | ✅ | ❌ | ❌ | ❌ |
-| Pre-commit hook | ✅ | ❌ | ✅ | ❌ |
-| MCP / Agent scanning | ✅ | ❌ | ❌ | ❌ |
-| Prompt firewall | ✅ | ❌ | ❌ | ❌ |
 | Supply chain auditing | ✅ | ❌ | ❌ | ❌ |
 
 ---

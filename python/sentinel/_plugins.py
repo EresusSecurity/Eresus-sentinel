@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 _input_cache: dict[str, type] | None = None
 _output_cache: dict[str, type] | None = None
 _artifact_cache: dict[str, type] | None = None
+_manifest_cache: dict[str, dict[str, Any]] | None = None
 
 
 # ── Discovery Core ────────────────────────────────────────────────
@@ -205,6 +206,31 @@ def get_artifact_scanners(force_reload: bool = False) -> dict[str, type]:
     return _artifact_cache
 
 
+def get_manifest_plugins(root: str | Path | None = None, force_reload: bool = False) -> dict[str, dict[str, Any]]:
+    global _manifest_cache
+    if root is None and _manifest_cache is not None and not force_reload:
+        return _manifest_cache
+
+    from sentinel.plugins.manifest import discover_manifests, manifest_to_dict, validate_manifest
+
+    roots = [Path(root)] if root else [Path.cwd(), Path.home() / ".sentinel" / "plugins"]
+    registry: dict[str, dict[str, Any]] = {}
+    for base in roots:
+        try:
+            manifests = discover_manifests(base)
+        except Exception as exc:
+            logger.warning("Skipping manifest root %s: %s", base, exc)
+            continue
+        for manifest in manifests:
+            issues = validate_manifest(manifest)
+            item = manifest_to_dict(manifest, issues)
+            registry[item["id"]] = item
+
+    if root is None:
+        _manifest_cache = registry
+    return registry
+
+
 def list_all_plugins() -> dict[str, list[str]]:
     """
     List all discovered plugins grouped by category.
@@ -216,6 +242,7 @@ def list_all_plugins() -> dict[str, list[str]]:
         "input": sorted(get_input_scanners().keys()),
         "output": sorted(get_output_scanners().keys()),
         "artifact": sorted(get_artifact_scanners().keys()),
+        "manifest": sorted(get_manifest_plugins().keys()),
     }
 
 
@@ -234,6 +261,7 @@ def get_plugin_info(category: str, name: str) -> dict[str, Any]:
         "input": get_input_scanners,
         "output": get_output_scanners,
         "artifact": get_artifact_scanners,
+        "manifest": get_manifest_plugins,
     }
 
     getter = registries.get(category)
@@ -244,6 +272,9 @@ def get_plugin_info(category: str, name: str) -> dict[str, Any]:
     cls = registry.get(name)
     if not cls:
         return {"error": f"Plugin not found: {category}/{name}"}
+
+    if category == "manifest":
+        return cls
 
     return {
         "name": name,
@@ -257,11 +288,13 @@ def get_plugin_info(category: str, name: str) -> dict[str, Any]:
 
 def reload_all() -> None:
     """Force reload all plugin registries."""
-    global _input_cache, _output_cache, _artifact_cache
+    global _input_cache, _output_cache, _artifact_cache, _manifest_cache
     _input_cache = None
     _output_cache = None
     _artifact_cache = None
+    _manifest_cache = None
     get_input_scanners(force_reload=True)
     get_output_scanners(force_reload=True)
     get_artifact_scanners(force_reload=True)
+    get_manifest_plugins(force_reload=True)
     logger.info("All plugin registries reloaded")

@@ -1,4 +1,4 @@
-name: sentinel-picklescan wheels
+name: sentinel-pickle-engine wheels
 
 on:
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: sentinel-picklescan-${{ matrix.os }}-${{ matrix.target }}
+          name: sentinel-pickle-engine-${{ matrix.os }}-${{ matrix.target }}
           path: rust/sentinel-pickle/dist/*
 
   publish:

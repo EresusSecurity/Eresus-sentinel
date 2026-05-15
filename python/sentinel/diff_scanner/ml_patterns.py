@@ -55,7 +55,7 @@ UNSAFE_DESERIALIZATION = [
         owasp_llm="LLM05",
         remediation=(
             "Replace pickle.load() with safetensors or a validated JSON loader. "
-            "If pickle is required, use fickling to audit the file first."
+            "If pickle is required, audit it with no-load artifact scanning first."
         ),
         file_filter=r"\.py$",
     ),

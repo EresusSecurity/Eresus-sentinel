@@ -1,7 +1,7 @@
-"""DefenseClaw-style admission gate for AI skills, MCP servers, and plugins.
+"""Admission gate for AI skills, MCP servers, and plugins.
 
-Mirrors the DefenseClaw concept: scan every skill/MCP/plugin *before* it is
-allowed to run.  The gate produces a ``GateDecision`` with an auto-action:
+Scans every skill/MCP/plugin before it is allowed to run. The gate produces a
+``GateDecision`` with an auto-action:
 
 - ``BLOCK``  — CRITICAL or HIGH finding → component rejected
 - ``WARN``   — MEDIUM or LOW finding → component installed with a warning

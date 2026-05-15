@@ -36,7 +36,6 @@ PROTOCOL_MARKERS = {
     b"\x80\x03": 3, b"\x80\x04": 4, b"\x80\x05": 5,
 }
 
-# Resource limits (from fickling InterpreterLimits)
 MAX_OPCODES = 1_000_000
 MAX_MEMO_SIZE = 100_000
 GET_PUT_RATIO_WARN = 10    # suspicious threshold
@@ -75,7 +74,7 @@ class PickleAnalysis:
     risk_score: float = 0.0
     copyreg_extensions: dict = field(default_factory=dict)
     byte_scan_fallback: bool = False
-    # ── Fickling-inspired structural integrity checks ────────────
+    # ── Structural integrity checks ────────────
     has_duplicate_proto: bool = False       # Multiple PROTO opcodes (tampered)
     has_misplaced_proto: bool = False       # PROTO not at position 0 (tampered)
     has_expansion_attack: bool = False      # High GET/PUT ratio (Billion Laughs)

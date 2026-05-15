@@ -271,99 +271,16 @@ def _write_aibom_output(args, rendered: str) -> None:
         out_stream.flush()
 
 
-def cmd_refs(args):
-    """Inspect cloned reference repositories and parity gaps."""
-    from sentinel.parity import (
-        build_parity_manifest,
-        gap_features,
-        manifest_to_json,
-        manifest_to_markdown,
-        summarize_manifest,
-        summarize_manifest_by_tool,
-    )
-    from sentinel.refs import (
-        refs_inventory_json,
-        refs_inventory_markdown,
-        refs_plan_json,
-        refs_plan_markdown,
-        refs_summary,
-    )
-
-    action = getattr(args, "refs_action", None) or "inventory"
-    output_format = getattr(args, "refs_format", "markdown")
-    refs_dir = getattr(args, "refs_dir", None)
-
-    if action == "parity":
-        content = manifest_to_json() if output_format == "json" else manifest_to_markdown()
-    elif action == "gap":
-        manifest = build_parity_manifest()
-        gaps = gap_features(manifest)
-        if output_format == "json":
-            payload = {
-                "schema_version": "refs.gap-ledger.v1",
-                "summary": {
-                    "refs": refs_summary(refs_dir),
-                    "parity": summarize_manifest(manifest),
-                    "gap_count": len(gaps),
-                },
-                "by_tool": summarize_manifest_by_tool(manifest),
-                "inventory": json.loads(refs_inventory_json(refs_dir))["inventory"],
-                "fix_queue": [feature.to_dict() for feature in gaps],
-            }
-            content = json.dumps(payload, indent=2, sort_keys=True)
-        else:
-            refs = refs_summary(refs_dir)
-            lines = [
-                "# Reference Gap Ledger",
-                "",
-                f"- Expected repos: `{refs['expected']}`",
-                f"- Present repos: `{refs['present']}`",
-                f"- Missing repos: `{', '.join(refs['missing']) or '-'}`",
-                f"- Gap count: `{len(gaps)}`",
-                "",
-                "## Fix Queue",
-                "",
-                "| Tool | Priority | Status | Feature | Next Step |",
-                "|---|---|---|---|---|",
-            ]
-            for feature in gaps:
-                lines.append(
-                    "| "
-                    + " | ".join(
-                        [
-                            feature.tool,
-                            feature.priority,
-                            feature.status,
-                            feature.feature.replace("|", "/"),
-                            feature.next_step.replace("|", "/"),
-                        ]
-                    )
-                    + " |"
-                )
-            content = "\n".join(lines) + "\n"
-    elif action == "plan":
-        content = refs_plan_json(refs_dir) if output_format == "json" else refs_plan_markdown(refs_dir)
-    else:
-        content = (
-            refs_inventory_json(refs_dir)
-            if output_format == "json"
-            else refs_inventory_markdown(refs_dir)
-        )
-
-    if getattr(args, "output", None):
-        Path(args.output).write_text(content, encoding="utf-8")
-        _ok(f"wrote refs {action} report → {args.output}")
-    elif output_format == "json":
-        out_stream = machine_stdout()
-        out_stream.write(content + "\n")
-        out_stream.flush()
-    else:
-        console.print(content, markup=False)
-    return 0
-
-
 def _cmd_evaluate_config(args):
     """Run config-driven LLM evals."""
+    from sentinel.platform.formats import load_structured
+
+    loaded = load_structured(args.config)
+    if isinstance(loaded, dict) and str(loaded.get("schema", "")).startswith("sentinel."):
+        from sentinel.cli.cmd_platform import cmd_platform_eval
+
+        return cmd_platform_eval(args)
+
     from sentinel.redteam.eval_runner import format_eval_markdown, run_eval_file
 
     if args.format not in {"json", "markdown"}:

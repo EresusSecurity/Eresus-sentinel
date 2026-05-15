@@ -30,7 +30,6 @@ _sentinel() {
         'secrets-scan:enterprise secrets scanner'
         'evaluate:evaluate scanners/LLM targets'
         'aibom:generate AI bill of materials'
-        'refs:inspect .refs inventory'
         'plugins:list discovered scanner plugins'
         'shell:interactive REPL'
         'watch:watch and auto-scan'

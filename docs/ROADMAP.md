@@ -2,6 +2,8 @@
 
 Sentinel is currently alpha. The near-term strategy is reliability first, then larger product expansion. The deterministic scanner core stays primary; AI/judge adapters remain optional.
 
+For the internal platform expansion map, see [Sentinel Platform Architecture](SENTINEL_PLATFORM_ARCHITECTURE.md). For rule pack and plugin authoring, see [Sentinel Plugin Format](SENTINEL_PLUGIN_FORMAT.md).
+
 ## Product Promise
 
 Sentinel is a deterministic-first AI security toolkit for:
@@ -25,7 +27,7 @@ Sentinel is a deterministic-first AI security toolkit for:
 | Docs | Exit code and output contract | Done |
 | Docs | README alpha/product-positioning cleanup | Done |
 | Docs | Public roadmap | Done |
-| Docs | Turkish quickstart | Done |
+| Docs | Localized quickstart | Done |
 | Community | Issue templates for bugs/features/false positives | Done |
 | Artifact | Pickle fuzz CI gate | Next |
 | MCP | Proxy local HTTP passthrough E2E | Next |
@@ -47,7 +49,7 @@ Sentinel is a deterministic-first AI security toolkit for:
 
 ## 6-Month Direction
 
-- Reduce P0/P1 partials in the parity manifest with issue/milestone tracking.
+- Reduce P0/P1 partials in the capability manifest with issue/milestone tracking.
 - Stabilize AIBOM v1 JSON schema and graph output.
 - Add runtime gateway provider adapters behind a tested adapter contract.
 - Expand red-team/eval assertion registry and deterministic graders.

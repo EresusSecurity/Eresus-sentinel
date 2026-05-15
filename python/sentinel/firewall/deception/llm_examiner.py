@@ -40,7 +40,7 @@ EXAMINER_TIMEOUT = max(1, min(30, int(os.environ.get("DECEPTION_LLM_EXAMINER_TIM
 _VALID_CATEGORIES: frozenset[str] = frozenset(c.value for c in ThreatCategory)
 
 _SYSTEM_PROMPT = """\
-You are a security classifier for an LLM guardrail system. \
+You are a security classifier for a model safety system. \
 Analyse the user message and classify it as benign or malicious.
 
 Valid threat categories:

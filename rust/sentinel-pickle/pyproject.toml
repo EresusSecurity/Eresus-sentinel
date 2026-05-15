@@ -3,7 +3,7 @@ requires = ["maturin>=1.9,<2"]
 build-backend = "maturin"
 
 [project]
-name = "sentinel-picklescan"
+name = "sentinel-pickle-engine"
 version = "0.1.0"
 description = "Standalone Rust-backed pickle opcode scanner for Eresus Sentinel"
 readme = "README.md"

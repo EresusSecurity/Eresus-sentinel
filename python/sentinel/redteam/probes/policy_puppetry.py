@@ -1,7 +1,7 @@
 """
 Eresus Sentinel — Policy Puppetry Probe.
 
-XML/HTML-based interaction config injection that bypasses LLM guardrails
+XML/HTML-based interaction config injection that bypasses model safety controls
 by redefining the model's allowed behaviors via structured markup.
 
 

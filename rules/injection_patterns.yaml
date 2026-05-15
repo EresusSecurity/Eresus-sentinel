@@ -5,7 +5,7 @@
 # 150+ detection patterns for prompt injection, jailbreaking, and
 # adversarial prompt engineering. Based on research from:
 #   - L1B3RT4S jailbreak corpus
-#   - P4RS3LT0NGV3 encoding/obfuscation toolkit
+#   - encoding and obfuscation bypass toolkits
 #   - OWASP LLM Top 10 (2025)
 #
 # Categories:
@@ -486,10 +486,10 @@ harmful_content:
     severity: CRITICAL
 
 # ============================================================================
-# Advanced Encoding & Obfuscation Bypass (P4RS3LT0NGV3-class attacks)
+# Advanced Encoding & Obfuscation Bypass
 # Patterns targeting Unicode manipulation, steganographic embedding,
 # multi-layer encoding chains, token bombing, and homoglyph substitution.
-# All techniques drawn from the P4RS3LT0NGV3 research corpus.
+# Sentinel tracks these as deterministic text-normalization evasion classes.
 # ============================================================================
 
 encoding_bypass:
@@ -505,7 +505,7 @@ encoding_bypass:
     severity: CRITICAL
 
   # ── Unicode Tags block (invisible text, U+E0000–U+E007F) ─────────────────
-  # P4RS3LT0NGV3 "Invisible Text" feature uses the Tags block to hide payloads
+  # Unicode tags can hide payloads in invisible carrier text.
   - pattern: '[\U000E0000-\U000E007F]{3,}'
     name: unicode_tags_invisible_payload
     severity: CRITICAL
@@ -618,7 +618,7 @@ encoding_bypass:
     severity: HIGH
 
   # ── Whitespace steganography ──────────────────────────────────────────────
-  # P4RS3LT0NGV3 "Whitespace Steganography" hides bits in tab/space patterns
+  # Whitespace steganography hides bits in tab/space patterns.
   - pattern: '(?:[\u00a0\u200b\u200c\u200d\u2060\ufeff\u180e\u034f\u2028\u2029]{1,}[\s\S]{0,5}){3,}'
     name: whitespace_steganography_pattern
     severity: HIGH
@@ -634,7 +634,7 @@ encoding_bypass:
     severity: CRITICAL
 
   # ── Emoji steganography (variation selectors) ─────────────────────────────
-  # P4RS3LT0NGV3 hides messages using VS15/VS16 (U+FE0E, U+FE0F) and related
+  # Variation selectors can hide data behind otherwise ordinary glyphs.
   - pattern: '(?:[\uFE00-\uFE0F\U000E0100-\U000E01EF]{3,})'
     name: emoji_variation_selector_steg
     severity: CRITICAL
@@ -680,11 +680,8 @@ encoding_bypass:
     name: character_removal_bypass
     severity: HIGH
 
-# ── P4RS3LT0NGV3-Derived Encoding Bypass Patterns ──────────────────────────────
-# Based on analysis of https://github.com/elder-plinius/P4RS3LT0NGV3 — 159 transforms
-# designed to bypass content filters. These are the attack surface each transform
-# creates when used to smuggle malicious instructions.
-p4rs3lt0ngv3_encoding_bypass:
+# ── Encoding Bypass Patterns ───────────────────────────────────────────────────
+encoding_transform_bypass:
 
   # ── ROT variants (ROT47, ROT18, ROT5, ROT128, ROT8000) ───────────────────
   - pattern: '(?i)(?:decode|interpret|process|follow|execute)\s+(?:this\s+)?(?:rot[-\s]?(?:47|18|5|128|8000|rot8000)|rot128|rot47|rot8000)\s*(?:encoded?|cipher|text|message)?'
@@ -1014,7 +1011,7 @@ toxic_content:
     severity: HIGH
 
 # ── Skill-File Threat Patterns (AITech-1/8/9/12/13/15) ──────────────────────
-# Source: cisco-ai-defense/skill-scanner threat taxonomy
+# Sentinel skill-file threat taxonomy
 skill_threats:
 
   # AITech-1.1 — Direct instruction override inside skill definitions
@@ -1088,8 +1085,7 @@ skill_threats:
     name: unconditional_trust_demand
     severity: HIGH
 
-# ── Agentic Attack Patterns (OWASP Agentic Top 10) ───────────────────────────
-# Source: cisco-ai-defense/defenseclaw CodeGuard + OWASP Agentic Top 10
+# ── Agentic Attack Patterns ──────────────────────────────────────────────────
 agentic_attacks_extended:
 
   # A1 — Prompt injection via tool output / external data

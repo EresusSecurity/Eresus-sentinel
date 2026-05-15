@@ -11,7 +11,7 @@ def test_standalone_pickle_pyproject_exposes_maturin_package():
         encoding="utf-8"
     )
 
-    assert 'name = "sentinel-picklescan"' in text
+    assert 'name = "sentinel-pickle-engine"' in text
     assert 'build-backend = "maturin"' in text
     assert 'module-name = "sentinel_pickle"' in text
     assert "pyo3/abi3-py38" in text

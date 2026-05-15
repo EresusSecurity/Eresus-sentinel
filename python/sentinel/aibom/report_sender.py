@@ -1,22 +1,4 @@
-"""AIBOM report sender — HTTP delivery with exponential backoff.
-
-Ships a completed AI Bill of Materials (AIBOM) report to a remote ingestion
-endpoint with retry semantics and optional TLS verification.
-
-Ported and extended from the reference ``aibom`` project
-(``src/aibom/report_sender.py``).
-
-Usage::
-
-    from sentinel.aibom.report_sender import post_report_with_retries
-
-    payload = {"format": "spdx", "sbomVersion": "2.3", "components": [...]}
-    status_code = post_report_with_retries(
-        url="https://ingestion.example.com/aibom",
-        payload=payload,
-        api_key="<tenant-api-key>",
-    )
-"""
+"""AIBOM report sender with deterministic retry behavior."""
 
 from __future__ import annotations
 
@@ -28,11 +10,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# HTTP status codes that warrant an automatic retry
 RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 
-# Auth header used by the Cisco AI Defense tenant API
-_AUTH_HEADER = "x-cisco-ai-defense-tenant-api-key"
+_AUTH_HEADER = "x-sentinel-aibom-api-key"
 
 
 def post_report_with_retries(
@@ -53,7 +33,7 @@ def post_report_with_retries(
     Args:
         url: Remote ingestion endpoint URL.
         payload: Dictionary that will be serialised to JSON.
-        api_key: Tenant API key placed in ``x-cisco-ai-defense-tenant-api-key``.
+        api_key: Tenant API key placed in ``x-sentinel-aibom-api-key``.
             Falls back to ``SENTINEL_AIBOM_API_KEY`` environment variable.
         verify_tls: Set to ``False`` to disable TLS certificate verification
             (not recommended in production).

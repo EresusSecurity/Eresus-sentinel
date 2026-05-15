@@ -28,7 +28,7 @@ unsafe_deserialization:
     cwe: CWE-502
     owasp: LLM05
     description: "pickle.load() enables arbitrary code execution during deserialization"
-    remediation: "Use safetensors or validate with fickling before loading"
+    remediation: "Use safetensors or validate with a no-load artifact scanner before loading"
 
   - id: DIFF-DESER-002
     name: torch_load_no_weights_only

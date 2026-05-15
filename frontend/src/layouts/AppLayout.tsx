@@ -31,7 +31,6 @@ import { useState } from 'react'
 import { useAuth } from '../contexts/useAuth'
 import { useTheme } from '../contexts/useTheme'
 
-/* ── Navigation groups ───────────────────────────────────── */
 const navGroups = [
   {
     label: 'Overview',
@@ -70,8 +69,8 @@ const navGroups = [
   {
     label: 'Advanced',
     items: [
+      { to: '/red-team', label: 'EvalOps Lab', icon: Crosshair },
       { to: '/supply-chain', label: 'Supply Chain', icon: Link },
-      { to: '/red-team', label: 'Red Team', icon: Crosshair },
     ],
   },
 ]
@@ -89,29 +88,26 @@ export default function AppLayout() {
 
   return (
     <div className="flex min-h-screen bg-sentinel-bg text-gray-300">
-      {/* ── Sidebar ──────────────────────────────────── */}
       <aside
         className={clsx(
           'fixed inset-y-0 left-0 z-50 w-60 bg-sentinel-card border-r border-sentinel-border flex flex-col transition-transform duration-200 lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        {/* Brand + Theme Toggle */}
         <div className="px-5 py-4 flex items-center justify-between border-b border-sentinel-border">
           <div>
-            <h1 className="text-amber-500 text-base font-bold tracking-wide">SENTINEL</h1>
-            <p className="text-[9px] text-gray-600 uppercase tracking-widest mt-0.5">by Eresus</p>
+            <h1 className="text-red-600 text-base font-bold tracking-wide">SENTINEL</h1>
+            <p className="text-[9px] text-gray-600 uppercase tracking-widest mt-0.5">AI security workbench</p>
           </div>
           <button
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+            className="p-1.5 rounded-lg text-gray-500 hover:text-blue-700 hover:bg-blue-50 transition-colors"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Nav Groups */}
         <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-4">
           {navGroups.map((group) => (
             <div key={group.label}>
@@ -129,7 +125,7 @@ export default function AppLayout() {
                       clsx(
                         'flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] transition-all duration-150',
                         isActive
-                          ? 'text-amber-500 bg-amber-500/10 font-medium'
+                          ? 'text-blue-700 bg-blue-50 ring-1 ring-blue-100 font-semibold'
                           : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.03]'
                       )
                     }
@@ -142,7 +138,6 @@ export default function AppLayout() {
             </div>
           ))}
 
-          {/* Settings expandable */}
           <div>
             <p className="px-3 pb-1 text-[9px] text-gray-600 uppercase tracking-[0.18em]">
               System
@@ -163,7 +158,7 @@ export default function AppLayout() {
                   href="/api/docs"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-gray-400 hover:text-amber-500 transition-colors"
+                  className="flex items-center gap-2 text-gray-400 hover:text-blue-700 transition-colors"
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
                   API Docs
@@ -172,7 +167,7 @@ export default function AppLayout() {
                   href="/api/redoc"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-gray-400 hover:text-amber-500 transition-colors"
+                  className="flex items-center gap-2 text-gray-400 hover:text-blue-700 transition-colors"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   ReDoc
@@ -180,7 +175,7 @@ export default function AppLayout() {
                 <div className="border-t border-sentinel-border pt-2 space-y-1">
                   <div className="flex justify-between text-gray-600">
                     <span>Version</span>
-                    <span className="font-mono text-amber-500/70">{health?.version ?? '—'}</span>
+                    <span className="font-mono text-blue-700">{health?.version ?? '—'}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>Scans run</span>
@@ -196,7 +191,6 @@ export default function AppLayout() {
           </div>
         </nav>
 
-        {/* Bottom — user + logout */}
         <div className="px-3 pb-3 border-t border-sentinel-border pt-3 space-y-1">
           {user && (
             <div className="px-3 py-2 rounded-lg bg-sentinel-border/20">
@@ -214,15 +208,13 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      {/* Mobile toggle */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 bg-sentinel-card border border-sentinel-border rounded-lg text-gray-500 hover:text-white"
+        className="lg:hidden fixed top-3 left-3 z-50 p-2 bg-sentinel-card border border-sentinel-border rounded-lg text-gray-500 hover:text-blue-700"
       >
         {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
 
-      {/* Backdrop */}
       {sidebarOpen && (
         <div
           className="lg:hidden fixed inset-0 z-40 bg-black/70"
@@ -230,15 +222,13 @@ export default function AppLayout() {
         />
       )}
 
-      {/* ── Main ─────────────────────────────────────── */}
       <main className="flex-1 lg:ml-60 min-h-screen flex flex-col">
         <div className="flex-1 p-6">
           <Outlet />
         </div>
 
-        {/* Footer — version centered */}
         <footer className="py-3 text-center">
-          <span className="text-amber-500/60 text-xs font-mono">{health?.version ?? '0.1.0'}</span>
+          <span className="text-gray-500 text-xs font-mono">{health?.version ?? '0.1.0'}</span>
         </footer>
       </main>
     </div>

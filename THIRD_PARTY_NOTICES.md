@@ -28,15 +28,6 @@ with respect to those components.
 | websockets | 16+ | BSD-3-Clause |
 | python-multipart | 0.0.26+ | Apache-2.0 |
 | orjson | 3.11+ | MPL-2.0 AND (Apache-2.0 OR MIT) |
-| fickling | 0.1+ | LGPL-3.0-or-later |
-
-## LGPL Notice (fickling)
-
-Eresus Sentinel uses fickling as a dynamically-linked dependency via Python
-import. In compliance with the LGPL-3.0, users may replace this component with
-a modified version at their discretion. The fickling source code is available
-at <https://github.com/trailofbits/fickling>.
-
 ## Full License Texts
 
 The full text of each license can be found in the respective package's source

@@ -246,7 +246,7 @@ class SkillFileScanner(InputScanner):
                         "domain:skill-file",
                         f"aitech:{_AITECH_TAG.get(rule_name, 'unknown')}",
                         "owasp:agentic-top10",
-                        "source:cisco-ai-defense/skill-scanner",
+                        "source:sentinel/skill-file",
                     ],
                     remediation=_REMEDIATION.get(rule_name,
                         "Review skill definition for injection, exfiltration, "

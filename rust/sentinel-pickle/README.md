@@ -1,8 +1,8 @@
-# sentinel-picklescan
+# sentinel-pickle-engine
 
 Standalone Rust-backed pickle opcode scanner for Eresus Sentinel.
 
-The PyPI distribution is named `sentinel-picklescan`. It builds the
+The PyPI distribution is named `sentinel-pickle-engine`. It builds the
 `sentinel_pickle` Python extension with `maturin` and PyO3, with no runtime
 dependencies beyond the compiled extension.
 

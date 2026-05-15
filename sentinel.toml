@@ -89,7 +89,7 @@ encoding_attack = true
 secret_detection = true
 canary_injection = false  # Requires active deployment
 
-# Layered Defense Configuration (Phase 3 — Rebuff Pattern)
+# Layered Defense Configuration
 [scanners.firewall.input.layered_defense]
 enabled = true
 block_threshold = 0.65

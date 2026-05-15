@@ -47,6 +47,38 @@ def test_dashboard_login_token_allows_api_access(monkeypatch):
     assert response.json()["action"] in {"BLOCK", "WARN", "ALLOW"}
 
 
+def test_dashboard_signup_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("SENTINEL_PASSWORD", raising=False)
+    monkeypatch.delenv("SENTINEL_ALLOW_SIGNUP", raising=False)
+    client = TestClient(create_dashboard_app())
+
+    response = client.post(
+        "/api/auth/signup",
+        json={"username": "new-user", "password": "Test-Pass1"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Signup is disabled"
+
+
+def test_dashboard_signup_creates_first_admin_when_enabled(monkeypatch):
+    monkeypatch.delenv("SENTINEL_PASSWORD", raising=False)
+    monkeypatch.setenv("SENTINEL_ALLOW_SIGNUP", "1")
+    client = TestClient(create_dashboard_app())
+
+    signup = client.post(
+        "/api/auth/signup",
+        json={"username": "new-user", "password": "Test-Pass1"},
+    )
+    token = signup.json()["token"]
+    users = client.get("/api/users", headers={"Authorization": f"Bearer {token}"})
+
+    assert signup.status_code == 200
+    assert signup.json()["role"] == "admin"
+    assert users.status_code == 200
+    assert users.json()[0]["username"] == "new-user"
+
+
 def test_dashboard_public_health_does_not_expose_instance_id(monkeypatch):
     monkeypatch.setenv("SENTINEL_PASSWORD", "Test-Pass1")
     client = TestClient(create_dashboard_app())

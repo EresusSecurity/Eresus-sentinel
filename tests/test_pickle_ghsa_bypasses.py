@@ -1,7 +1,6 @@
 """Comprehensive GHSA bypass test suite for PickleScanner.
 
-Tests every known pickle bypass technique from fickling + picklescan
-security advisories. Each test creates a real pickle payload using
+Tests known pickle bypass techniques from public security advisories. Each test creates a real pickle payload using
 raw opcode construction and verifies our scanner detects it.
 """
 

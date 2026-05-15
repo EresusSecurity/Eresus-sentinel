@@ -8,7 +8,7 @@ from sentinel.aibom.scanners.base import BaseAIBOMScanner
 
 _CONFIG_NAMES = {
     "langchain.yaml", "langgraph.json", "mcp.json", "claude_desktop_config.json",
-    "promptfoo.yaml", "promptfoo.yml", "sentinel.toml", "dspy.yaml",
+    "eval.yaml", "eval.yml", "sentinel.toml", "dspy.yaml",
     "litellm.yaml", "litellm.yml",
 }
 

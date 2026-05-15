@@ -1661,13 +1661,6 @@ web = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "fickling" },
-    { name = "modelscan" },
-    { name = "picklescan" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "alembic", marker = "extra == 'db'", specifier = ">=1.13.0,<2" },
@@ -1738,13 +1731,6 @@ requires-dist = [
 ]
 provides-extras = ["ml", "scan", "firewall", "api", "web", "hf", "analysis", "remote", "archive", "rust", "vault", "db", "otel", "docs", "dev", "all"]
 
-[package.metadata.requires-dev]
-dev = [
-    { name = "fickling", specifier = ">=0.1.10" },
-    { name = "modelscan", specifier = ">=0.8.8" },
-    { name = "picklescan", specifier = ">=1.0.4" },
-]
-
 [[package]]
 name = "exceptiongroup"
 version = "1.3.1"
@@ -1789,15 +1775,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/20/b5/23b216d9d985a956623b6bd12d4086b60f0059b27799f23016af04a74ea1/fastjsonschema-2.21.2.tar.gz", hash = "sha256:b1eb43748041c880796cd077f1a07c3d94e93ae84bba5ed36800a33554ae05de", size = 374130, upload-time = "2025-08-14T18:49:36.666Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/a8/20d0723294217e47de6d9e2e40fd4a9d2f7c4b6ef974babd482a59743694/fastjsonschema-2.21.2-py3-none-any.whl", hash = "sha256:1c797122d0a86c5cace2e54bf4e819c36223b552017172f32c5c024a6b77e463", size = 24024, upload-time = "2025-08-14T18:49:34.776Z" },
-]
-
-[[package]]
-name = "fickling"
-version = "0.1.10"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9f/06/1818b8f52267599e54041349c553d5894e17ec8a539a246eb3f9eaf05629/fickling-0.1.10.tar.gz", hash = "sha256:8c8b76abd29936f1a5932e4087b8c8becb2d7ab1cf08549e63519ebcb2f71644", size = 338062, upload-time = "2026-03-13T16:34:29.287Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/86/620960dff970da5311f05e25fc045dac8495557d51030e5a0827084b18fd/fickling-0.1.10-py3-none-any.whl", hash = "sha256:962c35c38ece1b3632fc119c0f4cb1eebc02dc6d65bfd93a1803afd42ca91d25", size = 52853, upload-time = "2026-03-13T16:34:27.821Z" },
 ]
 
 [[package]]
@@ -3397,22 +3374,6 @@ wheels = [
 ]
 
 [[package]]
-name = "modelscan"
-version = "0.8.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "rich" },
-    { name = "tomlkit" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/19/370db1bc9c40b7aa2e485e27f3634a3fb415d01a7fe3ace65e8bc2eddd4a/modelscan-0.8.8.tar.gz", hash = "sha256:34b134084370eb9832e0a7571297c3054ebfbff9f005992fe6f28ffc10135514", size = 33251, upload-time = "2026-02-18T21:14:47.71Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/1b/392fa2002cd60f22bc9328ce6eb015564930fef5ea7170947c93ef8384ee/modelscan-0.8.8-py3-none-any.whl", hash = "sha256:a1997df2368628daa1b3f394f5660a338b1debc623dec67b38f665ba04ad967e", size = 38921, upload-time = "2026-02-18T21:14:48.393Z" },
-]
-
-[[package]]
 name = "more-itertools"
 version = "11.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4460,15 +4421,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/db/72/97fd1961e3d6f8323b1396669c346557a8581874e2c2a478a83dc5d616e7/phonenumbers-9.0.28.tar.gz", hash = "sha256:f1d810aaa43fbf3a5cb1ee54733218f8333a2a92c85c4d579a810403d6260a8c", size = 2298779, upload-time = "2026-04-13T14:19:50.741Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/68/bd/5e55cea252bf21402a2d5f2479edd7e24a4c9ebbe59f197080d0d4cd9093/phonenumbers-9.0.28-py2.py3-none-any.whl", hash = "sha256:ee8caabab4fd554efb6119e7b95cb69da40e0f04050611730eed839d93f39920", size = 2585077, upload-time = "2026-04-13T14:16:09.853Z" },
-]
-
-[[package]]
-name = "picklescan"
-version = "1.0.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/31/78/8ae707374fe7e0aa839bcc3ccba0f732fa7d3077f781d8639acd91098138/picklescan-1.0.4.tar.gz", hash = "sha256:a2b85b1e3dcd39aa7420f5e50dce40ac596644eb6e504bf163911b286eb3a7ac", size = 30581, upload-time = "2026-03-02T18:35:48.359Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/88/dd6e4c9b9a7a7fccd7203c4745203a0eec6ec77426a987411ddd7eb845b7/picklescan-1.0.4-py3-none-any.whl", hash = "sha256:6e156d130326da09ca6d195b0f38fdb81b90cbd1ac2ec69d16694e7e5062f8e7", size = 23903, upload-time = "2026-03-02T18:35:47.115Z" },
 ]
 
 [[package]]

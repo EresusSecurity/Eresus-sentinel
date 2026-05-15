@@ -1,6 +1,6 @@
 # Eresus Sentinel - Jailbreak Payloads for Red Team Validation
 # DEFENSIVE USE ONLY - validates guardrails catch real attacks
-# Based on L1B3RT4S and P4RS3LT0NGV3 research corpora
+# Sentinel curated jailbreak regression corpus
 
 godmode:
   - id: JB-001

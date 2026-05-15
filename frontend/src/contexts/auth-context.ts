@@ -8,6 +8,7 @@ export interface AuthState {
 
 export interface AuthContextValue extends AuthState {
   login: (username: string, password: string) => Promise<void>
+  signup: (username: string, password: string) => Promise<void>
   logout: () => void
 }
 

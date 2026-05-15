@@ -8,8 +8,8 @@ from sentinel.aibom.models import AIComponent, AIComponentType
 from sentinel.aibom.scanners.base import BaseAIBOMScanner
 
 _AI_HINT = re.compile(
-    r"(openai|anthropic|huggingface|langchain|promptfoo|sentinel\s+redteam|"
-    r"sentinel\s+scan|ai-defense|modelscan)",
+    r"(openai|anthropic|huggingface|langchain|sentinel\s+redteam|"
+    r"sentinel\s+scan|sentinel\s+artifact|sentinel\s+eval)",
     re.IGNORECASE,
 )
 

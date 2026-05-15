@@ -12,8 +12,6 @@ Entity types:
   - UK_NHS, UK_NINO
   - PERSON, LOCATION, DATE_OF_BIRTH
   - MEDICAL_LICENSE, NRP (National Registration/Passport)
-
-Inspired by: guardrails_pii (guardrails-ai) Presidio + GLiNER approach.
 """
 
 from __future__ import annotations

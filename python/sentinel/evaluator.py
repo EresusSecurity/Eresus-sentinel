@@ -679,9 +679,6 @@ class NLPAssertions:
         raise AssertionError("No valid JSON found in output")
 
 
-# ── Extended NLP Metrics (ref-llm-eval-suite parity) ──────────────────────
-
-
 def meteor_score(reference: str, hypothesis: str) -> float:
     """Compute METEOR score (unigram precision/recall harmonic mean with penalty).
 

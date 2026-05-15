@@ -26,7 +26,7 @@ rules:
     pattern: '(?i)(?:pickle|cPickle|_pickle)\.(?:load|loads)\s*\('
     severity: CRITICAL
     cwe_ids: [CWE-502]
-    fix_hint: "Replace with safetensors, JSON, or use fickling for validation"
+    fix_hint: "Replace with safetensors, JSON, or validate with a no-load artifact scanner"
     fp_risk: LOW
     references:
       - "https://blog.huntr.com/pickle-rickd-how-loading-a-malicious-pickle-can-pwn-your-machine"
@@ -475,7 +475,7 @@ rules:
     fix_hint: "Use secrets.token_hex() or os.urandom() for security-sensitive random values"
     fp_risk: MEDIUM
 
-  # ─── Risky File Access (CodeGuard / defenseclaw) ──────────────────────────────
+  # ─── Risky File Access ────────────────────────────────────────────────────────
   - id: SAST-090
     name: path_traversal_open
     description: "File open() with user-controlled path — path traversal risk"

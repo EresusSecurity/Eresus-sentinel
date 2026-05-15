@@ -67,6 +67,25 @@ def scaffold_plugin(name: str, output_dir: str | Path) -> dict[str, str]:
         ]),
         encoding="utf-8",
     )
+    (root / "sentinel.plugin.yaml").write_text(
+        "\n".join([
+            "schema_version: sentinel.plugin.v1",
+            f"id: {package}",
+            f"name: {name}",
+            "version: 0.1.0",
+            "kind: scanner",
+            f"entrypoint: {package}:Plugin",
+            "formats:",
+            "  - .bin",
+            "permissions:",
+            "  - scan:file-read",
+            "  - network:none",
+            "tags:",
+            "  - scanner",
+            "",
+        ]),
+        encoding="utf-8",
+    )
     (src / "__init__.py").write_text(
         "\n".join([
             "from sentinel.plugin_sdk import BaseScanner, ScannerPluginSpec",
@@ -86,6 +105,7 @@ def scaffold_plugin(name: str, output_dir: str | Path) -> dict[str, str]:
         "name": name,
         "package": package,
         "path": str(root),
+        "manifest": str(root / "sentinel.plugin.yaml"),
         "entry_point_group": "sentinel.scanners",
     }
 
@@ -120,9 +140,28 @@ def install_plugin_pack(pack_path: str | Path, install_root: str | Path | None =
 
 def plugin_authoring_guide() -> str:
     return (
-        "Create a package with an entry point in the sentinel.scanners group. "
-        "Subclass sentinel.plugin_sdk.BaseScanner and return sentinel.finding.Finding objects from scan_path()."
+        "Create a package with an entry point in the sentinel.scanners group and a sentinel.plugin.yaml manifest. "
+        "Subclass sentinel.plugin_sdk.BaseScanner and return sentinel.finding.Finding objects from scan_path(). "
+        "Declare only the minimum manifest permissions required by the scanner."
     )
+
+
+def validate_plugin_manifest(path: str | Path, workspace_root: str | Path | None = None) -> dict:
+    from sentinel.plugins.manifest import manifest_to_dict, validate_manifest_file
+
+    manifest, issues = validate_manifest_file(path, workspace_root=workspace_root)
+    if manifest is None:
+        return {"manifest": None, "issues": [issue.__dict__ for issue in issues]}
+    return manifest_to_dict(manifest, issues)
+
+
+def discover_manifest_plugins(root: str | Path) -> list[dict]:
+    from sentinel.plugins.manifest import discover_manifests, manifest_to_dict, validate_manifest
+
+    return [
+        manifest_to_dict(manifest, validate_manifest(manifest))
+        for manifest in discover_manifests(root)
+    ]
 
 
 def _package_name(name: str) -> str:

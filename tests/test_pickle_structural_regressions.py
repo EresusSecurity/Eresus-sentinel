@@ -1,8 +1,7 @@
 """
 Pickle opcode test suite for Sentinel PickleScanner.
 
-Tests that Sentinel detects ALL attack vectors from fickling's
-pickle_scanning_benchmark, PLUS fickling-inspired structural checks
+Tests that Sentinel detects dangerous pickle opcode attack vectors and structural checks
 (expansion attacks, duplicate PROTO, misplaced PROTO).
 
 Each test constructs a raw pickle byte stream with the specific
@@ -66,11 +65,11 @@ scanner = PickleScanner()
 
 
 # ══════════════════════════════════════════════════════════════════
-# TRUE POSITIVES — Must detect all fickling benchmark payloads
+# TRUE POSITIVES
 # ══════════════════════════════════════════════════════════════════
 
 class TestExecPrimitives:
-    """Fickling EXEC_PRIMITIVE_PAYLOADS — all must be detected."""
+    """Execution primitives must be detected."""
 
     def test_os_system(self):
         data = _make_pickle_v2("os", "system", "ls")
@@ -120,7 +119,7 @@ class TestExecPrimitives:
 
 
 class TestDangerousPrimitives:
-    """Fickling DANGEROUS_PRIMITIVE_PAYLOADS."""
+    """Dangerous primitives must be detected."""
 
     def test_torch_hub_load(self):
         data = _make_pickle_v2("torch.hub", "load", "evil/repo")
@@ -146,7 +145,7 @@ class TestDangerousPrimitives:
 
 
 class TestCodeConstruction:
-    """CodeType/FunctionType construction — fickling's most advanced check."""
+    """CodeType and FunctionType construction must be detected."""
 
     def test_codetype_detection(self):
         data = _make_pickle_v2("types", "CodeType")
@@ -220,7 +219,7 @@ class TestFFI:
 
 
 # ══════════════════════════════════════════════════════════════════
-# FICKLING-INSPIRED STRUCTURAL CHECKS
+# STRUCTURAL CHECKS
 # ══════════════════════════════════════════════════════════════════
 
 class TestExpansionAttack:
@@ -343,7 +342,7 @@ class TestAllowlist:
 
 
 # ══════════════════════════════════════════════════════════════════
-# EVASION RESISTANCE — things fickling catches, so must we
+# EVASION RESISTANCE
 # ══════════════════════════════════════════════════════════════════
 
 class TestEvasionResistance:

@@ -117,6 +117,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 _PUBLIC_PATHS = {
     "/api/auth/login",
+    "/api/auth/signup",
     "/api/health",
     "/health",
     "/api/docs",

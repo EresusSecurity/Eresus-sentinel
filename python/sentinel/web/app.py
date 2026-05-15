@@ -64,6 +64,7 @@ def create_dashboard_app(
         routes_extra,
         routes_firewall,
         routes_info,
+        routes_platform,
         routes_scan,
         routes_users,
     )
@@ -137,6 +138,7 @@ def create_dashboard_app(
     routes_firewall.init(state)
     routes_artifact.init(state)
     routes_info.init(state, __version__)
+    routes_platform.init(state)
     routes_users.init(state)
     routes_deception.init(state)
 
@@ -146,6 +148,7 @@ def create_dashboard_app(
     app.include_router(routes_artifact.router)
     app.include_router(routes_scan.router)
     app.include_router(routes_info.router)
+    app.include_router(routes_platform.router)
     app.include_router(routes_extra.router)
     app.include_router(routes_deception.router)
 

@@ -233,6 +233,7 @@ def main():
         cmd_diff,
         cmd_mcp,
         cmd_mcp_fingerprint,
+        cmd_mcp_server,
         cmd_mcp_validate,
         cmd_multi_agent_scan,
         cmd_notebook,
@@ -324,6 +325,10 @@ def main():
     mf.add_argument("-f", "--format", choices=["table", "json"], default="table")
     mf.add_argument("-o", "--output", help="write JSON fingerprint to file")
     mf.set_defaults(func=cmd_mcp_fingerprint, mcp_action="fingerprint")
+
+    mserve = mcp_sub.add_parser("serve", help="run the secure local MCP stdio server")
+    mserve.add_argument("--workspace", default=".", help="workspace root exposed to the MCP tools")
+    mserve.set_defaults(func=cmd_mcp_server, mcp_action="serve")
 
     a2a_p = sub.add_parser("a2a", help="A2A agent-card and source scanning")
     a2a_sub = a2a_p.add_subparsers(dest="a2a_action")
@@ -490,7 +495,6 @@ def main():
         cmd_evaluate,
         cmd_findings_explain,
         cmd_plugins,
-        cmd_refs,
         cmd_reverse,
         cmd_rules,
         cmd_scanners,
@@ -503,6 +507,19 @@ def main():
     )
     from sentinel.cli.cmd_codeguard import cmd_codeguard, cmd_sandbox
     from sentinel.cli.cmd_phase26 import cmd_cloud, cmd_compliance, cmd_plugin
+    from sentinel.cli.cmd_platform import (
+        cmd_platform,
+        cmd_platform_compare,
+        cmd_platform_eval,
+        cmd_platform_explain,
+        cmd_platform_export,
+        cmd_platform_import,
+        cmd_platform_inspect,
+        cmd_platform_profile,
+        cmd_platform_replay,
+        cmd_platform_simulate,
+        cmd_platform_trace,
+    )
     from sentinel.cli.cmd_provenance import cmd_provenance
 
     p = sub.add_parser("evaluate", aliases=["eval"], help="evaluate scanners or LLM targets")
@@ -510,7 +527,137 @@ def main():
     p.add_argument("--fail-on-threshold", type=float, help="fail if pass rate is below threshold")
     p.add_argument("--concurrency", "-j", type=int, default=1, help="max parallel eval workers (default: 1)")
     p.add_argument("--summary-only", action="store_true", help="hide per-case eval rows")
+    p.add_argument("--plan", action="store_true", help="print deterministic evaluation plan")
+    p.add_argument("--store", default=".sentinel/runs/state.db", help="run store path")
+    p.add_argument("--report-format", dest="eval_report_format", choices=["json", "html", "csv", "markdown", "junit", "sarif", "pdf"], default=argparse.SUPPRESS)
+    p.add_argument("--profile", dest="profile_name", default=None, help="config profile")
+    p.add_argument("--environment", default=None, help="config environment")
+    _add_output_args(p, formats=["table", "json", "html", "csv", "markdown", "junit", "sarif"], severity=False)
     p.set_defaults(func=cmd_evaluate)
+
+    platform_p = sub.add_parser("platform", help="deterministic eval and runtime platform")
+    platform_sub = platform_p.add_subparsers(dest="platform_action")
+    platform_status = platform_sub.add_parser("status", help="show platform status")
+    platform_status.set_defaults(func=cmd_platform, platform_action="status")
+    platform_hygiene = platform_sub.add_parser("hygiene", help="run repository hygiene gates")
+    platform_hygiene.add_argument("path", nargs="?", default=".")
+    platform_hygiene.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_hygiene.set_defaults(func=cmd_platform, platform_action="hygiene")
+    platform_providers = platform_sub.add_parser("providers", help="list provider adapters")
+    platform_providers.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_providers.set_defaults(func=cmd_platform, platform_action="providers")
+    platform_provider_test = platform_sub.add_parser("provider-test", help="test a provider adapter")
+    platform_provider_test.add_argument("provider")
+    platform_provider_test.add_argument("--allow-live", action="store_true")
+    platform_provider_test.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_provider_test.set_defaults(func=cmd_platform, platform_action="provider-test")
+    platform_assertions = platform_sub.add_parser("assertions", help="list assertions")
+    platform_assertions.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_assertions.set_defaults(func=cmd_platform, platform_action="assertions")
+    platform_assertion_run = platform_sub.add_parser("assertion-run", help="run one assertion")
+    platform_assertion_run.add_argument("--spec", required=True)
+    platform_assertion_run.add_argument("--output-text", required=True)
+    platform_assertion_run.add_argument("--context")
+    platform_assertion_run.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_assertion_run.set_defaults(func=cmd_platform, platform_action="assertion-run")
+    platform_dataset = platform_sub.add_parser("dataset", help="inspect a dataset")
+    platform_dataset.add_argument("path")
+    platform_dataset.add_argument("--key")
+    platform_dataset.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_dataset.set_defaults(func=cmd_platform, platform_action="dataset")
+    platform_config = platform_sub.add_parser("config", help="resolve, explain, graph, and simulate config")
+    platform_config.add_argument("paths", nargs="+")
+    platform_config.add_argument("--profile", dest="profile_name")
+    platform_config.add_argument("--environment")
+    platform_config.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_config.set_defaults(func=cmd_platform, platform_action="config")
+    platform_eval_plan = platform_sub.add_parser("eval-plan", help="plan an evaluation")
+    platform_eval_plan.add_argument("config")
+    platform_eval_plan.add_argument("--profile", dest="profile_name")
+    platform_eval_plan.add_argument("--environment")
+    platform_eval_plan.add_argument("--store", default=".sentinel/runs/state.db")
+    platform_eval_plan.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_eval_plan.set_defaults(func=cmd_platform, platform_action="eval-plan")
+    platform_eval_run = platform_sub.add_parser("eval-run", help="run an evaluation")
+    platform_eval_run.add_argument("config")
+    platform_eval_run.add_argument("--profile", dest="profile_name")
+    platform_eval_run.add_argument("--environment")
+    platform_eval_run.add_argument("--store", default=".sentinel/runs/state.db")
+    platform_eval_run.add_argument("--report-format", choices=["json", "html", "csv", "markdown", "junit", "sarif", "pdf"], default="json")
+    platform_eval_run.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_eval_run.set_defaults(func=cmd_platform, platform_action="eval-run")
+    platform_redteam_plan = platform_sub.add_parser("redteam-plan", help="plan deterministic red-team packs")
+    platform_redteam_plan.add_argument("--packs", nargs="*")
+    platform_redteam_plan.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_redteam_plan.set_defaults(func=cmd_platform, platform_action="redteam-plan")
+    platform_redteam_run = platform_sub.add_parser("redteam-run", help="run deterministic red-team packs")
+    platform_redteam_run.add_argument("--packs", nargs="*")
+    platform_redteam_run.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_redteam_run.set_defaults(func=cmd_platform, platform_action="redteam-run")
+    platform_runtime = platform_sub.add_parser("runtime-inspect", help="inspect a runtime security event")
+    platform_runtime.add_argument("--event", required=True)
+    platform_runtime.add_argument("--mode", choices=["simulate", "enforce"], default="simulate")
+    platform_runtime.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    platform_runtime.set_defaults(func=cmd_platform, platform_action="runtime-inspect")
+    platform_p.set_defaults(func=cmd_platform, platform_action="status")
+
+    p = sub.add_parser("replay", help="replay a stored run")
+    p.add_argument("run_id")
+    p.add_argument("--store", default=".sentinel/runs/state.db")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_replay)
+
+    p = sub.add_parser("trace", help="show run traces")
+    p.add_argument("run_id")
+    p.add_argument("--store", default=".sentinel/runs/state.db")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_trace)
+
+    p = sub.add_parser("export", help="export a stored run report")
+    p.add_argument("run_id")
+    p.add_argument("--store", default=".sentinel/runs/state.db")
+    p.add_argument("-f", "--export-format", choices=["json", "html", "csv", "markdown", "junit", "sarif", "pdf"], default="json")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_export)
+
+    p = sub.add_parser("import", help="import a deterministic platform artifact")
+    p.add_argument("path")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_import)
+
+    p = sub.add_parser("inspect", help="inspect config or dataset artifacts")
+    p.add_argument("path")
+    p.add_argument("--kind", dest="inspect_kind", choices=["config", "dataset"], default="config")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_inspect)
+
+    p = sub.add_parser("profile", help="simulate a config profile")
+    p.add_argument("config")
+    p.add_argument("--profile", dest="profile_name")
+    p.add_argument("--environment")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_profile)
+
+    p = sub.add_parser("explain", help="explain a platform config")
+    p.add_argument("config")
+    p.add_argument("--profile", dest="profile_name")
+    p.add_argument("--environment")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_explain)
+
+    p = sub.add_parser("simulate", help="simulate a platform config")
+    p.add_argument("config")
+    p.add_argument("--profile", dest="profile_name")
+    p.add_argument("--environment")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_simulate)
+
+    p = sub.add_parser("compare", help="compare two stored runs")
+    p.add_argument("left_run")
+    p.add_argument("right_run")
+    p.add_argument("--store", default=".sentinel/runs/state.db")
+    p.add_argument("-o", "--output", default=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_platform_compare)
 
     p = sub.add_parser("aibom", help="generate AI bill of materials")
     p.add_argument("path", nargs="?", default=".", help="repository or directory to scan")
@@ -526,7 +673,7 @@ def main():
     p.add_argument(
         "--ci",
         action="store_true",
-        help="CI-compatible no-op flag for GitHub Action parity",
+        help="CI-compatible no-op flag",
     )
     p.add_argument("--list-scanners", action="store_true", help="list AIBOM scanner registry")
     p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="compare two AIBOM JSON files")
@@ -536,32 +683,6 @@ def main():
     p.add_argument("--parallel-repos", type=int, default=1, help="reserved compatibility knob for org scans")
     p.add_argument("--once", action="store_true", help="run a single watch-mode scan and exit")
     p.set_defaults(func=cmd_aibom)
-
-    refs_p = sub.add_parser("refs", help="inspect `.refs` inventory and parity")
-    refs_sub = refs_p.add_subparsers(dest="refs_action")
-    refs_p.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory (auto-detected when omitted)")
-    refs_p.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default="markdown")
-    refs_p.add_argument("-o", "--output", help="output file")
-    refs_p.set_defaults(func=cmd_refs, refs_action="inventory")
-    refs_inventory = refs_sub.add_parser("inventory", help="show cloned reference inventory")
-    refs_inventory.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory")
-    refs_inventory.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
-    refs_inventory.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
-    refs_inventory.set_defaults(func=cmd_refs, refs_action="inventory")
-    refs_plan = refs_sub.add_parser("plan", help="show P1/P2 execution plan")
-    refs_plan.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory")
-    refs_plan.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
-    refs_plan.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
-    refs_plan.set_defaults(func=cmd_refs, refs_action="plan")
-    refs_parity = refs_sub.add_parser("parity", help="show reference parity manifest")
-    refs_parity.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
-    refs_parity.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
-    refs_parity.set_defaults(func=cmd_refs, refs_action="parity")
-    refs_gap = refs_sub.add_parser("gap", help="show reference parity fix queue")
-    refs_gap.add_argument("--refs-dir", default=argparse.SUPPRESS, help="reference clone directory")
-    refs_gap.add_argument("-f", "--format", dest="refs_format", choices=["markdown", "json"], default=argparse.SUPPRESS)
-    refs_gap.add_argument("-o", "--output", default=argparse.SUPPRESS, help="output file")
-    refs_gap.set_defaults(func=cmd_refs, refs_action="gap")
 
     p = sub.add_parser("plugins", help="list discovered scanner plugins")
     _add_output_args(p, severity=False)
@@ -1055,7 +1176,6 @@ def main():
         _fmt != "table"
         or bool(getattr(args, "json_output", False))
         or _aibom_fmt is not None
-        or getattr(args, "refs_format", None) == "json"
     )
     set_machine_stdout(sys.stdout)
     if machine_output and not _out:

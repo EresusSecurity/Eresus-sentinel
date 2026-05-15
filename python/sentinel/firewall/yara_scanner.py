@@ -1,10 +1,4 @@
-"""YARA-based prompt injection scanner.
-
-Compiles YARA rules from rules/yara/ directory and matches against
-prompt text for pattern-based injection detection.
-
-Inspired by: vigil-llm YARA scanner approach.
-"""
+"""YARA-based prompt injection scanner."""
 
 from __future__ import annotations
 

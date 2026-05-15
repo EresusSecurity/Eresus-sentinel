@@ -41,7 +41,7 @@ REQUIRED_KEYS = {
     "sentinel.report.v1": ("run_id", "artifacts"),
 }
 
-SCHEMA_DEFINITIONS = {
+SCHEMA_DEFINITIONS: dict[str, dict] = {
     "sentinel.eval.v1": {
         "type": "object",
         "required": ["schema", "name", "providers", "prompts", "assertions"],
@@ -94,6 +94,171 @@ SCHEMA_DEFINITIONS = {
             "kind": {"type": "string"},
             "permissions": {"type": "array"},
             "hooks": {"type": "array"},
+        },
+        "additionalProperties": True,
+    },
+    "sentinel.redteam.v1": {
+        "type": "object",
+        "required": ["schema", "name", "attacks"],
+        "properties": {
+            "schema": {"const": "sentinel.redteam.v1"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "attacks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "pack": {"type": "string"},
+                        "goal": {"type": "string"},
+                        "assertions": {"type": "array"},
+                        "repeat": {"type": "integer", "minimum": 1},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
+            "scoring": {
+                "type": "object",
+                "properties": {
+                    "method": {"type": "string", "enum": ["deterministic", "model", "hybrid"]},
+                    "fail_on": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+                    "pass_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                },
+            },
+            "providers": {"type": "array"},
+            "environments": {"type": "object"},
+        },
+        "additionalProperties": True,
+    },
+    "sentinel.runtime.v1": {
+        "type": "object",
+        "required": ["schema", "name", "policies"],
+        "properties": {
+            "schema": {"const": "sentinel.runtime.v1"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "policies": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["id", "action"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "action": {"type": "string", "enum": ["block", "allow", "flag", "redact", "log"]},
+                        "enabled": {"type": "boolean"},
+                        "conditions": {"type": "array"},
+                        "priority": {"type": "integer"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
+            "default_action": {"type": "string", "enum": ["block", "allow", "flag"]},
+            "cache": {"type": "object"},
+            "environments": {"type": "object"},
+        },
+        "additionalProperties": True,
+    },
+    "sentinel.rulepack.v1": {
+        "type": "object",
+        "required": ["schema", "name", "rules"],
+        "properties": {
+            "schema": {"const": "sentinel.rulepack.v1"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "version": {"type": "string"},
+            "rules": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+                        "enabled": {"type": "boolean"},
+                        "pattern": {"type": "string"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                        "description": {"type": "string"},
+                    },
+                },
+            },
+            "extends": {"type": ["string", "array"]},
+            "tags": {"type": "array", "items": {"type": "string"}},
+        },
+        "additionalProperties": True,
+    },
+    "sentinel.policy.v1": {
+        "type": "object",
+        "required": ["schema", "name", "rules"],
+        "properties": {
+            "schema": {"const": "sentinel.policy.v1"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "rules": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["id", "action"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "action": {"type": "string"},
+                        "match": {"type": "object"},
+                        "severity": {"type": "string"},
+                        "enabled": {"type": "boolean"},
+                    },
+                },
+            },
+            "extends": {"type": ["string", "array"]},
+            "environments": {"type": "object"},
+        },
+        "additionalProperties": True,
+    },
+    "sentinel.provider.v1": {
+        "type": "object",
+        "required": ["schema", "providers"],
+        "properties": {
+            "schema": {"const": "sentinel.provider.v1"},
+            "providers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "type": {"type": "string"},
+                        "model": {"type": "string"},
+                        "base_url": {"type": "string"},
+                        "timeout": {"type": "integer", "minimum": 0},
+                        "max_tokens": {"type": "integer", "minimum": 1},
+                        "temperature": {"type": "number", "minimum": 0.0, "maximum": 2.0},
+                        "capabilities": {"type": "object"},
+                    },
+                },
+            },
+        },
+        "additionalProperties": True,
+    },
+    "sentinel.report.v1": {
+        "type": "object",
+        "required": ["schema", "run_id", "artifacts"],
+        "properties": {
+            "schema": {"const": "sentinel.report.v1"},
+            "run_id": {"type": "string"},
+            "created_at": {"type": "string"},
+            "artifacts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["format", "path"],
+                    "properties": {
+                        "format": {"type": "string", "enum": ["json", "sarif", "html", "markdown", "csv", "junit"]},
+                        "path": {"type": "string"},
+                        "size_bytes": {"type": "integer"},
+                    },
+                },
+            },
+            "summary": {"type": "object"},
         },
         "additionalProperties": True,
     },

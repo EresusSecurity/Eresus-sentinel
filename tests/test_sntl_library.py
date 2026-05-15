@@ -211,6 +211,229 @@ def test_sntl_inspect_plan_migrate_roundtrip_and_capabilities(tmp_path):
     assert comparison["recommended_authoring_format"] == "sntl"
 
 
+def test_sntl_patch_applies_diff_in_reverse():
+    original = {"schema": "sentinel.config.v1", "count": 1, "name": "base"}
+    modified = sntl.set_path(original, "count", 2)
+    ops = sntl.diff(original, modified)
+
+    restored = sntl.patch(original, ops)
+
+    assert restored["count"] == 2
+    assert restored["name"] == "base"
+
+
+def test_sntl_patch_supports_remove_operation():
+    data = {"a": 1, "b": 2, "c": 3}
+    ops = [{"op": "remove", "path": "b"}]
+
+    result = sntl.patch(data, ops)
+
+    assert "b" not in result
+    assert result["a"] == 1
+    assert result["c"] == 3
+
+
+def test_sntl_flatten_produces_dot_separated_keys():
+    data = {
+        "schema": "sentinel.config.v1",
+        "auth": {"provider": "local", "timeout": 30},
+        "features": ["scan", "redteam"],
+    }
+
+    flat = sntl.flatten(data)
+
+    assert flat["auth.provider"] == "local"
+    assert flat["auth.timeout"] == 30
+    assert flat["features[0]"] == "scan"
+    assert flat["features[1]"] == "redteam"
+
+
+def test_sntl_select_picks_named_keys():
+    data = {"id": "rule-1", "severity": "high", "enabled": True, "internal": "x"}
+
+    result = sntl.select(data, ["id", "severity", "enabled"])
+
+    assert result == {"id": "rule-1", "severity": "high", "enabled": True}
+    assert "internal" not in result
+
+
+def test_sntl_select_on_list_projects_each_item():
+    data = [
+        {"id": "r1", "severity": "high", "noise": 1},
+        {"id": "r2", "severity": "low", "noise": 2},
+    ]
+
+    result = sntl.select(data, ["id", "severity"])
+
+    assert result == [{"id": "r1", "severity": "high"}, {"id": "r2", "severity": "low"}]
+
+
+def test_sntl_wildcard_query_recursive_field():
+    data = {
+        "providers": [
+            {"id": "p1", "nested": {"id": "p1-inner"}},
+            {"id": "p2"},
+        ],
+        "id": "root",
+    }
+
+    all_ids = sntl.wildcard_query(data, "$**.id")
+
+    assert "root" in all_ids
+    assert "p1" in all_ids
+    assert "p2" in all_ids
+    assert "p1-inner" in all_ids
+
+
+def test_sntl_wildcard_query_list_star():
+    data = {
+        "assertions": [
+            {"type": "contains"},
+            {"type": "regex"},
+            {"type": "latency"},
+        ]
+    }
+
+    types = sntl.wildcard_query(data, "assertions[*].type")
+
+    assert types == ["contains", "regex", "latency"]
+
+
+def test_sntl_interpolate_replaces_double_brace_variables():
+    template = "Review {{input}} and expect {{expected_behavior}}"
+    variables = {"input": "summarize the policy", "expected_behavior": "allowed"}
+
+    result = sntl.interpolate(template, variables)
+
+    assert result == "Review summarize the policy and expect allowed"
+
+
+def test_sntl_interpolate_strict_raises_on_missing_variable():
+    import pytest
+
+    template = "Hello {{name}}, your score is {{score}}"
+
+    with pytest.raises(KeyError):
+        sntl.interpolate(template, {"name": "Alice"}, strict=True)
+
+
+def test_sntl_interpolate_document_traverses_nested_structure():
+    doc = {
+        "name": "{{suite_name}}",
+        "prompts": [{"template": "Review {{input}}"}],
+        "meta": {"label": "{{label}}"},
+    }
+    variables = {"suite_name": "smoke", "input": "policy", "label": "CI"}
+
+    result = sntl.interpolate_document(doc, variables)
+
+    assert result["name"] == "smoke"
+    assert result["prompts"][0]["template"] == "Review policy"
+    assert result["meta"]["label"] == "CI"
+
+
+def test_sntl_expand_matrix_produces_variable_rows():
+    variables = [
+        {"input": "alpha", "expected": "allow"},
+        {"input": "read private key", "expected": "block"},
+    ]
+
+    matrix = sntl.expand_matrix(variables)
+
+    assert len(matrix) == 2
+    assert matrix[0]["input"] == "alpha"
+    assert matrix[1]["expected"] == "block"
+
+
+def test_sntl_render_prompt_expands_each_variable_set():
+    template = "Input: {{input}}, Behavior: {{expected}}"
+    variables = [
+        {"input": "alpha", "expected": "allow"},
+        {"input": "hack", "expected": "block"},
+    ]
+
+    prompts = sntl.render_prompt(template, variables)
+
+    assert prompts[0] == "Input: alpha, Behavior: allow"
+    assert prompts[1] == "Input: hack, Behavior: block"
+
+
+def test_sntl_extract_variables_finds_all_template_vars():
+    template = "Review {{input}} and return {{result}} within {{timeout}} ms"
+
+    vars_ = sntl.extract_variables(template)
+
+    assert vars_ == ["input", "result", "timeout"]
+
+
+def test_sntl_schema_definitions_cover_all_known_schemas():
+    from sentinel.sntl.schemas import KNOWN_SCHEMAS, SCHEMA_DEFINITIONS, json_schema
+
+    for schema in ("sentinel.redteam.v1", "sentinel.runtime.v1",
+                   "sentinel.rulepack.v1", "sentinel.policy.v1",
+                   "sentinel.provider.v1", "sentinel.report.v1"):
+        assert schema in SCHEMA_DEFINITIONS, f"{schema} missing from SCHEMA_DEFINITIONS"
+        js = json_schema(schema)
+        assert js["title"] == schema
+        assert js["type"] == "object"
+
+
+def test_sntl_redteam_schema_validates_example():
+    doc = sntl.loads("""
+schema: sentinel.redteam.v1
+name: test-redteam
+attacks:
+  - id: injection
+    pack: prompt_injection
+    goal: detect injection
+    assertions:
+      - type: refusal
+scoring:
+  method: deterministic
+  fail_on: high
+""".lstrip())
+
+    assert doc.ok is True
+    assert doc.data["scoring"]["method"] == "deterministic"
+
+
+def test_sntl_runtime_schema_validates_example():
+    doc = sntl.loads("""
+schema: sentinel.runtime.v1
+name: firewall-runtime
+policies:
+  - id: block-shell
+    action: block
+    enabled: true
+  - id: flag-pii
+    action: flag
+    enabled: true
+default_action: allow
+""".lstrip())
+
+    assert doc.ok is True
+    assert doc.data["default_action"] == "allow"
+
+
+def test_sntl_rulepack_schema_validates_example():
+    doc = sntl.loads("""
+schema: sentinel.rulepack.v1
+name: core-rules
+version: 1.0.0
+rules:
+  - id: RULE-001
+    severity: high
+    enabled: true
+    description: Detects shell injection
+  - id: RULE-002
+    severity: medium
+    enabled: true
+""".lstrip())
+
+    assert doc.ok is True
+    assert doc.data["rules"][0]["id"] == "RULE-001"
+
+
 def test_sntl_runtime_does_not_depend_on_yaml_loader():
     import sentinel.sntl.parser as parser
     import sentinel.sntl.writer as writer
